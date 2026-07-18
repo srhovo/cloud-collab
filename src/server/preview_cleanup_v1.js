@@ -7,6 +7,7 @@ export const PREVIEW_CLEANUP_MAX_OBJECTS = 10_000;
 
 const FIXTURE_GROUP_ID = 'group_fixture';
 const FIXTURE_LIBRARY_ID = 'lib_receive_fixture';
+const DIGEST_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const CLEANUP_PATTERNS = Object.freeze([
   /^devices\/profiles\/dev_[0-9A-HJKMNP-TV-Z]{26}\.json$/,
   /^devices\/token-index\/dth_v1_[A-Za-z0-9_-]{43}\.json$/,
@@ -68,20 +69,32 @@ export function readPreviewCleanupConfig(env = {}) {
   if (String(env.CLOUD_PREVIEW_CLEANUP_CONFIRMATION || '').trim() !== PREVIEW_CLEANUP_CONFIRMATION) {
     throw new PreviewCleanupError('PREVIEW_CLEANUP_CONFIRMATION_MISSING', '清理确认门禁未正确配置', 503);
   }
-  const previewAccessKey = String(env.CLOUD_WRITE_PREVIEW_KEY || '');
-  if (secretByteLength(previewAccessKey) < 32 || secretByteLength(previewAccessKey) > 256) {
-    throw new PreviewCleanupError('PREVIEW_ACCESS_KEY_NOT_CONFIGURED', '预览访问密钥尚未正确配置', 503);
+
+  const cleanupAccessKey = String(env.CLOUD_PREVIEW_CLEANUP_KEY || '');
+  if (secretByteLength(cleanupAccessKey) < 32 || secretByteLength(cleanupAccessKey) > 256) {
+    throw new PreviewCleanupError('PREVIEW_CLEANUP_KEY_NOT_CONFIGURED', '一次性清理独立密钥尚未正确配置', 503);
   }
+
+  const previewWriteKey = String(env.CLOUD_WRITE_PREVIEW_KEY || '');
+  if (previewWriteKey && safeSecretEqual(cleanupAccessKey, previewWriteKey)) {
+    throw new PreviewCleanupError('PREVIEW_CLEANUP_KEY_REUSED', '一次性清理密钥不得复用预览写入密钥', 503);
+  }
+
+  const rateLimitSalt = String(env.CLOUD_RATE_LIMIT_SALT || '');
+  if (rateLimitSalt && safeSecretEqual(cleanupAccessKey, rateLimitSalt)) {
+    throw new PreviewCleanupError('PREVIEW_CLEANUP_KEY_REUSED', '一次性清理密钥不得复用限流盐值', 503);
+  }
+
   return Object.freeze({
     schemaVersion: PREVIEW_CLEANUP_SCHEMA_VERSION,
     namespace: PREVIEW_CLEANUP_NAMESPACE,
-    previewAccessKey,
+    cleanupAccessKey,
   });
 }
 
 export function assertPreviewCleanupAccess(request, config) {
-  const supplied = String(request?.headers?.get?.('x-cloud-collab-preview-key') || '');
-  if (!safeSecretEqual(config?.previewAccessKey, supplied)) {
+  const supplied = String(request?.headers?.get?.('x-cloud-collab-cleanup-key') || '');
+  if (!safeSecretEqual(config?.cleanupAccessKey, supplied)) {
     throw new PreviewCleanupError('PREVIEW_CLEANUP_ACCESS_DENIED', '预览清理访问凭据无效', 403);
   }
   return true;
@@ -122,11 +135,38 @@ function assertAllSynthetic(keys) {
   }
 }
 
-export async function cleanupSyntheticPreviewObjects({ store } = {}) {
+export async function inspectSyntheticPreviewObjects({ store } = {}) {
   assertStore(store);
+  const keys = await listKeysStrong(store);
+  assertAllSynthetic(keys);
+  return Object.freeze({
+    schemaVersion: PREVIEW_CLEANUP_SCHEMA_VERSION,
+    namespace: PREVIEW_CLEANUP_NAMESPACE,
+    objectCount: keys.length,
+    keySetDigest: keyDigest(keys),
+    readyToExecute: true,
+    publicMutationAllowed: false,
+  });
+}
+
+export async function cleanupSyntheticPreviewObjects({ store, expectedKeySetDigest } = {}) {
+  assertStore(store);
+  const expectedDigest = String(expectedKeySetDigest || '').trim();
+  if (!DIGEST_PATTERN.test(expectedDigest)) {
+    throw new PreviewCleanupError('PREVIEW_CLEANUP_DIGEST_REQUIRED', '执行清理前必须提供检查阶段返回的对象集合摘要', 400);
+  }
+
   const before = await listKeysStrong(store);
   assertAllSynthetic(before);
   const beforeDigest = keyDigest(before);
+  if (beforeDigest !== expectedDigest) {
+    throw new PreviewCleanupError(
+      'PREVIEW_CLEANUP_KEYSET_CHANGED',
+      '预览命名空间对象集合已变化，必须重新检查后再执行',
+      409,
+      { objectCount: before.length, keySetDigest: beforeDigest },
+    );
+  }
 
   for (const key of before) {
     try {
