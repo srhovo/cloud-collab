@@ -1,10 +1,13 @@
 {
-  "name": "mdq-cloud-collab-storage-stage4b",
-  "version": "0.6.0",
+  "name": "mdq-cloud-collab-preview-write-stage4b2",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "engines": {
     "node": ">=20"
+  },
+  "dependencies": {
+    "@edgeone/pages-blob": "0.0.14"
   },
   "scripts": {
     "build": "node scripts/build.mjs",
