@@ -1,4 +1,4 @@
-name: stage3b-receive-ci
+name: stage4c-client-ci
 
 on:
   push:
@@ -17,4 +17,23 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm install --ignore-scripts
-      - run: npm run ci
+      - name: Run complete CI
+        id: complete-ci
+        shell: bash
+        run: |
+          set +e
+          npm run ci 2>&1 | tee ci-output.log
+          status=${PIPESTATUS[0]}
+          echo "$status" > ci-exit-code.txt
+          exit "$status"
+      - name: Upload CI diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage4c-ci-diagnostics
+          path: |
+            ci-output.log
+            ci-exit-code.txt
+            test-results/
+          if-no-files-found: warn
+          retention-days: 7
