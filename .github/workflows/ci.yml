@@ -1,4 +1,4 @@
-name: stage3b-receive-ci
+name: stage4c-client-ci
 
 on:
   push:
@@ -18,3 +18,12 @@ jobs:
           cache: npm
       - run: npm install --ignore-scripts
       - run: npm run ci
+      - name: Install browser test runtime
+        run: |
+          python3 -m pip install --disable-pip-version-check playwright
+          python3 -m playwright install --with-deps chromium
+          CHROMIUM_BIN="$(find "$HOME/.cache/ms-playwright" -type f \( -name chrome -o -name headless_shell \) -perm -111 | head -n 1)"
+          test -n "$CHROMIUM_BIN"
+          sudo ln -sf "$CHROMIUM_BIN" /usr/bin/chromium
+      - run: python3 tests/core_compare.py
+      - run: python3 tests/browser_integration.py
