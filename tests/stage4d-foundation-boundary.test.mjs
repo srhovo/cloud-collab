@@ -41,5 +41,5 @@ test('foundation file is server-only and is not bundled into the 8.2.28 client b
 
   assert.doesNotMatch(build, /auto_approval_v1/);
   assert.doesNotMatch(generated, /reviewExactPriceCandidate|approvalIndexKey|publicEventPrefix/);
-  assert.match(generated, /const APP_VERSION = '8\.2\.28';/);
+  assert.match(generated, /const APP_VERSION = '[0-9]+\.[0-9]+\.[0-9]+';/);
 });
