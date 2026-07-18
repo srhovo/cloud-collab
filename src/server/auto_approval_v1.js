@@ -356,6 +356,25 @@ async function reserveEventSlot(store, submission, approvalId, approvalMode, mar
   throw new AutoApprovalError('PUBLIC_EVENT_RESERVATION_EXHAUSTED', '公共事件版本预留重试次数已耗尽', 503);
 }
 
+async function lowestReservedEventForApproval(store, libraryId, approvalId) {
+  const prefix = publicEventPrefix(libraryId);
+  const keys = await listKeysStrong(store, prefix);
+  let selected = null;
+  for (const key of keys) {
+    const version = eventVersionFromKey(prefix, key);
+    if (version === null) {
+      throw new AutoApprovalError('INVALID_PUBLIC_EVENT_KEY', '公共事件目录包含不符合协议的Key', 500, { key });
+    }
+    const event = assertPublicEvent(await getJSONStrong(store, key), key, version);
+    if (event.approvalId !== approvalId) continue;
+    if (!selected || event.version < selected.version) selected = event;
+  }
+  if (!selected) {
+    throw new AutoApprovalError('APPROVAL_EVENT_NOT_FOUND', '批准事件预留后无法读取', 503, { approvalId });
+  }
+  return selected;
+}
+
 async function publishAutomaticApproval({ store, submission, approvalMode, markers, now }) {
   const approvalId = approvalIdFor(submission);
   const indexKey = approvalIndexKey(submission.libraryId, approvalId);
@@ -368,6 +387,7 @@ async function publishAutomaticApproval({ store, submission, approvalMode, marke
   }
 
   const reservedEvent = await reserveEventSlot(store, submission, approvalId, approvalMode, markers, now);
+  const canonicalEvent = await lowestReservedEventForApproval(store, submission.libraryId, approvalId);
   const proposedIndex = Object.freeze({
     schemaVersion: AUTO_APPROVAL_SCHEMA_VERSION,
     approvalId,
@@ -375,8 +395,8 @@ async function publishAutomaticApproval({ store, submission, approvalMode, marke
     libraryId: submission.libraryId,
     businessKey: submission.businessKey,
     contentHash: submission.contentHash,
-    version: reservedEvent.version,
-    eventKey: reservedEvent.eventKey,
+    version: canonicalEvent.version,
+    eventKey: canonicalEvent.eventKey,
     createdAt: now,
   });
 
@@ -395,7 +415,7 @@ async function publishAutomaticApproval({ store, submission, approvalMode, marke
     index,
     event,
     ...latest,
-    duplicateApproval: index.version !== proposedIndex.version,
+    duplicateApproval: reservedEvent.version !== index.version,
   });
 }
 
@@ -460,6 +480,7 @@ export async function reviewExactPriceCandidate({
   });
 
   if (eligibility.decision === 'duplicate_noop') {
+    const latest = await ensureLatestSnapshot(store, submission.groupId, submission.libraryId, now);
     return Object.freeze({
       schemaVersion: AUTO_APPROVAL_SCHEMA_VERSION,
       status: 'auto_approved',
@@ -468,9 +489,11 @@ export async function reviewExactPriceCandidate({
       approvalMode: 'public_duplicate',
       matchingDistinctDeviceCount: matchingMarkers.size,
       conflictingCandidateCount,
-      publicVersion: snapshot.publicVersion,
+      publicVersion: latest.snapshot.publicVersion,
       eventVersion: existingRecord?.approvedVersion || null,
+      snapshotKey: latest.snapshotKey,
       publicMutationApplied: false,
+      duplicateApproval: true,
       autoApprovalEnabled: true,
     });
   }
