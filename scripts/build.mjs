@@ -17,8 +17,13 @@ function replaceOnce(text, search, replacement, label) {
   if (text.indexOf(search, first + search.length) >= 0) throw new Error(`构建锚点不唯一：${label}`);
   return text.slice(0, first) + replacement + text.slice(first + search.length);
 }
+
 function escapeHtmlAttribute(value) {
-  return String(value || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 let html = fs.readFileSync(sourcePath, 'utf8');
@@ -29,11 +34,26 @@ const readonlyFeatureMethods = fs.readFileSync(path.join(root, 'src', 'cloud_col
 const submissionFeatureMethods = fs.readFileSync(path.join(root, 'src', 'cloud_collab_submission_feature_methods.fragment.js'), 'utf8').trim();
 const configuredApiBase = escapeHtmlAttribute(process.env.CLOUD_COLLAB_API_BASE || '');
 
-html = replaceOnce(html, '<title>码单器8.2.26（公共协作本地候选）</title>', '<title>码单器8.2.28（公共协作候选派发客户端）</title>', 'title');
-html = replaceOnce(html, '/* ===== 公共协作数据库（8.2.26 本地候选；不联网） ===== */', '/* ===== 公共协作数据库（8.2.28 接收同步 + 隔离候选派发；正式公共写入关闭） ===== */', 'cloud CSS comment');
-html = replaceOnce(html, "<meta name=\"AIGC\" content='", `<meta name="cloud-collab-api-base" content="${configuredApiBase}">\n    <meta name="AIGC" content='`, 'API base meta');
-html = replaceOnce(html, '<!-- 码单器 8.2.26 公共协作数据库本地候选版：不连接服务器，不影响正常码单 -->', '<!-- 码单器 8.2.28 公共协作数据库候选派发客户端：只向隔离预览候选区提交，正式公共写入、自动批准和管理员审核保持关闭 -->', 'body release comment');
-html = replaceOnce(html, "const APP_VERSION = '8.2.26';", "const APP_VERSION = '8.2.28';", 'APP_VERSION');
+html = replaceOnce(html,
+  '<title>码单器8.2.26（公共协作本地候选）</title>',
+  '<title>码单器8.2.28（公共协作候选派发客户端）</title>',
+  'title');
+html = replaceOnce(html,
+  '/* ===== 公共协作数据库（8.2.26 本地候选；不联网） ===== */',
+  '/* ===== 公共协作数据库（8.2.28 接收同步 + 隔离候选派发；正式公共写入关闭） ===== */',
+  'cloud CSS comment');
+html = replaceOnce(html,
+  "<meta name=\"AIGC\" content='",
+  `<meta name="cloud-collab-api-base" content="${configuredApiBase}">\n    <meta name="AIGC" content='`,
+  'API base meta');
+html = replaceOnce(html,
+  '<!-- 码单器 8.2.26 公共协作数据库本地候选版：不连接服务器，不影响正常码单 -->',
+  '<!-- 码单器 8.2.28 公共协作数据库候选派发客户端：只向隔离预览候选区提交，正式公共写入、自动批准和管理员审核保持关闭 -->',
+  'body release comment');
+html = replaceOnce(html,
+  "const APP_VERSION = '8.2.26';",
+  "const APP_VERSION = '8.2.28';",
+  'APP_VERSION');
 html = replaceOnce(html,
   '// Release note: 8.2.26 新增公共协作数据库本地候选层：独立身份/凭据/绑定/老板映射/待上传队列/同步状态Store，惰性创建身份，支持价格库本地/只接收/参与协作模式；本阶段不包含任何网络请求。',
   '// Release note: 8.2.28 在8.2.27只接收同步基础上增加隔离预览设备注册、本地设备凭据、pendingCloudChanges候选派发、幂等重试、错误分类、状态回写与断网降级；不开放正式公共写入、自动批准或管理员审核。',
@@ -55,7 +75,9 @@ html = replaceOnce(html,
  <h4 id="cloudServerTitle">公共只读同步</h4>
  <div class="cloud-collab-status" id="cloudServerSummary">尚未检查只读测试接口。</div>
  <p class="cloud-collab-note">只发送无凭据GET请求及公共groupId/libraryId；不会上传设备令牌、历史、订单、聊天、备注、布局或其他私人内容。</p>
- <div class="cloud-collab-actions"><button class="app-btn app-btn--secondary app-btn--sm" id="cloudServerCheckBtn" type="button">检查服务器</button></div>
+ <div class="cloud-collab-actions">
+ <button class="app-btn app-btn--secondary app-btn--sm" id="cloudServerCheckBtn" type="button">检查服务器</button>
+ </div>
  </section>
 
  <section class="cloud-collab-section" aria-labelledby="cloudIdentityTitle">`,
@@ -82,13 +104,16 @@ html = replaceOnce(html,
 ` <section class="cloud-collab-section" aria-labelledby="cloudUploadTitle">
  <h4 id="cloudUploadTitle">隔离预览候选派发</h4>
  <p class="cloud-collab-note">页面不接收、显示或保存任何预览密钥。只有部署环境通过受控运行时门禁时才会派发；门禁关闭、离线或服务禁写时，队列留在本机。设备令牌仅保存在独立本地凭据区。</p>
- <div class="cloud-collab-actions"><button class="app-btn app-btn--secondary app-btn--sm" id="cloudUploadRetryBtn" type="button">立即派发 / 重试可恢复项</button></div>
+ <div class="cloud-collab-actions">
+ <button class="app-btn app-btn--secondary app-btn--sm" id="cloudUploadRetryBtn" type="button">立即派发 / 重试可恢复项</button>
+ </div>
  <div class="cloud-collab-status" id="cloudUploadSummary">候选派发尚未启动。</div>
  </section>
 
  <section class="cloud-collab-section" aria-labelledby="cloudQueueTitle">
  <h4 id="cloudQueueTitle">本地协作状态</h4>`,
   'submission controls');
+
 html = replaceOnce(html,
   '<p class="cloud-collab-note">本阶段仅验证本地结构。不会自动监听 localStorage，也不会从导入、迁移、云端拉取或回滚流程生成提交。</p>',
   '<p class="cloud-collab-note">仅“参与协作”绑定会逐条生成普通精确价格候选；只接收模式、导入、迁移、云端拉取、回滚、系统记忆和私人数据永远不会进入上传队列。</p>',
@@ -215,11 +240,15 @@ ${submissionFeatureMethods}
  getModeLabel(mode) {`,
   'cloud feature methods');
 
-html = replaceOnce(html, ' saveBinding() {', ' async saveBinding() {', 'async binding save');
+html = replaceOnce(html,
+  ' saveBinding() {',
+  ' async saveBinding() {',
+  'async binding save');
 html = replaceOnce(html,
   "   const result = this.stores.coordinator.bindLibrary({ localLibraryId, groupId, libraryId, mode, basePublicVersion: 0 });",
   "   const previousBinding = this.stores.bindingStore.getByLocalLibraryId(localLibraryId);\n   const result = this.stores.coordinator.bindLibrary({ localLibraryId, groupId, libraryId, mode, basePublicVersion: 0 });",
   'capture previous binding');
+
 html = replaceOnce(html,
   "   this.setStatus(`本地绑定已保存：${this.getModeLabel(mode)}。当前不会连接服务器。`, 'success');",
   "   this.setStatus(`本地绑定已保存：${this.getModeLabel(mode)}。${mode === 'local' ? '不会接收或提交。' : mode === 'receive' ? '将异步接收公共更新，不会上传。' : '将先接收比较，再逐条生成白名单候选。'}`, 'success');\n   setTimeout(async () => {\n    const savedBinding = this.stores.bindingStore.getByLocalLibraryId(localLibraryId);\n    if (mode !== 'local') await this.syncBinding(savedBinding, { interactive: false, force: false, reason: 'binding' });\n    if (mode === 'collaborate' && previousBinding?.mode !== 'collaborate') await this.enqueueInitialBindingSubmissions(localLibraryId);\n   }, 0);",
@@ -249,10 +278,13 @@ html = replaceOnce(html,
   queueStore: this.cloudCollabStores.queueStore,
   bindingStore: this.cloudCollabStores.bindingStore,
   appVersion: '8.2.28',
-  onState: state => { try { this.cloudCollabFeature?.handleSubmissionState?.(state); } catch (error) { appLogSilent(error); } }
+  onState: state => {
+   try { this.cloudCollabFeature?.handleSubmissionState?.(state); } catch (error) { appLogSilent(error); }
+  }
  });
  this.extractorService = new ExtractorService();`,
   'create cloud clients');
+
 html = replaceOnce(html,
   "this.registerFeature('cloudCollabFeature', new CloudCollabFeature(this, this.cloudCollabStores));",
   "this.registerFeature('cloudCollabFeature', new CloudCollabFeature(this, this.cloudCollabStores, this.cloudCollabApi, this.cloudCollabSubmissionApi, this.cloudCollabSubmissionDispatcher, this.cloudCollabSubmissionIdFactory));",
@@ -274,6 +306,17 @@ html = replaceOnce(html,
 ` 'cloudCollabBtn', 'cloudCollabModal', 'cloudServerBadge', 'cloudServerSummary', 'cloudServerCheckBtn', 'cloudNicknameInput', 'cloudIdentitySummary', 'cloudIdentitySaveBtn', 'cloudLocalLibrarySelect', 'cloudGroupIdInput', 'cloudLibraryIdInput', 'cloudBindingModeSelect', 'cloudBindingSummary', 'cloudBindingSaveBtn', 'cloudPublicVersionCheckBtn', 'cloudPublicVersionSummary', 'cloudBindingRemoveBtn', 'cloudUploadRetryBtn', 'cloudUploadSummary', 'cloudBindingCount', 'cloudQueueCount', 'cloudConflictCount', 'cloudRefreshBtn', 'cloudOperationStatus',`,
   'cache cloud elements');
 
+html = replaceOnce(html,
+` this.showSuccess(message);
+ this.resetPriceMemoryEditor({ clear: true });`,
+` this.showSuccess(message);
+ const cloudLocalLibraryId = workingActive?.id || this.priceLibraryStore.getActiveLibrary(this.priceLibraries)?.id || '';
+ if (cloudLocalLibraryId) setTimeout(() => {
+  this.cloudCollabFeature?.enqueueExactPriceUserChange?.(cloudLocalLibraryId, record).catch(error => appLogSilent(error));
+ }, 0);
+ this.resetPriceMemoryEditor({ clear: true });`,
+  'user exact-price queue hook');
+
 fs.mkdirSync(distDir, { recursive: true });
 fs.writeFileSync(outputPath, html, 'utf8');
 const digest = crypto.createHash('sha256').update(Buffer.from(html)).digest('hex');
@@ -283,6 +326,9 @@ const manifest = {
   output: path.relative(root, outputPath),
   apiBase: process.env.CLOUD_COLLAB_API_BASE || 'same-origin-or-disabled-for-file',
   stage: '4C-preview-submission-client',
+  publicMutationAllowed: false,
+  autoApprovalEnabled: false,
+  adminReviewEnabled: false,
   sha256: digest,
   bytes: Buffer.byteLength(html),
   generatedAt: new Date().toISOString(),
