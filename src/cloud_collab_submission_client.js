@@ -104,8 +104,14 @@
         const headers = { 'Content-Type': 'application/json', Accept: 'application/json', [WRITE_GATE_HEADER]: writeAccess };
         if (token) headers.Authorization = `Bearer ${token}`;
         const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
-          method: 'POST', credentials: 'omit', cache: 'no-store', redirect: 'error', referrerPolicy: 'no-referrer',
-          headers, body: JSON.stringify(body), ...(controller ? { signal: controller.signal } : {}),
+          method: 'POST',
+          credentials: 'omit',
+          cache: 'no-store',
+          redirect: 'error',
+          referrerPolicy: 'no-referrer',
+          headers,
+          body: JSON.stringify(body),
+          ...(controller ? { signal: controller.signal } : {}),
         });
         let payload = null;
         try { payload = await response.json(); } catch (_) {}
@@ -114,8 +120,11 @@
           const code = remote.code || `HTTP_${response.status}`;
           const classified = classifyRemoteError(code, response.status, Boolean(remote.retryable));
           throw new SubmissionClientError(code, remote.message || '服务器拒绝提交', {
-            status: response.status, retryable: classified.retryable, category: classified.category,
-            retryAfterMs: parseRetryAfter(response), details: remote.details || null,
+            status: response.status,
+            retryable: classified.retryable,
+            category: classified.category,
+            retryAfterMs: parseRetryAfter(response),
+            details: remote.details || null,
           });
         }
         const data = payload.data;
@@ -127,13 +136,20 @@
         if (error instanceof SubmissionClientError) throw error;
         if (error?.name === 'AbortError') throw new SubmissionClientError('API_TIMEOUT', '提交请求超时', { retryable: true, category: 'network', cause: error });
         throw new SubmissionClientError('API_UNREACHABLE', '无法连接提交接口', { retryable: true, category: 'network', cause: error });
-      } finally { if (timer) clearTimeout(timer); }
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
     }
 
     registerDevice({ deviceId, nickname = null, appVersion = APP_VERSION }) {
-      return this.request('/api/device/register', { body: { schemaVersion: 1, deviceId, nickname, clientContext: { appVersion } } });
+      return this.request('/api/device/register', {
+        body: { schemaVersion: 1, deviceId, nickname, clientContext: { appVersion } },
+      });
     }
-    submit(deviceToken, submission) { return this.request('/api/submissions/create', { body: submission, token: deviceToken }); }
+
+    submit(deviceToken, submission) {
+      return this.request('/api/submissions/create', { body: submission, token: deviceToken });
+    }
   }
 
   function toBase64Url(bytes) {
@@ -187,10 +203,21 @@
     const hashes = await snapshotSync.computeExactPriceHashes(groupId, libraryId, { serviceName, settleType, unitPrice });
     const idempotencyKey = await buildIdempotencyKey(deviceId, submissionId, snapshotSync.canonicalize);
     return Object.freeze({
-      schemaVersion: SUBMISSION_SCHEMA_VERSION, payloadSchemaVersion: PAYLOAD_SCHEMA_VERSION, submissionId, deviceId, groupId, libraryId,
-      bossId: null, dataType: 'exact_price', operation: 'upsert', origin,
-      clientCreatedAt: Math.max(0, Math.floor(Number(clientCreatedAt) || 0)), businessKey: hashes.businessKey, contentHash: hashes.contentHash,
-      idempotencyKey, payload: hashes.payload,
+      schemaVersion: SUBMISSION_SCHEMA_VERSION,
+      payloadSchemaVersion: PAYLOAD_SCHEMA_VERSION,
+      submissionId,
+      deviceId,
+      groupId,
+      libraryId,
+      bossId: null,
+      dataType: 'exact_price',
+      operation: 'upsert',
+      origin,
+      clientCreatedAt: Math.max(0, Math.floor(Number(clientCreatedAt) || 0)),
+      businessKey: hashes.businessKey,
+      contentHash: hashes.contentHash,
+      idempotencyKey,
+      payload: hashes.payload,
       clientContext: { appVersion, projectionSpecVersion: PROJECTION_SPEC_VERSION, queueSchemaVersion: QUEUE_SCHEMA_VERSION },
     });
   }
@@ -207,9 +234,11 @@
         if (seen.has(hash.businessKey)) continue;
         seen.add(hash.businessKey);
         if (baseHashes?.[hash.businessKey] === hash.contentHash) { skipped.alreadyPublic += 1; continue; }
-        submissions.push(await buildExactPriceSubmission({ snapshotSync, deviceId, submissionId: submissionIdFactory(), groupId, libraryId,
+        submissions.push(await buildExactPriceSubmission({
+          snapshotSync, deviceId, submissionId: submissionIdFactory(), groupId, libraryId,
           serviceName: hash.payload.serviceName, settleType: hash.payload.settleType, unitPrice: hash.payload.unitPrice,
-          origin: 'initialBinding', clientCreatedAt: now(), appVersion }));
+          origin: 'initialBinding', clientCreatedAt: now(), appVersion,
+        }));
       } catch (_) { skipped.invalid += 1; }
     }
     return Object.freeze({ submissions: Object.freeze(submissions), skipped: Object.freeze(skipped) });
@@ -219,31 +248,51 @@
 
   class SubmissionDispatcher {
     constructor({ apiClient, metaStore, credentialStore, queueStore, bindingStore = null, appVersion = APP_VERSION, now = () => Date.now(), isOnline = () => typeof navigator === 'undefined' || navigator.onLine !== false, onState = null } = {}) {
-      this.apiClient = apiClient; this.metaStore = metaStore; this.credentialStore = credentialStore; this.queueStore = queueStore; this.bindingStore = bindingStore;
-      this.appVersion = appVersion; this.now = now; this.isOnline = isOnline; this.onState = typeof onState === 'function' ? onState : () => {}; this._flushPromise = null;
+      this.apiClient = apiClient;
+      this.metaStore = metaStore;
+      this.credentialStore = credentialStore;
+      this.queueStore = queueStore;
+      this.bindingStore = bindingStore;
+      this.appVersion = appVersion;
+      this.now = now;
+      this.isOnline = isOnline;
+      this.onState = typeof onState === 'function' ? onState : () => {};
+      this._flushPromise = null;
     }
+
     emit(state) { try { this.onState(Object.freeze({ at: this.now(), ...state })); } catch (_) {} }
+
     hasCollaborativeBinding(submission) {
       if (!this.bindingStore?.list) return false;
-      try { return this.bindingStore.list().some(binding => binding?.mode === 'collaborate' && binding.groupId === submission?.groupId && binding.libraryId === submission?.libraryId); }
-      catch (_) { return false; }
+      try {
+        return this.bindingStore.list().some(binding => binding?.mode === 'collaborate'
+          && binding.groupId === submission?.groupId
+          && binding.libraryId === submission?.libraryId);
+      } catch (_) { return false; }
     }
+
     async ensureCredential() {
       const current = this.credentialStore?.getValid?.(this.now());
       if (current) return current;
       const credentialResult = this.credentialStore?.loadResult?.();
       if (credentialResult?.ok && credentialResult?.exists) this.credentialStore.clear();
       const metaResult = this.metaStore?.loadResult?.();
-      if (!metaResult?.ok || !metaResult?.exists || !metaResult.value?.deviceId) throw new SubmissionClientError('DEVICE_IDENTITY_REQUIRED', '请先创建云协作身份', { category: 'configuration' });
+      if (!metaResult?.ok || !metaResult?.exists || !metaResult.value?.deviceId) {
+        throw new SubmissionClientError('DEVICE_IDENTITY_REQUIRED', '请先创建云协作身份', { category: 'configuration' });
+      }
       const data = await this.apiClient.registerDevice({ deviceId: metaResult.value.deviceId, nickname: metaResult.value.nickname, appVersion: this.appVersion });
-      if (!data?.deviceToken || data.deviceId !== metaResult.value.deviceId) throw new SubmissionClientError('INVALID_REGISTRATION_RESPONSE', '设备注册响应无效', { category: 'protocol' });
+      if (!data?.deviceToken || data.deviceId !== metaResult.value.deviceId) {
+        throw new SubmissionClientError('INVALID_REGISTRATION_RESPONSE', '设备注册响应无效', { category: 'protocol' });
+      }
       return this.credentialStore.save({ schemaVersion: 1, deviceId: data.deviceId, deviceToken: data.deviceToken, issuedAt: data.issuedAt, expiresAt: data.expiresAt, tokenVersion: data.tokenVersion });
     }
+
     flush({ limit = 10 } = {}) {
       if (this._flushPromise) return this._flushPromise;
       this._flushPromise = this._flush({ limit }).finally(() => { this._flushPromise = null; });
       return this._flushPromise;
     }
+
     async _flush({ limit }) {
       const summary = { status: 'idle', attempted: 0, acknowledged: 0, retryWait: 0, blocked: 0, skippedMode: 0, remaining: 0, errorCode: null, category: null };
       if (!this.apiClient?.isConfigured?.()) return { ...summary, status: 'not_configured' };
@@ -252,48 +301,90 @@
         this.emit({ status: 'write_gate_closed', errorCode: 'WRITE_GATE_CLOSED', category: 'write_gate' });
         return { ...summary, status: 'write_gate_closed', errorCode: 'WRITE_GATE_CLOSED', category: 'write_gate' };
       }
+
       const dueAll = this.queueStore.getDue(this.now(), Math.max(1, Math.min(MAX_FLUSH_LIMIT, Number(limit) || 10)));
       if (!dueAll.length) return summary;
       const due = [];
       for (const item of dueAll) {
         const submission = item?.submission;
         if (!isPreviewSubmissionScope(submission)) {
-          this.queueStore.markBlocked(submission.submissionId, 'PREVIEW_SCOPE_CLIENT_BLOCKED'); summary.blocked += 1;
-          summary.errorCode = 'PREVIEW_SCOPE_CLIENT_BLOCKED'; summary.category = 'forbidden'; continue;
+          this.queueStore.markBlocked(submission.submissionId, 'PREVIEW_SCOPE_CLIENT_BLOCKED');
+          summary.blocked += 1;
+          summary.errorCode = 'PREVIEW_SCOPE_CLIENT_BLOCKED';
+          summary.category = 'forbidden';
+          continue;
         }
-        if (!this.hasCollaborativeBinding(submission)) { summary.skippedMode += 1; continue; }
+        if (!this.hasCollaborativeBinding(submission)) {
+          summary.skippedMode += 1;
+          continue;
+        }
         due.push(item);
       }
       if (!due.length) {
         summary.remaining = this.queueStore.list().filter(item => item.deliveryState !== 'acknowledged').length;
-        summary.status = summary.blocked ? 'completed_with_blocked' : 'no_collaborative_due'; this.emit(summary); return summary;
+        summary.status = summary.blocked ? 'completed_with_blocked' : 'no_collaborative_due';
+        this.emit(summary);
+        return summary;
       }
+
       this.emit({ status: 'registering_or_sending', queued: due.length });
       let credential;
       try { credential = await this.ensureCredential(); }
       catch (error) {
         const retryable = shouldRetry(error);
-        if (!retryable) for (const item of due) { try { this.queueStore.markBlocked(item.submission.submissionId, error.code || 'DEVICE_REGISTRATION_BLOCKED'); summary.blocked += 1; } catch (_) {} }
-        summary.status = retryable ? 'credential_retry' : 'credential_blocked';
+        if (!retryable) {
+          for (const item of due) {
+            try { this.queueStore.markBlocked(item.submission.submissionId, error.code || 'DEVICE_REGISTRATION_BLOCKED'); summary.blocked += 1; } catch (_) {}
+          }
+        }
+        const status = retryable ? 'credential_retry' : 'credential_blocked';
+        summary.status = status;
         summary.remaining = this.queueStore.list().filter(item => item.deliveryState !== 'acknowledged').length;
-        summary.errorCode = error.code || 'DEVICE_REGISTRATION_FAILED'; summary.category = error.category || 'unknown'; this.emit(summary); return summary;
+        summary.errorCode = error.code || 'DEVICE_REGISTRATION_FAILED';
+        summary.category = error.category || 'unknown';
+        this.emit(summary);
+        return summary;
       }
+
       const result = { ...summary, status: 'completed' };
       for (const item of due) {
-        const id = item.submission.submissionId; this.queueStore.markSending(id); result.attempted += 1;
-        try { await this.apiClient.submit(credential.deviceToken, item.submission); this.queueStore.markAcknowledged(id); result.acknowledged += 1; }
-        catch (error) {
-          result.errorCode = error.code || 'SUBMISSION_ERROR'; result.category = error.category || 'unknown';
-          if (error.category === 'credential') { try { this.credentialStore.clear(); } catch (_) {} this.queueStore.markBlocked(id, error.code || 'DEVICE_CREDENTIAL_INVALID'); result.blocked += 1; break; }
-          if (error.category === 'write_gate' || error.category === 'service_disabled') { this.queueStore.markBlocked(id, error.code || 'WRITE_GATE_BLOCKED'); result.blocked += 1; break; }
-          if (shouldRetry(error)) { this.queueStore.markRetry(id, error.code || 'SUBMISSION_RETRY'); result.retryWait += 1; break; }
-          this.queueStore.markBlocked(id, error.code || 'SUBMISSION_BLOCKED'); result.blocked += 1;
+        const id = item.submission.submissionId;
+        this.queueStore.markSending(id);
+        result.attempted += 1;
+        try {
+          await this.apiClient.submit(credential.deviceToken, item.submission);
+          this.queueStore.markAcknowledged(id);
+          result.acknowledged += 1;
+        } catch (error) {
+          result.errorCode = error.code || 'SUBMISSION_ERROR';
+          result.category = error.category || 'unknown';
+          if (error.category === 'credential') {
+            try { this.credentialStore.clear(); } catch (_) {}
+            this.queueStore.markBlocked(id, error.code || 'DEVICE_CREDENTIAL_INVALID');
+            result.blocked += 1;
+            break;
+          }
+          if (error.category === 'write_gate' || error.category === 'service_disabled') {
+            this.queueStore.markBlocked(id, error.code || 'WRITE_GATE_BLOCKED');
+            result.blocked += 1;
+            break;
+          }
+          if (shouldRetry(error)) {
+            this.queueStore.markRetry(id, error.code || 'SUBMISSION_RETRY');
+            result.retryWait += 1;
+            break;
+          }
+          this.queueStore.markBlocked(id, error.code || 'SUBMISSION_BLOCKED');
+          result.blocked += 1;
         }
       }
       try { this.queueStore.pruneAcknowledged(); } catch (_) {}
       result.remaining = this.queueStore.list().filter(item => item.deliveryState !== 'acknowledged').length;
-      if (result.blocked) result.status = 'completed_with_blocked'; else if (result.retryWait) result.status = 'completed_with_retry'; else if (result.skippedMode) result.status = 'completed_with_mode_skips';
-      this.emit(result); return result;
+      if (result.blocked) result.status = 'completed_with_blocked';
+      else if (result.retryWait) result.status = 'completed_with_retry';
+      else if (result.skippedMode) result.status = 'completed_with_mode_skips';
+      this.emit(result);
+      return result;
     }
   }
 
@@ -301,7 +392,21 @@
     return new SubmissionApiClient({ baseUrl: readConfiguredBase({ documentRef, locationRef }), fetchImpl, timeoutMs, writeAccessProvider, locationRef });
   }
 
-  return Object.freeze({ APP_VERSION, WRITE_GATE_HEADER, PREVIEW_ALLOWED_GROUP_ID, PREVIEW_ALLOWED_LIBRARY_ID,
-    SubmissionClientError, SubmissionApiClient, SubmissionDispatcher, classifyRemoteError, isPreviewSubmissionScope, shouldRetry,
-    buildIdempotencyKey, buildExactPriceSubmission, planInitialExactPriceSubmissions, createConfiguredClient, readConfiguredBase });
+  return Object.freeze({
+    APP_VERSION,
+    WRITE_GATE_HEADER,
+    PREVIEW_ALLOWED_GROUP_ID,
+    PREVIEW_ALLOWED_LIBRARY_ID,
+    SubmissionClientError,
+    SubmissionApiClient,
+    SubmissionDispatcher,
+    classifyRemoteError,
+    isPreviewSubmissionScope,
+    shouldRetry,
+    buildIdempotencyKey,
+    buildExactPriceSubmission,
+    planInitialExactPriceSubmissions,
+    createConfiguredClient,
+    readConfiguredBase,
+  });
 });
