@@ -17,6 +17,6 @@
     "validate:base": "node scripts/validate.mjs",
     "validate:stage4c": "node scripts/validate-stage4c-client.mjs",
     "validate": "npm run validate:stage4c",
-    "ci": "npm run build:base && npm test && npm run validate:base && npm run build:stage4c && npm run validate:stage4c"
+    "ci": "node scripts/run-ci.mjs"
   }
 }
