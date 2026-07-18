@@ -17,11 +17,13 @@ test('预览验收页只在内存中提供写入门禁', () => {
   assert.doesNotMatch(html, /console\.(?:log|warn|error)/);
 });
 
-test('预览验收页自动保留EdgeOne访问参数', () => {
+test('预览验收页兼容EdgeOne参数保留和同源会话两种模式', () => {
   assert.match(html, /\['eo_token', 'eo_time'\]/);
-  assert.match(html, /withPreviewAccess\('\/index\.html'\)/);
-  assert.match(html, /child\.fetch = \(input, init = \{\}\) => parentFetch\(withPreviewAccess\(input\)\.href, init\)/);
-  assert.match(html, /credentials: 'omit'/);
+  assert.match(html, /function sameOriginFetch\(input, init = \{\}\)/);
+  assert.match(html, /credentials: 'same-origin'/);
+  assert.match(html, /child\.fetch = sameOriginFetch/);
+  assert.match(html, /url\.origin !== window\.location\.origin/);
+  assert.doesNotMatch(html, /当前地址缺少EdgeOne预览访问参数/);
 });
 
 test('预览验收页加载的必须是真实8.2.28候选', () => {
