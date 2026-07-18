@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src 'self'; frame-src 'self' about:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+  <title>码单器8.2.28真实预览验收</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;color-scheme:light}
+    *{box-sizing:border-box}body{margin:0;background:#f5f6f8;color:#1f2328}
+    .panel{position:sticky;top:0;z-index:5;background:#fff;border-bottom:1px solid #d0d7de;padding:14px;box-shadow:0 4px 14px rgba(31,35,40,.08)}
+    .inner{width:min(980px,100%);margin:auto}.row{display:flex;gap:10px;align-items:end;flex-wrap:wrap}
+    .field{flex:1;min-width:260px}label{display:block;font-weight:700;margin-bottom:6px}
+    input{width:100%;padding:11px 12px;border:1px solid #8c959f;border-radius:8px;font-size:16px}
+    button{border:0;border-radius:8px;padding:11px 14px;font-size:15px;font-weight:700;cursor:pointer;background:#0969da;color:#fff}
+    button.secondary{background:#57606a}button:disabled{opacity:.5;cursor:not-allowed}
+    .note{font-size:14px;color:#57606a;line-height:1.55;margin:8px 0 0}.status{font-weight:700;margin-top:8px;min-height:22px}
+    .ok{color:#1a7f37}.error{color:#cf222e}.frame-wrap{width:min(1180px,100%);margin:16px auto;padding:0 12px}
+    iframe{display:block;width:100%;height:calc(100vh - 190px);min-height:680px;border:1px solid #d0d7de;border-radius:12px;background:#fff}
+    ol{margin:8px 0 0;padding-left:22px;font-size:14px;line-height:1.55}
+  </style>
+</head>
+<body>
+  <section class="panel">
+    <div class="inner">
+      <div class="row">
+        <div class="field">
+          <label for="writeKey">临时预览写入密码</label>
+          <input id="writeKey" type="password" autocomplete="new-password" spellcheck="false" placeholder="粘贴 CLOUD_WRITE_PREVIEW_KEY，只保留在本页内存">
+        </div>
+        <button id="loadBtn" type="button">加载8.2.28测试客户端</button>
+        <button id="clearBtn" class="secondary" type="button">清空并关闭</button>
+      </div>
+      <div id="status" class="status" aria-live="polite">尚未加载。</div>
+      <p class="note">本页不会把密码写入 localStorage、sessionStorage、IndexedDB、日志或网址。它只为当前页面内的真实8.2.28客户端提供临时运行时门禁，并自动保留EdgeOne的预览访问参数。</p>
+      <ol>
+        <li>先验证“本地模式”和“只接收更新”不会上传。</li>
+        <li>再把测试库绑定为“参与协作”，验证首次候选和后续普通精确价格修改。</li>
+        <li>只允许测试作用域 group_fixture / lib_receive_fixture；不要使用正式团或正式价格库。</li>
+      </ol>
+    </div>
+  </section>
+  <div class="frame-wrap"><iframe id="clientFrame" title="码单器8.2.28测试客户端" sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-downloads"></iframe></div>
+<script>
+(() => {
+  'use strict';
+  const keyInput = document.getElementById('writeKey');
+  const loadBtn = document.getElementById('loadBtn');
+  const clearBtn = document.getElementById('clearBtn');
+  const statusEl = document.getElementById('status');
+  const frame = document.getElementById('clientFrame');
+  let activeKey = '';
+
+  function setStatus(message, kind = '') {
+    statusEl.textContent = message;
+    statusEl.className = `status ${kind}`.trim();
+  }
+
+  function previewParams() {
+    const source = new URL(window.location.href);
+    const result = new URLSearchParams();
+    for (const name of ['eo_token', 'eo_time']) {
+      const value = source.searchParams.get(name);
+      if (value) result.set(name, value);
+    }
+    return result;
+  }
+
+  function withPreviewAccess(value) {
+    const url = new URL(typeof value === 'string' ? value : value.url, window.location.origin);
+    if (url.origin === window.location.origin) {
+      for (const [name, paramValue] of previewParams()) {
+        if (!url.searchParams.has(name)) url.searchParams.set(name, paramValue);
+      }
+    }
+    return url;
+  }
+
+  function clearRuntime() {
+    activeKey = '';
+    keyInput.value = '';
+    try {
+      if (frame.contentWindow) {
+        frame.contentWindow.CloudCollabPreviewRuntime = undefined;
+        frame.contentWindow.fetch = undefined;
+      }
+    } catch (_) {}
+    frame.removeAttribute('srcdoc');
+    frame.src = 'about:blank';
+    setStatus('临时密码已清空，测试客户端已关闭。');
+  }
+
+  async function loadClient() {
+    const key = keyInput.value.trim();
+    if (new TextEncoder().encode(key).length < 32) {
+      setStatus('临时预览写入密码不足32字节，请重新粘贴完整值。', 'error');
+      return;
+    }
+    const params = previewParams();
+    if (!params.get('eo_token') || !params.get('eo_time')) {
+      setStatus('当前地址缺少EdgeOne预览访问参数，请从该部署的“预览”入口重新打开本页。', 'error');
+      return;
+    }
+
+    loadBtn.disabled = true;
+    keyInput.disabled = true;
+    setStatus('正在载入真实8.2.28候选……');
+    try {
+      activeKey = key;
+      const indexUrl = withPreviewAccess('/index.html');
+      const response = await fetch(indexUrl.href, { method: 'GET', credentials: 'omit', cache: 'no-store', redirect: 'error', referrerPolicy: 'no-referrer' });
+      if (!response.ok) throw new Error(`候选页面载入失败（HTTP ${response.status}）`);
+      let html = await response.text();
+      html = html.replace(/<meta name="cloud-collab-api-base" content="[^"]*">/, `<meta name="cloud-collab-api-base" content="${window.location.origin}">`);
+      if (!html.includes("const APP_VERSION = '8.2.28';")) throw new Error('当前部署不是8.2.28候选。');
+
+      frame.src = 'about:blank';
+      const child = frame.contentWindow;
+      const parentFetch = window.fetch.bind(window);
+      child.CloudCollabPreviewRuntime = Object.freeze({ getWriteAccess: () => activeKey });
+      child.fetch = (input, init = {}) => parentFetch(withPreviewAccess(input).href, init);
+      child.document.open();
+      child.document.write(html);
+      child.document.close();
+      keyInput.value = '';
+      setStatus('8.2.28测试客户端已加载。临时门禁仅在当前页面内存中生效。', 'ok');
+    } catch (error) {
+      activeKey = '';
+      setStatus(error?.message || '加载失败。', 'error');
+    } finally {
+      loadBtn.disabled = false;
+      keyInput.disabled = false;
+    }
+  }
+
+  loadBtn.addEventListener('click', loadClient);
+  clearBtn.addEventListener('click', clearRuntime);
+  window.addEventListener('pagehide', () => { activeKey = ''; });
+})();
+</script>
+</body>
+</html>
