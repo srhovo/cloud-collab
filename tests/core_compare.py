@@ -5,7 +5,7 @@ from playwright.sync_api import sync_playwright
 ROOT = Path(__file__).resolve().parents[1]
 BASE = (ROOT/'src/码单器8.2.26_公共协作本地候选版.html').read_text(encoding='utf-8')
 CAND = (ROOT/'dist/index.html').read_text(encoding='utf-8')
-OUT = ROOT/'test-results/阶段3B_核心计算对比结果.json'
+OUT = ROOT/'test-results/阶段4C_核心计算对比结果.json'
 
 def run(browser, html):
     page = browser.new_page()
@@ -32,7 +32,7 @@ with sync_playwright() as p:
     base=run(browser,BASE)
     cand=run(browser,CAND)
     browser.close()
-result={'baseVersion':'8.2.26','candidateVersion':'8.2.27','same':base==cand,'base':base,'candidate':cand}
+result={'baseVersion':'8.2.26','candidateVersion':'8.2.28','same':base==cand,'base':base,'candidate':cand}
 OUT.write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
 print(json.dumps({'same':result['same']},ensure_ascii=False))
 if not result['same']: raise SystemExit(1)
