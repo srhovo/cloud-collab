@@ -19,8 +19,14 @@ jobs:
       - run: npm install --ignore-scripts
       - name: Build 8.2.28 candidate
         run: npm run build
-      - name: Validate preview harness and cleanup tools
-        run: node --test tests/stage4c-preview-harness.test.mjs tests/stage4c-preview-cleanup.test.mjs tests/stage4c-preview-cleanup-limit.test.mjs tests/stage4c-preview-cleanup-operator.test.mjs
+      - name: Validate preview client harness
+        run: node --test tests/stage4c-preview-harness.test.mjs
+      - name: Validate cleanup runtime
+        run: node --test tests/stage4c-preview-cleanup.test.mjs
+      - name: Validate cleanup object limit
+        run: node --test tests/stage4c-preview-cleanup-limit.test.mjs
+      - name: Validate cleanup operator page
+        run: node --test tests/stage4c-preview-cleanup-operator.test.mjs
       - name: Run all Node tests
         run: npm test
       - name: Run static and privacy validation
