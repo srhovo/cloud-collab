@@ -4,6 +4,7 @@ import {
   authenticateDevice,
   DeviceRegistrationError,
   hashDeviceToken,
+  MAX_DEVICE_TOKEN_TTL_MS,
   registerDevice,
 } from '../src/server/device_registration_v1.js';
 import {
@@ -123,6 +124,34 @@ test('authentication uses strong reads and rejects expired tokens', async () => 
     authenticateDevice({ store, authorization: `Bearer ${credential.deviceToken}`, now: credential.expiresAt }),
     expectCode(DeviceRegistrationError, 'DEVICE_TOKEN_EXPIRED'),
   );
+});
+
+test('device token ttl has a hard 90-day cap and cannot overflow safe time', async () => {
+  const tooLongStore = new MemoryBlobStore();
+  await assert.rejects(
+    registerDevice({
+      store: tooLongStore,
+      input: registration(),
+      now: NOW,
+      tokenTtlMs: MAX_DEVICE_TOKEN_TTL_MS + 1,
+      randomBytes: () => Buffer.alloc(32, 7),
+    }),
+    expectCode(DeviceRegistrationError, 'INVALID_TOKEN_TTL'),
+  );
+  assert.equal(tooLongStore.writes.length, 0);
+
+  const overflowStore = new MemoryBlobStore();
+  await assert.rejects(
+    registerDevice({
+      store: overflowStore,
+      input: registration(),
+      now: Number.MAX_SAFE_INTEGER - 1_000,
+      tokenTtlMs: 60_000,
+      randomBytes: () => Buffer.alloc(32, 7),
+    }),
+    expectCode(DeviceRegistrationError, 'INVALID_TOKEN_EXPIRY'),
+  );
+  assert.equal(overflowStore.writes.length, 0);
 });
 
 test('the same deviceId cannot silently receive a second token', async () => {
