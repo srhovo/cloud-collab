@@ -8,6 +8,7 @@ import { pendingSubmissionKey } from '../src/server/blob_repository_v1.js';
 import {
   PreviewWriteError,
   acceptPreviewSubmission,
+  assertPreviewRequestAccess,
   consumePreviewRateSlot,
   previewRateKey,
   readPreviewWriteConfig,
@@ -19,11 +20,13 @@ import {
 } from '../src/server/preview_write_http_v1.js';
 
 const NOW = 1_784_380_000_000;
+const PREVIEW_KEY = 'stage4b2-preview-access-key-0123456789';
 const ENV = Object.freeze({
   CLOUD_WRITE_PREVIEW_ENABLED: '1',
+  CLOUD_WRITE_PREVIEW_KEY: PREVIEW_KEY,
   CLOUD_WRITE_ALLOWED_GROUP_ID: 'group_fixture',
   CLOUD_WRITE_ALLOWED_LIBRARY_ID: 'lib_receive_fixture',
-  CLOUD_RATE_LIMIT_SALT: 'stage4b2-test-salt-keep-private',
+  CLOUD_RATE_LIMIT_SALT: 'stage4b2-rate-limit-salt-0123456789',
   CLOUD_BLOB_STORE_NAME: 'cloud-collab-preview-v1',
 });
 
@@ -77,16 +80,42 @@ function makeSubmission(overrides = {}) {
 function jsonRequest(url, body, headers = {}) {
   return new Request(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...headers },
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Cloud-Collab-Preview-Key': PREVIEW_KEY,
+      ...headers,
+    },
     body: JSON.stringify(body),
   });
 }
 
-test('preview write config is fail-closed and fixture-scoped', () => {
+test('preview write config is fail-closed, secret-gated and hard-locked to fixture scope', () => {
   assert.throws(() => readPreviewWriteConfig({}), error => error.code === 'PREVIEW_WRITE_DISABLED');
+  assert.throws(
+    () => readPreviewWriteConfig({ ...ENV, CLOUD_WRITE_PREVIEW_KEY: '' }),
+    error => error.code === 'PREVIEW_ACCESS_KEY_NOT_CONFIGURED',
+  );
+  assert.throws(
+    () => readPreviewWriteConfig({ ...ENV, CLOUD_RATE_LIMIT_SALT: 'too-short' }),
+    error => error.code === 'RATE_LIMIT_SALT_NOT_CONFIGURED',
+  );
+  assert.throws(
+    () => readPreviewWriteConfig({ ...ENV, CLOUD_WRITE_ALLOWED_GROUP_ID: 'group_xiacijian' }),
+    error => error.code === 'PREVIEW_SCOPE_MISCONFIGURED',
+  );
+  assert.throws(
+    () => readPreviewWriteConfig({ ...ENV, CLOUD_WRITE_ALLOWED_LIBRARY_ID: 'lib_xiacijian_regular' }),
+    error => error.code === 'PREVIEW_SCOPE_MISCONFIGURED',
+  );
+
   const config = readPreviewWriteConfig(ENV);
   assert.equal(config.allowedGroupId, 'group_fixture');
   assert.equal(config.allowedLibraryId, 'lib_receive_fixture');
+  assert.equal(assertPreviewRequestAccess(jsonRequest('https://example.test/', {}), config), true);
+  assert.throws(
+    () => assertPreviewRequestAccess(jsonRequest('https://example.test/', {}, { 'X-Cloud-Collab-Preview-Key': 'wrong' }), config),
+    error => error.code === 'PREVIEW_ACCESS_DENIED' && error.status === 403,
+  );
 });
 
 test('rate keys hash the subject and never expose the salt or device id', () => {
@@ -201,7 +230,30 @@ test('HTTP routes stay disabled without the feature flag and do not initialize B
   assert.equal(body.error.message, '预览写入服务暂时不可用');
 });
 
-test('device registration HTTP route returns one-time token response with no-store CORS', async () => {
+test('missing or wrong preview key is rejected before body parsing and Blob initialization', async () => {
+  for (const suppliedKey of [null, 'wrong-preview-key']) {
+    let storeCalls = 0;
+    const headers = { 'Content-Type': 'text/plain' };
+    if (suppliedKey !== null) headers['X-Cloud-Collab-Preview-Key'] = suppliedKey;
+    const response = await handleDeviceRegisterRequest({
+      env: ENV,
+      request: new Request('https://example.test/api/device/register', {
+        method: 'POST',
+        headers,
+        body: 'not-json',
+      }),
+    }, {
+      createStore: () => { storeCalls += 1; return new MemoryBlobStore(); },
+    });
+    const body = await response.json();
+    assert.equal(response.status, 403);
+    assert.equal(body.error.code, 'PREVIEW_ACCESS_DENIED');
+    assert.equal(storeCalls, 0);
+    assert.equal(JSON.stringify(body).includes(PREVIEW_KEY), false);
+  }
+});
+
+test('device registration HTTP route returns one-time token with explicit false mutation flags', async () => {
   const result = { deviceId: RAW.deviceId, deviceToken: 'dt_v1_fixture', issuedAt: NOW, expiresAt: NOW + 1000 };
   const response = await handleDeviceRegisterRequest({
     env: ENV,
@@ -217,6 +269,9 @@ test('device registration HTTP route returns one-time token response with no-sto
   const body = await response.json();
   assert.equal(body.writeScope, 'fixture_only');
   assert.equal(body.data.deviceToken, 'dt_v1_fixture');
+  assert.equal(body.data.submissionEnabled, false);
+  assert.equal(body.data.publicMutationAllowed, false);
+  assert.equal(body.data.autoApprovalEnabled, false);
 });
 
 test('submission HTTP route forwards Authorization and returns 202 for a new candidate', async () => {
@@ -240,10 +295,14 @@ test('submission HTTP route forwards Authorization and returns 202 for a new can
   assert.equal(body.data.autoApprovalEnabled, false);
 });
 
-test('write HTTP routes require application/json and support preflight', async () => {
+test('write HTTP routes require application/json and support key-aware preflight', async () => {
   const bad = await handleSubmissionCreateRequest({
     env: ENV,
-    request: new Request('https://example.test/api/submissions/create', { method: 'POST', body: '{}' }),
+    request: new Request('https://example.test/api/submissions/create', {
+      method: 'POST',
+      headers: { 'X-Cloud-Collab-Preview-Key': PREVIEW_KEY },
+      body: '{}',
+    }),
   });
   assert.equal(bad.status, 415);
 
@@ -253,4 +312,5 @@ test('write HTTP routes require application/json and support preflight', async (
   });
   assert.equal(preflight.status, 204);
   assert.match(preflight.headers.get('access-control-allow-headers'), /Authorization/);
+  assert.match(preflight.headers.get('access-control-allow-headers'), /X-Cloud-Collab-Preview-Key/);
 });
