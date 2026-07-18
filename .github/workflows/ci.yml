@@ -31,6 +31,12 @@ jobs:
         run: node --test --test-name-pattern="formal capabilities" tests/stage4e-preview-auto-approval-routing.test.mjs
       - name: 4E route isolation
         run: node --test --test-name-pattern="without replacing" tests/stage4e-preview-auto-approval-routing.test.mjs
+      - name: Full build
+        run: npm run build
+      - name: Full Node tests
+        run: npm test
+      - name: Static validation
+        run: npm run validate
 
   test:
     runs-on: ubuntu-latest
