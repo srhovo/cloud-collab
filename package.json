@@ -11,7 +11,7 @@
   },
   "scripts": {
     "build:base": "node scripts/build.mjs",
-    "build:stage4c": "node scripts/normalize-stage4c-anchors.mjs && node scripts/build-stage4c.mjs",
+    "build:stage4c": "node scripts/normalize-stage4c-anchors.mjs && node scripts/normalize-stage4c-feature-anchor.mjs && node scripts/build-stage4c.mjs",
     "build": "npm run build:base && npm run build:stage4c",
     "test": "node --test tests/*.test.mjs",
     "validate:base": "node scripts/validate.mjs",
