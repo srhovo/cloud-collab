@@ -1,7 +1,12 @@
 import { createHash } from 'node:crypto';
-import { getJSONStrong, normalizeBlobKey, putJSONOnlyIfNew } from './blob_repository_v1.js';
+import {
+  getJSONStrong,
+  normalizeBlobKey,
+  pendingSubmissionKey,
+  putJSONOnlyIfNew,
+} from './blob_repository_v1.js';
 import { authenticateDevice, registerDevice } from './device_registration_v1.js';
-import { acceptSubmission } from './submission_acceptance_v1.js';
+import { acceptSubmission, buildSubmissionRequestHash } from './submission_acceptance_v1.js';
 import { normalizeSubmission } from './submission_policy_v1.js';
 
 export const PREVIEW_WRITE_CONFIG_VERSION = 1;
@@ -137,14 +142,21 @@ export async function acceptPreviewSubmission({
   if (identity.deviceId !== submission.deviceId) {
     throw new PreviewWriteError('DEVICE_SCOPE_MISMATCH', 'Authorization设备与提交deviceId不一致', 403);
   }
-  await consumePreviewRateSlot({
-    store,
-    scope: 'submission-create',
-    subject: identity.deviceId,
-    salt: config.rateLimitSalt,
-    now,
-    slotMs: SUBMISSION_RATE_SLOT_MS,
-  });
+
+  const candidateKey = pendingSubmissionKey(submission.libraryId, submission.idempotencyKey);
+  const existingCandidate = await getJSONStrong(store, candidateKey);
+  if (!existingCandidate) {
+    await consumePreviewRateSlot({
+      store,
+      scope: 'submission-create',
+      subject: identity.deviceId,
+      salt: config.rateLimitSalt,
+      now,
+      slotMs: SUBMISSION_RATE_SLOT_MS,
+    });
+  } else if (existingCandidate.requestHash !== buildSubmissionRequestHash(submission)) {
+    // 让acceptSubmission返回统一的409幂等冲突结构，不在此处重复实现。
+  }
 
   return accept({
     store,
