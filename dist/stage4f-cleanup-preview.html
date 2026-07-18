@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <title>阶段4F合成Blob一次性清理</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;color-scheme:light;--red:#cf222e;--blue:#0969da;--green:#1a7f37;--border:#d0d7de}
+    *{box-sizing:border-box}body{margin:0;background:#f6f8fa;color:#1f2328}main{width:min(720px,calc(100% - 24px));margin:24px auto}.card{padding:20px;border:1px solid var(--border);border-radius:14px;background:#fff;box-shadow:0 8px 24px rgba(31,35,40,.08)}
+    h1{margin:0 0 8px;font-size:24px}p,li{line-height:1.65}.warning{margin:15px 0;padding:12px 14px;border-left:4px solid #bf8700;border-radius:8px;background:#fff8c5}.danger{border-left-color:var(--red);background:#ffebe9}
+    label{display:block;margin:16px 0 7px;font-weight:750}input[type=password]{width:100%;min-height:46px;padding:10px 12px;border:1px solid #8c959f;border-radius:8px;font-size:16px}.actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:15px}
+    button{min-height:44px;border:0;border-radius:8px;padding:10px 15px;background:var(--blue);color:#fff;font:700 16px system-ui;cursor:pointer}button.delete{background:var(--red)}button:disabled{opacity:.45;cursor:not-allowed}.result{margin-top:17px;padding:14px;border:1px solid var(--border);border-radius:10px;background:#f6f8fa}.count{display:block;font-size:34px}.small{color:#57606a;font-size:14px}.status{min-height:26px;margin-top:14px;font-weight:750;white-space:pre-wrap}.ok{color:var(--green)}.error{color:var(--red)}.confirm{display:flex;gap:9px;align-items:flex-start}.confirm input{margin-top:5px}
+  </style>
+</head>
+<body>
+<main><section class="card">
+  <h1>阶段4F合成Blob一次性清理</h1>
+  <p>仅处理固定命名空间 <strong>cloud-collab-preview-v1</strong> 中符合阶段4F严格白名单的合成对象。页面和路由都只存在于禁止合并分支。</p>
+  <div class="warning danger"><strong>执行前门槛：</strong>两台设备停止请求；<code>CLOUD_WRITE_PREVIEW_ENABLED</code> 与 <code>CLOUD_AUTO_APPROVAL_PREVIEW_ENABLED</code> 都已设为 0；随后才临时开启独立清理开关。</div>
+  <ol>
+    <li>先检查数量；检查阶段不会删除任何对象。</li>
+    <li>服务器锁定对象集合摘要；对象有任何变化都必须重新检查。</li>
+    <li>删除后服务器强一致复查；只有“剩余 0”才算完成。</li>
+  </ol>
+  <label for="cleanupKey">阶段4F临时独立清理密钥</label>
+  <input id="cleanupKey" type="password" autocomplete="new-password" spellcheck="false" placeholder="粘贴 CLOUD_STAGE4F_CLEANUP_KEY；不会保存">
+  <div class="actions"><button id="inspectBtn" type="button">检查对象数量（不会删除）</button></div>
+  <div id="result" class="result" hidden>
+    <span>当前白名单合成对象数量</span>
+    <strong id="objectCount" class="count">0</strong>
+    <p id="digestState" class="small">对象集合摘要尚未锁定。</p>
+    <label class="confirm"><input id="confirmBox" type="checkbox">我确认数量符合本次验收预期，并只删除这批合成测试对象。</label>
+    <div class="actions"><button id="executeBtn" class="delete" type="button" disabled>删除并强一致复查为0</button></div>
+  </div>
+  <div id="status" class="status" aria-live="polite"></div>
+  <p class="small">清理密钥只保存在当前页面内存；不会写入 localStorage、sessionStorage、IndexedDB、日志或网址。完成后还必须删除清理密钥、确认词、预览密钥、限流盐值和整个预览部署。</p>
+</section></main>
+<script>
+(() => {
+  'use strict';
+  const CONFIRMATION = 'DELETE_STAGE4F_SYNTHETIC_PREVIEW_V1';
+  const keyInput = document.getElementById('cleanupKey');
+  const inspectBtn = document.getElementById('inspectBtn');
+  const executeBtn = document.getElementById('executeBtn');
+  const confirmBox = document.getElementById('confirmBox');
+  const resultBox = document.getElementById('result');
+  const objectCountEl = document.getElementById('objectCount');
+  const digestStateEl = document.getElementById('digestState');
+  const statusEl = document.getElementById('status');
+  let activeKey = '';
+  let inspected = null;
+
+  function endpoint() {
+    const target = new URL('/one-shot/stage4f-cleanup-preview', window.location.origin);
+    const current = new URL(window.location.href);
+    for (const name of ['eo_token', 'eo_time']) {
+      const value = current.searchParams.get(name);
+      if (value) target.searchParams.set(name, value);
+    }
+    return target.toString();
+  }
+
+  function setStatus(message, kind = '') {
+    statusEl.textContent = message;
+    statusEl.className = `status ${kind}`.trim();
+  }
+
+  function setBusy(busy) {
+    inspectBtn.disabled = busy;
+    keyInput.disabled = busy;
+    executeBtn.disabled = busy || !inspected || !confirmBox.checked || inspected.objectCount === 0;
+  }
+
+  async function request(action) {
+    const entered = String(keyInput.value || '').trim();
+    if (entered) activeKey = entered;
+    keyInput.value = '';
+    const bytes = new TextEncoder().encode(activeKey).byteLength;
+    if (bytes < 32 || bytes > 256) throw new Error('临时清理密钥必须为32至256字节。');
+    const body = { schemaVersion: 1, action, confirmation: CONFIRMATION };
+    if (action === 'execute') body.expectedKeySetDigest = inspected.keySetDigest;
+    const response = await fetch(endpoint(), {
+      method: 'POST',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      redirect: 'error',
+      referrerPolicy: 'no-referrer',
+      headers: { 'Content-Type': 'application/json', 'X-Cloud-Collab-Cleanup-Key': activeKey },
+      body: JSON.stringify(body)
+    });
+    let payload = null;
+    try { payload = await response.json(); } catch (_) {}
+    if (!response.ok || !payload?.ok) {
+      const code = payload?.error?.code || `HTTP_${response.status}`;
+      const message = payload?.error?.message || '清理请求失败';
+      throw new Error(`${code}：${message}`);
+    }
+    return payload.data;
+  }
+
+  inspectBtn.addEventListener('click', async () => {
+    inspected = null;
+    confirmBox.checked = false;
+    resultBox.hidden = true;
+    setBusy(true);
+    setStatus('正在强一致检查；不会删除任何对象……');
+    try {
+      const data = await request('inspect');
+      inspected = data;
+      objectCountEl.textContent = String(data.objectCount);
+      digestStateEl.textContent = '对象集合摘要已锁定；集合变化时服务器会拒绝删除。';
+      resultBox.hidden = false;
+      setStatus(data.objectCount === 0 ? '检查完成：Blob对象已经为0。' : '检查完成：请核对数量后再确认删除。', 'ok');
+    } catch (error) {
+      activeKey = '';
+      setStatus(error?.message || '检查失败。', 'error');
+    } finally {
+      setBusy(false);
+    }
+  });
+
+  confirmBox.addEventListener('change', () => {
+    executeBtn.disabled = !inspected || !confirmBox.checked || inspected.objectCount === 0;
+  });
+
+  executeBtn.addEventListener('click', async () => {
+    if (!inspected || !confirmBox.checked || inspected.objectCount === 0) return;
+    const expected = inspected.objectCount;
+    if (!window.confirm(`将永久删除 ${expected} 个合成测试对象，并强一致复查。确定继续吗？`)) return;
+    setBusy(true);
+    setStatus('正在删除并强一致复查；请勿关闭页面……');
+    try {
+      const data = await request('execute');
+      if (data.completed !== true || data.remainingCount !== 0 || data.deletedCount !== expected) {
+        throw new Error('服务器未确认精确删除并剩余0；必须停止销毁流程并保留部署。');
+      }
+      objectCountEl.textContent = '0';
+      digestStateEl.textContent = `已删除 ${data.deletedCount} 个；强一致复查剩余 0。`;
+      confirmBox.checked = false;
+      confirmBox.disabled = true;
+      executeBtn.disabled = true;
+      inspectBtn.disabled = true;
+      activeKey = '';
+      keyInput.value = '';
+      keyInput.disabled = true;
+      setStatus(`清理完成：精确删除 ${data.deletedCount} 个，Blob剩余 0。现在保持双开关为0，并删除全部临时变量与预览部署。`, 'ok');
+    } catch (error) {
+      setStatus(error?.message || '删除失败；请保留部署并重新检查。', 'error');
+      setBusy(false);
+    }
+  });
+
+  window.addEventListener('pagehide', () => { activeKey = ''; });
+})();
+</script>
+</body>
+</html>

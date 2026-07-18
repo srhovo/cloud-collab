@@ -1,0 +1,577 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src 'self'; frame-src 'self' about:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <title>阶段4F真实设备隔离验收（禁止合并）</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;color-scheme:light;--blue:#0969da;--green:#1a7f37;--red:#cf222e;--amber:#9a6700;--border:#d0d7de;--muted:#57606a}
+    *{box-sizing:border-box}body{margin:0;background:#f6f8fa;color:#1f2328}button,input,select{font:inherit}
+    main{width:min(980px,calc(100% - 24px));margin:18px auto 42px}.danger-banner{padding:13px 16px;border:2px solid var(--red);border-radius:12px;background:#ffebe9;color:#82071e;font-weight:800;text-align:center}
+    .card{margin-top:14px;padding:18px;border:1px solid var(--border);border-radius:14px;background:#fff;box-shadow:0 6px 18px rgba(31,35,40,.06)}
+    h1{font-size:24px;margin:0 0 8px}h2{font-size:19px;margin:0 0 12px}p{line-height:1.65}.muted{color:var(--muted);font-size:14px}.fixed{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.wide{grid-column:1/-1}.field label{display:block;font-weight:700;margin-bottom:6px}.field input,.field select{width:100%;min-height:44px;padding:9px 11px;border:1px solid #8c959f;border-radius:8px;background:#fff;font-size:16px}
+    .actions{display:flex;flex-wrap:wrap;gap:9px;margin-top:13px}button{min-height:43px;border:0;border-radius:8px;padding:10px 14px;background:var(--blue);color:#fff;font-weight:750;cursor:pointer}button.secondary{background:#57606a}button.warning{background:#bf8700;color:#1f2328}button.danger{background:var(--red)}button:disabled{opacity:.45;cursor:not-allowed}
+    .status{margin-top:12px;min-height:24px;font-weight:700;white-space:pre-wrap}.ok{color:var(--green)}.error{color:var(--red)}.warn{color:var(--amber)}
+    .metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.metric{min-height:82px;padding:11px;border:1px solid var(--border);border-radius:10px;background:#f6f8fa}.metric span{display:block;color:var(--muted);font-size:13px}.metric strong{display:block;margin-top:6px;font-size:17px;word-break:break-word}
+    ol{padding-left:22px;line-height:1.65}.checklist li+li{margin-top:5px}.log{max-height:260px;overflow:auto;margin:0;padding:12px;border:1px solid var(--border);border-radius:9px;background:#0d1117;color:#c9d1d9;white-space:pre-wrap;font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+    details{margin-top:14px}iframe{display:block;width:100%;height:720px;margin-top:10px;border:1px solid var(--border);border-radius:10px;background:#fff}.hidden-frame{position:fixed;left:-10000px;top:-10000px;width:1px;height:1px;border:0}
+    @media(max-width:720px){.grid,.metrics{grid-template-columns:1fr}.wide{grid-column:auto}.card{padding:15px}h1{font-size:21px}.actions button{flex:1 1 145px}.metric{min-height:68px}}
+  </style>
+</head>
+<body>
+<main>
+  <div class="danger-banner">临时验收页面 · DO NOT MERGE · 只允许 group_fixture / lib_receive_fixture 合成测试库</div>
+
+  <section class="card">
+    <h1>阶段4F：两台真实设备隔离验收</h1>
+    <p class="muted">本页加载构建产物中的真实 8.2.28 客户端和本地队列，只把正式路径在当前页面运行时改送阶段4E隔离路由。预览密钥只保存在页面内存，不写入网页存储、网址、日志或截图区域。</p>
+    <div class="grid">
+      <div class="field wide">
+        <label for="previewKey">临时预览访问密钥</label>
+        <input id="previewKey" type="password" autocomplete="new-password" spellcheck="false" placeholder="粘贴临时值；加载后输入框立即清空">
+      </div>
+      <div class="field">
+        <label for="deviceRole">本机角色</label>
+        <select id="deviceRole"><option value="A">设备A（先提交）</option><option value="B">设备B（后提交）</option></select>
+      </div>
+      <div class="field">
+        <label for="batchId">验收批次码（两台必须相同）</label>
+        <input id="batchId" inputmode="latin" maxlength="24" autocomplete="off" spellcheck="false" placeholder="例如 JUL19A">
+      </div>
+    </div>
+    <div class="actions">
+      <button id="loadBtn" type="button">加载并初始化真实客户端</button>
+      <button id="clearSessionBtn" class="secondary" type="button">清空密钥并关闭会话</button>
+    </div>
+    <div id="loadStatus" class="status" aria-live="polite">尚未加载。</div>
+  </section>
+
+  <section class="card">
+    <h2>提交与离线队列</h2>
+    <div class="grid">
+      <div class="field">
+        <label for="caseName">测试业务键</label>
+        <select id="caseName"><option value="main">主价格（新增、改价、冲突）</option><option value="offline">离线队列专用价格</option></select>
+      </div>
+      <div class="field">
+        <label for="unitPrice">单价</label>
+        <input id="unitPrice" type="number" inputmode="decimal" min="0.01" max="1000000" step="0.01" value="100">
+      </div>
+    </div>
+    <div class="actions">
+      <button id="submitBtn" type="button" disabled>加入 pendingCloudChanges 并派发</button>
+      <button id="offlineBtn" class="warning" type="button" disabled>开启模拟断网</button>
+      <button id="recoverBtn" class="secondary" type="button" disabled>恢复网络并重试队列</button>
+    </div>
+    <p class="muted">离线补测：先选择“离线队列专用价格”，开启模拟断网，再加入并派发；确认队列仍在本机后点击“恢复网络并重试”。也可以用手机飞行模式做同样验证。</p>
+    <div id="submitStatus" class="status" aria-live="polite">等待客户端加载。</div>
+  </section>
+
+  <section class="card">
+    <h2>动态版本、快照与增量</h2>
+    <div class="actions"><button id="readBtn" type="button" disabled>读取并交叉核对</button></div>
+    <div id="readStatus" class="status" aria-live="polite">尚未读取。</div>
+    <div class="metrics" aria-label="验收状态">
+      <div class="metric"><span>设备标记</span><strong id="deviceMetric">—</strong></div>
+      <div class="metric"><span>本地队列</span><strong id="queueMetric">—</strong></div>
+      <div class="metric"><span>最近审核结果</span><strong id="decisionMetric">—</strong></div>
+      <div class="metric"><span>公共版本</span><strong id="versionMetric">—</strong></div>
+      <div class="metric"><span>主价格</span><strong id="priceMetric">—</strong></div>
+      <div class="metric"><span>快照/增量一致</span><strong id="consistencyMetric">—</strong></div>
+      <div class="metric"><span>跨设备对照指纹</span><strong id="fingerprintMetric">—</strong></div>
+      <div class="metric"><span>运行时网络</span><strong id="networkMetric">在线</strong></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>建议验收顺序</h2>
+    <ol class="checklist">
+      <li>两台设备填写同一批次码并分别选择 A/B，加载客户端。</li>
+      <li>A 用主价格 100 提交，应为等待第二设备；B 提交同值，应自动批准且版本变为 1。</li>
+      <li>两台依次把同一主价格改为 105，应在 ±10% 内再次自动批准且版本变为 2。</li>
+      <li>A 提交 106、B 提交 107，应进入冲突审核；两边读取后公共版本仍为 2。</li>
+      <li>两台各自“读取并交叉核对”，版本、主价格和对照指纹必须一致。</li>
+      <li>选择离线专用价格，完成断网入队、恢复网络和自动/手动重试。</li>
+      <li>停止两台设备请求后，关闭两个预览开关，再使用独立清理页检查、删除并复查 Blob 为 0。</li>
+    </ol>
+  </section>
+
+  <section class="card">
+    <h2>脱敏事件记录</h2>
+    <pre id="eventLog" class="log" aria-live="polite">页面就绪；尚未持有任何密钥。</pre>
+    <div class="actions"><button id="clearLocalBtn" class="danger" type="button">删除本机验收身份、令牌与队列</button></div>
+    <p class="muted">只在全部云端清理完成后，于两台设备分别点击本按钮。它只删除当前预览域中的六个 8.2.28 云协作本地 Store，不处理正式用户页面数据。</p>
+    <details>
+      <summary>显示实际 8.2.28 客户端（诊断用）</summary>
+      <div id="frameMount"></div>
+    </details>
+  </section>
+</main>
+<iframe id="clientFrame" class="hidden-frame" title="实际8.2.28验收客户端" sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-downloads"></iframe>
+<script>
+(() => {
+  'use strict';
+  const GROUP_ID = 'group_fixture';
+  const LIBRARY_ID = 'lib_receive_fixture';
+  const LOCAL_LIBRARY_ID = 'stage4f-real-device-acceptance';
+  const PREVIEW_HEADER = 'X-Cloud-Collab-Preview-Key';
+  const ROUTE_REWRITES = Object.freeze({
+    '/api/submissions/create': '/api/preview/submissions/create',
+    '/api/public-version': '/api/preview/public-version',
+    '/api/public-snapshot': '/api/preview/public-snapshot',
+    '/api/public-changes': '/api/preview/public-changes'
+  });
+  const els = Object.fromEntries([
+    'previewKey','deviceRole','batchId','loadBtn','clearSessionBtn','loadStatus','caseName','unitPrice',
+    'submitBtn','offlineBtn','recoverBtn','submitStatus','readBtn','readStatus','deviceMetric','queueMetric',
+    'decisionMetric','versionMetric','priceMetric','consistencyMetric','fingerprintMetric','networkMetric',
+    'eventLog','clearLocalBtn','clientFrame','frameMount'
+  ].map(id => [id, document.getElementById(id)]));
+  const state = {
+    activeKey: '', app: null, child: null, simulatedOffline: false, lastSubmission: null,
+    lastReadVersion: null, localLibraryId: LOCAL_LIBRARY_ID, logs: []
+  };
+
+  function setStatus(target, message, kind = '') {
+    target.textContent = message;
+    target.className = `status ${kind}`.trim();
+  }
+
+  function log(code, detail = '') {
+    const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+    const safe = String(detail || '').replace(/(?:dev|sub)_[0-9A-HJKMNP-TV-Z]{26}/g, '[id已脱敏]').slice(0, 220);
+    state.logs.push(`${time}  ${code}${safe ? `  ${safe}` : ''}`);
+    state.logs = state.logs.slice(-80);
+    els.eventLog.textContent = state.logs.join('\n');
+  }
+
+  function batchValue() {
+    const value = String(els.batchId.value || '').trim().toUpperCase();
+    if (!/^[A-Z0-9][A-Z0-9-]{3,23}$/.test(value)) throw new Error('批次码需为4至24位英文字母、数字或短横线。');
+    return value;
+  }
+
+  function serviceName(kind = els.caseName.value) {
+    return `阶段4F-${batchValue()}-${kind === 'offline' ? '离线队列' : '主价格'}`;
+  }
+
+  function previewParams() {
+    const source = new URL(window.location.href);
+    const result = new URLSearchParams();
+    for (const name of ['eo_token', 'eo_time']) {
+      const value = source.searchParams.get(name);
+      if (value) result.set(name, value);
+    }
+    return result;
+  }
+
+  function withPreviewAccess(input) {
+    const raw = typeof input === 'string' ? input : input?.url;
+    const url = new URL(raw || '', window.location.origin);
+    if (url.origin !== window.location.origin) throw new Error('验收页只允许访问当前EdgeOne预览部署。');
+    for (const [name, value] of previewParams()) if (!url.searchParams.has(name)) url.searchParams.set(name, value);
+    return url;
+  }
+
+  function sanitizeSubmissionPayload(payload, responseStatus) {
+    if (!payload?.ok) {
+      return Object.freeze({ ok: false, httpStatus: responseStatus, code: payload?.error?.code || `HTTP_${responseStatus}` });
+    }
+    const data = payload.data || {};
+    return Object.freeze({
+      ok: true,
+      httpStatus: responseStatus,
+      status: String(data.status || ''),
+      decision: String(data.decision || ''),
+      reason: String(data.reason || ''),
+      approvalMode: data.approvalMode === null ? null : String(data.approvalMode || ''),
+      matchingDistinctDeviceCount: Number(data.matchingDistinctDeviceCount || 0),
+      conflictingCandidateCount: Number(data.conflictingCandidateCount || 0),
+      changeRatio: data.changeRatio === null ? null : Number(data.changeRatio),
+      previewPublicVersion: Number(data.previewPublicVersion || 0),
+      previewEventVersion: Number(data.previewEventVersion || 0),
+      previewMutationApplied: data.previewMutationApplied === true,
+      formalCapabilitiesClosed: data.publicMutationAllowed === false && data.autoApprovalEnabled === false
+    });
+  }
+
+  async function routedFetch(input, init = {}) {
+    const original = withPreviewAccess(input);
+    const sourcePath = original.pathname;
+    const targetPath = ROUTE_REWRITES[sourcePath] || sourcePath;
+    const isAcceptanceApi = sourcePath === '/api/device/register' || Boolean(ROUTE_REWRITES[sourcePath]);
+    if (isAcceptanceApi && (state.simulatedOffline || navigator.onLine === false)) {
+      throw new TypeError('Stage4F simulated offline');
+    }
+    const url = new URL(original.href);
+    url.pathname = targetPath;
+    const inheritedHeaders = typeof Request === 'function' && input instanceof Request ? input.headers : undefined;
+    const headers = new Headers(init.headers || inheritedHeaders || {});
+    if (isAcceptanceApi) {
+      if (!state.activeKey) throw new TypeError('Stage4F preview session closed');
+      headers.set(PREVIEW_HEADER, state.activeKey);
+    }
+    const response = await window.fetch(url.href, {
+      ...init,
+      headers,
+      credentials: 'same-origin',
+      cache: 'no-store',
+      redirect: 'error',
+      referrerPolicy: 'no-referrer'
+    });
+    if (sourcePath === '/api/submissions/create') {
+      let payload = null;
+      try { payload = await response.clone().json(); } catch (_) {}
+      state.lastSubmission = sanitizeSubmissionPayload(payload, response.status);
+      renderSubmissionResult();
+    }
+    return response;
+  }
+
+  async function waitForClient(child, timeoutMs = 12000) {
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+      const app = child.__stage4fApp;
+      if (app?.cloudCollabStores && app?.cloudCollabSubmissionDispatcher && child.CloudCollabSubmission && child.CloudCollabSnapshotSync) return app;
+      await new Promise(resolve => setTimeout(resolve, 60));
+    }
+    throw new Error('8.2.28客户端初始化超时。');
+  }
+
+  function ensureLocalAcceptanceState() {
+    const stores = state.app.cloudCollabStores;
+    const role = els.deviceRole.value === 'B' ? 'B' : 'A';
+    const identity = stores.coordinator.initializeIdentity({ nickname: `阶段4F设备${role}` });
+    let binding = stores.bindingStore.getByScope(GROUP_ID, LIBRARY_ID);
+    if (!binding) {
+      const result = stores.coordinator.bindLibrary({
+        localLibraryId: LOCAL_LIBRARY_ID,
+        groupId: GROUP_ID,
+        libraryId: LIBRARY_ID,
+        mode: 'collaborate',
+        basePublicVersion: 0
+      });
+      if (!result?.ok) throw result?.error || new Error('合成测试库本地绑定失败。');
+      binding = stores.bindingStore.getByLocalLibraryId(LOCAL_LIBRARY_ID);
+    } else if (binding.mode !== 'collaborate') {
+      stores.coordinator.setBindingMode(binding.localLibraryId, 'collaborate');
+      binding = stores.bindingStore.getByLocalLibraryId(binding.localLibraryId);
+    }
+    state.localLibraryId = binding.localLibraryId;
+    state.app.cloudCollabSubmissionDispatcher.isOnline = () => !state.simulatedOffline && state.child.navigator.onLine !== false;
+    els.deviceMetric.textContent = `设备${role} · …${identity.deviceId.slice(-4)}`;
+    renderQueue();
+    return identity;
+  }
+
+  async function loadClient() {
+    let key = String(els.previewKey.value || '').trim();
+    const keyBytes = new TextEncoder().encode(key).byteLength;
+    if (keyBytes < 32 || keyBytes > 256) {
+      setStatus(els.loadStatus, '临时预览密钥必须为32至256字节。', 'error');
+      return;
+    }
+    try { batchValue(); } catch (error) { setStatus(els.loadStatus, error.message, 'error'); return; }
+    els.loadBtn.disabled = true;
+    els.previewKey.disabled = true;
+    setStatus(els.loadStatus, '正在加载构建产物中的真实8.2.28客户端……');
+    try {
+      state.activeKey = key;
+      key = '';
+      els.previewKey.value = '';
+      const response = await routedFetch('/index.html', { method: 'GET' });
+      if (!response.ok) throw new Error(`8.2.28页面载入失败（HTTP ${response.status}）。`);
+      let html = await response.text();
+      html = html.replace(/<meta name="cloud-collab-api-base" content="[^"]*">/, `<meta name="cloud-collab-api-base" content="${window.location.origin}">`);
+      if (!html.includes("const APP_VERSION = '8.2.28';")) throw new Error('当前构建产物不是8.2.28候选。');
+      if (!html.includes('pendingCloudChanges')) throw new Error('当前构建产物缺少冻结的本地待上传队列。');
+      const bridge = '<script>globalThis.__stage4fApp = app;<\/script>';
+      if (!html.includes('</body>')) throw new Error('8.2.28页面结构无法建立验收桥。');
+      html = html.replace('</body>', `${bridge}</body>`);
+      const frame = els.clientFrame;
+      frame.src = 'about:blank';
+      const child = frame.contentWindow;
+      child.CloudCollabPreviewRuntime = Object.freeze({ getWriteAccess: () => state.activeKey });
+      child.fetch = routedFetch;
+      child.document.open();
+      child.document.write(html);
+      child.document.close();
+      state.child = child;
+      state.app = await waitForClient(child);
+      ensureLocalAcceptanceState();
+      for (const el of [els.submitBtn, els.offlineBtn, els.recoverBtn, els.readBtn]) el.disabled = false;
+      els.deviceRole.disabled = true;
+      els.batchId.disabled = true;
+      setStatus(els.loadStatus, '真实8.2.28客户端已加载；密钥输入框已清空，隔离路由改写只在当前会话内生效。', 'ok');
+      log('CLIENT_READY', `角色=${els.deviceRole.value} 批次=${batchValue()}`);
+    } catch (error) {
+      state.activeKey = '';
+      state.app = null;
+      state.child = null;
+      setStatus(els.loadStatus, error?.message || '客户端加载失败。', 'error');
+      log('CLIENT_LOAD_FAILED', error?.message || 'unknown');
+    } finally {
+      els.loadBtn.disabled = false;
+      els.previewKey.disabled = false;
+    }
+  }
+
+  function queueItems() {
+    try { return state.app?.cloudCollabStores?.queueStore?.list?.() || []; } catch (_) { return []; }
+  }
+
+  function renderQueue() {
+    const items = queueItems();
+    const counts = { queued: 0, sending: 0, retry_wait: 0, blocked: 0, acknowledged: 0 };
+    for (const item of items) if (Object.hasOwn(counts, item.deliveryState)) counts[item.deliveryState] += 1;
+    els.queueMetric.textContent = `待发${counts.queued} · 重试${counts.retry_wait} · 阻断${counts.blocked}`;
+    return counts;
+  }
+
+  function renderSubmissionResult() {
+    const data = state.lastSubmission;
+    if (!data) return;
+    if (!data.ok) {
+      els.decisionMetric.textContent = data.code;
+      setStatus(els.submitStatus, `服务器拒绝：${data.code}`, 'error');
+      log('SUBMISSION_REJECTED', data.code);
+      return;
+    }
+    const label = data.status === 'auto_approved' ? '自动批准' : data.status === 'pending_review' ? '冲突审核' : data.status === 'waiting_confirmation' ? '等待第二设备' : data.status;
+    els.decisionMetric.textContent = `${label} · v${data.previewPublicVersion}`;
+    const closed = data.formalCapabilitiesClosed ? '正式能力仍关闭' : '正式能力异常';
+    const message = `${label}；reason=${data.reason || '—'}；匹配设备=${data.matchingDistinctDeviceCount}；冲突候选=${data.conflictingCandidateCount}；${closed}。`;
+    setStatus(els.submitStatus, message, data.formalCapabilitiesClosed ? (data.status === 'pending_review' ? 'warn' : 'ok') : 'error');
+    log('SUBMISSION_RESULT', `${label} reason=${data.reason || '—'} publicVersion=${data.previewPublicVersion} mutation=${data.previewMutationApplied}`);
+  }
+
+  async function quickVersion() {
+    const data = await state.app.cloudCollabApi.publicVersion(GROUP_ID, LIBRARY_ID);
+    return Number(data.publicVersion || 0);
+  }
+
+  async function enqueueAndDispatch() {
+    if (!state.app || !state.activeKey) return setStatus(els.submitStatus, '请先加载验收客户端。', 'error');
+    let unitPrice = Number(els.unitPrice.value);
+    if (!Number.isFinite(unitPrice) || unitPrice <= 0 || unitPrice > 1000000 || Math.round(unitPrice * 100) !== unitPrice * 100) {
+      return setStatus(els.submitStatus, '单价必须大于0、不超过1000000且最多两位小数。', 'error');
+    }
+    let targetService;
+    try { targetService = serviceName(); } catch (error) { return setStatus(els.submitStatus, error.message, 'error'); }
+    els.submitBtn.disabled = true;
+    state.lastSubmission = null;
+    try {
+      let beforeVersion = null;
+      if (!state.simulatedOffline && navigator.onLine !== false) {
+        try { beforeVersion = await quickVersion(); } catch (_) {}
+      }
+      const stores = state.app.cloudCollabStores;
+      const meta = stores.metaStore.loadResult();
+      if (!meta?.ok || !meta?.exists) throw new Error('本机验收身份不存在。');
+      const submission = await state.child.CloudCollabSubmission.buildExactPriceSubmission({
+        snapshotSync: state.child.CloudCollabSnapshotSync,
+        deviceId: meta.value.deviceId,
+        submissionId: state.app.cloudCollabSubmissionIdFactory.submissionId(),
+        groupId: GROUP_ID,
+        libraryId: LIBRARY_ID,
+        serviceName: targetService,
+        settleType: 'round',
+        unitPrice,
+        origin: 'user',
+        clientCreatedAt: Date.now(),
+        appVersion: '8.2.28'
+      });
+      const queued = stores.coordinator.enqueueSubmission(state.localLibraryId, submission);
+      renderQueue();
+      log('QUEUE_ENQUEUED', `业务=${els.caseName.value} 单价=${unitPrice} inserted=${Boolean(queued?.inserted)}`);
+      const result = await state.app.cloudCollabFeature.flushPendingUploads({ interactive: false });
+      renderQueue();
+      if (result?.status === 'offline') {
+        setStatus(els.submitStatus, '已验证离线降级：候选仍在 pendingCloudChanges，本次没有发出注册或提交请求。', 'ok');
+        log('OFFLINE_QUEUE_HELD', '等待恢复网络');
+        return;
+      }
+      if (result?.retryWait) {
+        setStatus(els.submitStatus, `网络/限流错误已进入可恢复重试状态：${result.errorCode || 'RETRY_WAIT'}。`, 'warn');
+        log('QUEUE_RETRY_WAIT', result.errorCode || 'RETRY_WAIT');
+        return;
+      }
+      if (result?.blocked) {
+        setStatus(els.submitStatus, `候选被阻断：${result.errorCode || 'BLOCKED'}。停止操作并核对EdgeOne门禁。`, 'error');
+        log('QUEUE_BLOCKED', result.errorCode || 'BLOCKED');
+        return;
+      }
+      if (!state.lastSubmission) setStatus(els.submitStatus, '派发完成，但未捕获隔离审核结果；请停止并核对路由。', 'error');
+      let afterVersion = null;
+      try { afterVersion = await quickVersion(); } catch (_) {}
+      if (state.lastSubmission?.status === 'pending_review' && beforeVersion !== null && afterVersion !== beforeVersion) {
+        setStatus(els.submitStatus, `安全失败：冲突审核期间公共版本从 ${beforeVersion} 变为 ${afterVersion}。请停止验收。`, 'error');
+        log('CONFLICT_VERSION_CHANGED', `${beforeVersion}->${afterVersion}`);
+      }
+    } catch (error) {
+      setStatus(els.submitStatus, error?.message || '入队或派发失败。', 'error');
+      log('DISPATCH_FAILED', error?.message || 'unknown');
+    } finally {
+      els.submitBtn.disabled = false;
+    }
+  }
+
+  function toggleOffline(enabled) {
+    state.simulatedOffline = Boolean(enabled);
+    els.networkMetric.textContent = state.simulatedOffline ? '模拟断网' : (navigator.onLine === false ? '设备离线' : '在线');
+    els.offlineBtn.textContent = state.simulatedOffline ? '关闭模拟断网' : '开启模拟断网';
+    setStatus(els.submitStatus, state.simulatedOffline ? '模拟断网已开启；下一次派发必须只留在本地队列。' : '模拟断网已关闭。', state.simulatedOffline ? 'warn' : 'ok');
+    log(state.simulatedOffline ? 'OFFLINE_SIMULATION_ON' : 'OFFLINE_SIMULATION_OFF');
+  }
+
+  async function recoverAndRetry() {
+    if (!state.app) return;
+    toggleOffline(false);
+    els.recoverBtn.disabled = true;
+    try {
+      const result = await state.app.cloudCollabFeature.flushPendingUploads({ interactive: false });
+      renderQueue();
+      if (result?.acknowledged > 0 || result?.status === 'completed') {
+        setStatus(els.submitStatus, `恢复重试完成：确认 ${result.acknowledged || 0}，剩余 ${result.remaining || 0}。`, 'ok');
+        log('RECOVERY_RETRY_OK', `ack=${result.acknowledged || 0} remaining=${result.remaining || 0}`);
+      } else if (result?.retryWait) {
+        setStatus(els.submitStatus, '仍处于可恢复等待；按 Retry-After/退避时间稍后再次点击。', 'warn');
+        log('RECOVERY_STILL_WAITING', result.errorCode || 'retry');
+      } else {
+        setStatus(els.submitStatus, `恢复结果：${result?.status || 'idle'}；剩余 ${result?.remaining || 0}。`, 'ok');
+      }
+    } catch (error) {
+      setStatus(els.submitStatus, error?.message || '恢复重试失败。', 'error');
+      log('RECOVERY_RETRY_FAILED', error?.message || 'unknown');
+    } finally {
+      els.recoverBtn.disabled = false;
+    }
+  }
+
+  async function shortFingerprint(value) {
+    const bytes = new TextEncoder().encode(value);
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    return [...new Uint8Array(digest)].slice(0, 8).map(byte => byte.toString(16).padStart(2, '0')).join('');
+  }
+
+  async function readDynamicState() {
+    if (!state.app || !state.activeKey) return;
+    els.readBtn.disabled = true;
+    setStatus(els.readStatus, '正在读取动态版本、快照和从0开始的增量……');
+    try {
+      const [version, snapshotEnvelope, changes] = await Promise.all([
+        state.app.cloudCollabApi.publicVersion(GROUP_ID, LIBRARY_ID),
+        state.app.cloudCollabApi.publicSnapshot(GROUP_ID, LIBRARY_ID),
+        state.app.cloudCollabApi.publicChanges(GROUP_ID, LIBRARY_ID, { sinceVersion: 0, limit: 100 })
+      ]);
+      const publicVersion = Number(version.publicVersion || 0);
+      const snapshot = snapshotEnvelope.snapshot || null;
+      if (snapshot) await state.child.CloudCollabSnapshotSync.verifySnapshot(snapshot);
+      const snapshotVersion = Number(snapshotEnvelope.publicVersion || 0);
+      const changesVersion = Number(changes.publicVersion || 0);
+      const changeList = Array.isArray(changes.changes) ? changes.changes : [];
+      const ordered = changeList.every((item, index) => Number(item.version) === index + 1);
+      const latestChangeVersion = changeList.length ? Number(changeList[changeList.length - 1].version) : 0;
+      const consistent = publicVersion === snapshotVersion
+        && publicVersion === changesVersion
+        && latestChangeVersion === publicVersion
+        && Number(changes.nextVersion || 0) === publicVersion
+        && ordered
+        && (!snapshot || Number(snapshot.publicVersion) === publicVersion);
+      const records = Array.isArray(snapshot?.records) ? snapshot.records : [];
+      const target = records.find(record => record?.payload?.serviceName === serviceName('main'));
+      const fingerprintSource = JSON.stringify({
+        publicVersion,
+        records: records.map(record => [record.businessKey, record.contentHash, record.approvedVersion]).sort(),
+        changes: changeList.map(item => [item.version, item.businessKey, item.contentHash])
+      });
+      const fingerprint = await shortFingerprint(fingerprintSource);
+      state.lastReadVersion = publicVersion;
+      els.versionMetric.textContent = String(publicVersion);
+      els.priceMetric.textContent = target ? `${target.payload.unitPrice}（记录v${target.approvedVersion}）` : '尚未批准';
+      els.consistencyMetric.textContent = consistent ? '通过' : '失败';
+      els.consistencyMetric.style.color = consistent ? 'var(--green)' : 'var(--red)';
+      els.fingerprintMetric.textContent = fingerprint;
+      setStatus(els.readStatus, consistent
+        ? `一致性通过：公共版本 ${publicVersion}，快照记录 ${records.length}，增量 ${changeList.length}；请与另一设备对比指纹。`
+        : '一致性失败：动态版本、快照或增量不一致，请停止验收。', consistent ? 'ok' : 'error');
+      log(consistent ? 'DYNAMIC_READ_CONSISTENT' : 'DYNAMIC_READ_MISMATCH', `version=${publicVersion} records=${records.length} changes=${changeList.length} fingerprint=${fingerprint}`);
+    } catch (error) {
+      setStatus(els.readStatus, error?.message || '动态读取失败。', 'error');
+      log('DYNAMIC_READ_FAILED', error?.message || 'unknown');
+    } finally {
+      els.readBtn.disabled = false;
+    }
+  }
+
+  function clearSession() {
+    state.activeKey = '';
+    state.lastSubmission = null;
+    state.simulatedOffline = false;
+    els.previewKey.value = '';
+    try {
+      if (state.child) {
+        state.child.CloudCollabPreviewRuntime = undefined;
+        state.child.fetch = undefined;
+      }
+    } catch (_) {}
+    state.app = null;
+    state.child = null;
+    els.clientFrame.removeAttribute('srcdoc');
+    els.clientFrame.src = 'about:blank';
+    els.clientFrame.className = 'hidden-frame';
+    document.body.appendChild(els.clientFrame);
+    for (const el of [els.submitBtn, els.offlineBtn, els.recoverBtn, els.readBtn]) el.disabled = true;
+    els.deviceRole.disabled = false;
+    els.batchId.disabled = false;
+    setStatus(els.loadStatus, '临时密钥已从内存清空，验收客户端已关闭。');
+    log('SESSION_CLOSED', '未删除本机队列与设备凭据');
+  }
+
+  function clearLocalAcceptanceState() {
+    if (!window.confirm('仅在云端Blob已清零后执行。确定删除本机验收身份、设备令牌、绑定、队列与同步状态吗？')) return;
+    try {
+      if (state.app?.cloudCollabStores) {
+        const stores = state.app.cloudCollabStores;
+        for (const store of [stores.metaStore, stores.credentialStore, stores.bindingStore, stores.bossLinkStore, stores.queueStore, stores.syncStore]) store.clear();
+      } else {
+        for (const key of ['cloudCollabMeta', 'cloudDeviceCredential', 'cloudLibraryBindings', 'cloudBossLinks', 'pendingCloudChanges', 'cloudSyncState']) {
+          localStorage.removeItem(`pw_ultimate_${key}`);
+        }
+      }
+      renderQueue();
+      els.deviceMetric.textContent = '已删除';
+      setStatus(els.submitStatus, '本机六个云协作验收 Store 已删除。', 'ok');
+      log('LOCAL_ACCEPTANCE_STATE_CLEARED');
+    } catch (error) {
+      setStatus(els.submitStatus, error?.message || '本机验收状态删除失败。', 'error');
+      log('LOCAL_CLEAR_FAILED', error?.message || 'unknown');
+    }
+  }
+
+  els.loadBtn.addEventListener('click', loadClient);
+  els.clearSessionBtn.addEventListener('click', clearSession);
+  els.submitBtn.addEventListener('click', enqueueAndDispatch);
+  els.offlineBtn.addEventListener('click', () => toggleOffline(!state.simulatedOffline));
+  els.recoverBtn.addEventListener('click', recoverAndRetry);
+  els.readBtn.addEventListener('click', readDynamicState);
+  els.clearLocalBtn.addEventListener('click', clearLocalAcceptanceState);
+  els.frameMount.parentElement.addEventListener('toggle', event => {
+    if (event.currentTarget.open && state.child) {
+      els.clientFrame.className = '';
+      els.frameMount.appendChild(els.clientFrame);
+    } else if (state.child) {
+      els.clientFrame.className = 'hidden-frame';
+      document.body.appendChild(els.clientFrame);
+    }
+  });
+  window.addEventListener('online', () => { els.networkMetric.textContent = state.simulatedOffline ? '模拟断网' : '在线'; });
+  window.addEventListener('offline', () => { els.networkMetric.textContent = '设备离线'; });
+  window.addEventListener('pagehide', () => { state.activeKey = ''; });
+})();
+</script>
+</body>
+</html>
