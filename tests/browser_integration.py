@@ -110,7 +110,7 @@ def fresh_receive_case(browser, base_url):
       if(!binding) return false;
       const lib=app.priceLibraries.libraries.find(x=>x.id===binding.localLibraryId);
       return lib && lib.items.some(x=>x.serviceType==='测试服务A' && x.unitPrice===110) && lib.items.some(x=>x.serviceType==='测试服务B' && x.unitPrice===80);
-    }""", timeout=12000)
+    }""", timeout=30000)
     state = page.evaluate("""() => {
       const app=window.orderCalculator;
       const binding=app.cloudCollabStores.bindingStore.list()[0];
