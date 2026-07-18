@@ -71,9 +71,9 @@ test('routes are no-store, JSON-only and bounded before service invocation', () 
   assert.match(shared, /application\/json/);
   assert.match(deviceRoute, /8 \* 1024/);
   assert.match(submissionRoute, /MAX_SUBMISSION_BYTES/);
-  assert.ok(deviceRoute.indexOf('readJsonBody') < deviceRoute.indexOf('registerDevice'));
-  assert.ok(submissionRoute.indexOf('readJsonBody') < submissionRoute.indexOf('acceptSubmission'));
-  assert.ok(submissionRoute.indexOf('assertPreviewSubmissionScope') < submissionRoute.indexOf('acceptSubmission'));
+  assert.ok(deviceRoute.indexOf('await readJsonBody') < deviceRoute.indexOf('await registerDevice'));
+  assert.ok(submissionRoute.indexOf('await readJsonBody') < submissionRoute.indexOf('await acceptSubmission'));
+  assert.ok(submissionRoute.indexOf('assertPreviewSubmissionScope(body.value)') < submissionRoute.indexOf('await acceptSubmission'));
 });
 
 test('Stage3B public read protocol stays unchanged and read-only', () => {
