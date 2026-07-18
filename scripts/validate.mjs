@@ -67,7 +67,8 @@ check('client applies only exact_price records', output.includes("value.dataType
 check('receive commit uses PriceLibraryStore persistence boundary', output.includes('priceStore.persist(working.data') && output.includes('priceStore.restoreSnapshot(oldCanonical, oldLegacy)'));
 check('receive metadata uses rollback transaction', output.includes('commitSyncMetadata(binding') && output.includes('transaction.run(steps)'));
 check('incomplete rollback disables cloud feature', output.includes("error?.code === 'SYNC_ROLLBACK_INCOMPLETE'") && output.includes('this.lastError = error'));
-check('cloud pull never enqueues submission', !output.slice(output.indexOf('async syncBinding'), output.indexOf('getModeLabel(mode)')).includes('enqueueSubmission'));
+const receiveSyncBlock = output.slice(output.indexOf('async syncBinding'), output.indexOf('commitSyncMetadata(binding'));
+check('cloud pull never enqueues submission', receiveSyncBlock.length > 0 && !receiveSyncBlock.includes('enqueueSubmission'));
 
 const apiDir = path.join(root,'edge-functions','api');
 const apiEntries = fs.readdirSync(apiDir).filter(name => name.endsWith('.js')).sort();
