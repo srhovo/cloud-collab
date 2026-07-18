@@ -73,7 +73,7 @@
 
     registerDevice({ deviceId, nickname = null, appVersion = '8.2.28' }) {
       return this.request('/api/v1/device-register', {
-        body: { schemaVersion: 1, deviceId, nickname, clientContext: { appVersion, protocolVersion: 1 } },
+        body: { schemaVersion: 1, deviceId, nickname, clientContext: { appVersion } },
       });
     }
 
@@ -84,7 +84,13 @@
 
   function shouldRetry(error) {
     return Boolean(error?.retryable)
-      || ['API_UNREACHABLE', 'API_TIMEOUT', 'WRITE_FOUNDATION_DISABLED', 'DEVICE_REGISTRATION_DISABLED', 'SUBMISSION_INTAKE_DISABLED', 'BLOB_STORAGE_UNAVAILABLE', 'SUBMISSION_STORAGE_FAILED', 'RATE_LIMITED'].includes(error?.code)
+      || [
+        'API_UNREACHABLE', 'API_TIMEOUT', 'WRITE_FOUNDATION_DISABLED',
+        'DEVICE_REGISTRATION_DISABLED', 'SUBMISSION_INTAKE_DISABLED',
+        'BLOB_STORAGE_UNAVAILABLE', 'BLOB_READ_FAILED', 'BLOB_ONLY_IF_NEW_FAILED',
+        'DEVICE_REGISTRATION_STORAGE_FAILED', 'SUBMISSION_STORAGE_FAILED',
+        'RATE_LIMIT_STORAGE_FAILED', 'RATE_LIMITED',
+      ].includes(error?.code)
       || error?.status === 408
       || error?.status === 429
       || error?.status >= 500;
