@@ -228,8 +228,20 @@ test('safe update needs two devices, over-limit update and conflicting candidate
   assert.equal(reviewed.previewPublicVersion, 2);
   assert.equal(reviewed.previewMutationApplied, false);
 
-  const candidateA = makeSubmission({ deviceId: DEVICE_1, submissionId: 'sub_01JABCDEF0123456789XYZABCK', unitPrice: 115, clientCreatedAt: NOW + 24000 });
-  const candidateB = makeSubmission({ deviceId: DEVICE_2, submissionId: 'sub_01JABCDEF0123456789XYZABCM', unitPrice: 114, clientCreatedAt: NOW + 30000 });
+  const candidateA = makeSubmission({
+    deviceId: DEVICE_1,
+    submissionId: 'sub_01JABCDEF0123456789XYZABCK',
+    serviceName: '阶段4E冲突服务',
+    unitPrice: 50,
+    clientCreatedAt: NOW + 24000,
+  });
+  const candidateB = makeSubmission({
+    deviceId: DEVICE_2,
+    submissionId: 'sub_01JABCDEF0123456789XYZABCM',
+    serviceName: '阶段4E冲突服务',
+    unitPrice: 51,
+    clientCreatedAt: NOW + 30000,
+  });
   const candidateAResult = await submit(store, candidateA, NOW + 24000);
   assert.equal(candidateAResult.status, 'waiting_confirmation');
   const conflict = await submit(store, candidateB, NOW + 30000);
