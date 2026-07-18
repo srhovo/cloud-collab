@@ -20,7 +20,7 @@ const BUSINESS_KEY_PATTERN = /^bk_v1_[A-Za-z0-9_-]{43}$/;
 const CONTENT_HASH_PATTERN = /^ch_v1_[A-Za-z0-9_-]{43}$/;
 const DEVICE_ID_PATTERN = /^dev_[0-9A-HJKMNP-TV-Z]{26}$/;
 const APPROVAL_ID_PATTERN = /^ap_v1_[A-Za-z0-9_-]{43}$/;
-const EVENT_VERSION_PATTERN = /^([0-9]{12})\.json$/;
+const EVENT_FILE_PATTERN = /^([0-9]{12})\.json$/;
 const MAX_PUBLIC_VERSION = 999_999_999_999;
 
 export class AutoApprovalError extends Error {
@@ -45,16 +45,27 @@ function assertSafeTime(now) {
   return now;
 }
 
-function assertStoreList(store) {
-  if (!store || typeof store.list !== 'function') {
-    throw new AutoApprovalError('BLOB_LIST_UNAVAILABLE', '自动审核需要Blob list能力', 500);
+function normalizePrefix(value) {
+  const base = String(value || '').trim().replace(/\/+$/, '');
+  return `${normalizeBlobKey(base)}/`;
+}
+
+function alreadyExists(error) {
+  return error instanceof BlobRepositoryError && error.code === 'BLOB_ALREADY_EXISTS';
+}
+
+function padVersion(version) {
+  if (!Number.isSafeInteger(version) || version < 1 || version > MAX_PUBLIC_VERSION) {
+    throw new AutoApprovalError('INVALID_PUBLIC_VERSION', '公共版本超出协议范围', 500, { version });
   }
-  return store;
+  return String(version).padStart(12, '0');
 }
 
 async function listKeysStrong(store, prefix) {
-  assertStoreList(store);
-  const normalizedPrefix = normalizeBlobKey(prefix);
+  if (!store || typeof store.list !== 'function') {
+    throw new AutoApprovalError('BLOB_LIST_UNAVAILABLE', '自动审核需要Blob list能力', 500);
+  }
+  const normalizedPrefix = normalizePrefix(prefix);
   let result;
   try {
     result = await store.list({ prefix: normalizedPrefix, consistency: 'strong' });
@@ -69,19 +80,8 @@ async function listKeysStrong(store, prefix) {
   return keys.sort();
 }
 
-function ignoreAlreadyExists(error) {
-  return error instanceof BlobRepositoryError && error.code === 'BLOB_ALREADY_EXISTS';
-}
-
-function padVersion(version) {
-  if (!Number.isSafeInteger(version) || version < 1 || version > MAX_PUBLIC_VERSION) {
-    throw new AutoApprovalError('INVALID_PUBLIC_VERSION', '公共版本超出协议范围', 500, { version });
-  }
-  return String(version).padStart(12, '0');
-}
-
 export function confirmationPrefix(libraryId, businessKey) {
-  return normalizeBlobKey(`submissions/${libraryId}/matches/${businessKey}/`);
+  return normalizePrefix(`submissions/${libraryId}/matches/${businessKey}`);
 }
 
 export function confirmationMarkerKey(submission) {
@@ -96,6 +96,18 @@ export function trustedDeviceKey(deviceId) {
 
 export function reviewMarkerKey(libraryId, businessKey, contentHash) {
   return normalizeBlobKey(`reviews/${libraryId}/pending/${businessKey}/${contentHash}.json`);
+}
+
+export function publicEventPrefix(libraryId) {
+  return normalizePrefix(`public/${libraryId}/events`);
+}
+
+export function publicEventKey(libraryId, version) {
+  return normalizeBlobKey(`${publicEventPrefix(libraryId)}${padVersion(version)}.json`);
+}
+
+export function publicSnapshotKey(libraryId, version) {
+  return normalizeBlobKey(`public/${libraryId}/snapshots/${padVersion(version)}.json`);
 }
 
 export function approvalIdFor(submission) {
@@ -116,18 +128,6 @@ export function approvalIndexKey(libraryId, approvalId) {
   return normalizeBlobKey(`public/${libraryId}/approvals/${approvalId}.json`);
 }
 
-export function publicEventPrefix(libraryId) {
-  return normalizeBlobKey(`public/${libraryId}/events/`);
-}
-
-export function publicEventKey(libraryId, version) {
-  return normalizeBlobKey(`${publicEventPrefix(libraryId)}${padVersion(version)}.json`);
-}
-
-export function publicSnapshotKey(libraryId, version) {
-  return normalizeBlobKey(`public/${libraryId}/snapshots/${padVersion(version)}.json`);
-}
-
 function assertStoredCandidate(candidate) {
   if (!candidate || candidate.schemaVersion !== 1 || !candidate.submission) {
     throw new AutoApprovalError('INVALID_STORED_CANDIDATE', '候选记录结构无效', 500);
@@ -138,6 +138,9 @@ function assertStoredCandidate(candidate) {
       status: candidate.status,
       submissionId: submission.submissionId,
     });
+  }
+  if (!Number.isSafeInteger(candidate.receivedAt) || candidate.receivedAt <= 0) {
+    throw new AutoApprovalError('INVALID_CANDIDATE_TIME', '候选接收时间无效', 500);
   }
   return submission;
 }
@@ -160,7 +163,7 @@ async function ensureConfirmationMarker(store, candidate, submission) {
     await putJSONOnlyIfNew(store, key, marker);
     return marker;
   } catch (error) {
-    if (!ignoreAlreadyExists(error)) throw error;
+    if (!alreadyExists(error)) throw error;
     const existing = await getJSONStrong(store, key);
     if (!existing || existing.deviceId !== submission.deviceId || existing.contentHash !== submission.contentHash) {
       throw new AutoApprovalError('INVALID_CONFIRMATION_MARKER', '设备确认标记与当前候选不一致', 500, { key }, error);
@@ -171,8 +174,7 @@ async function ensureConfirmationMarker(store, candidate, submission) {
 
 function parseConfirmationKey(prefix, key) {
   if (!key.startsWith(prefix)) return null;
-  const relative = key.slice(prefix.length);
-  const parts = relative.split('/');
+  const parts = key.slice(prefix.length).split('/');
   if (parts.length !== 2 || !parts[1].endsWith('.json')) return null;
   const contentHash = parts[0];
   const deviceId = parts[1].slice(0, -5);
@@ -210,20 +212,20 @@ async function readTrustedDevice(store, deviceId) {
 
 function eventVersionFromKey(prefix, key) {
   if (!key.startsWith(prefix)) return null;
-  const match = EVENT_VERSION_PATTERN.exec(key.slice(prefix.length));
+  const match = EVENT_FILE_PATTERN.exec(key.slice(prefix.length));
   if (!match) return null;
   const version = Number(match[1]);
   return Number.isSafeInteger(version) && version >= 1 ? version : null;
 }
 
-function assertApprovalIndex(index, expectedApprovalId = null) {
+function assertApprovalIndex(index, approvalId = null) {
   if (!index || index.schemaVersion !== AUTO_APPROVAL_SCHEMA_VERSION
       || !APPROVAL_ID_PATTERN.test(String(index.approvalId || ''))
       || !Number.isSafeInteger(index.version) || index.version < 1
       || typeof index.eventKey !== 'string') {
     throw new AutoApprovalError('INVALID_APPROVAL_INDEX', '批准索引结构无效', 500);
   }
-  if (expectedApprovalId && index.approvalId !== expectedApprovalId) {
+  if (approvalId && index.approvalId !== approvalId) {
     throw new AutoApprovalError('APPROVAL_INDEX_MISMATCH', '批准索引与目标批准ID不一致', 500);
   }
   return index;
@@ -231,13 +233,11 @@ function assertApprovalIndex(index, expectedApprovalId = null) {
 
 function assertPublicEvent(event, key, version) {
   if (!event || event.schemaVersion !== PUBLIC_EVENT_SCHEMA_VERSION
-      || event.version !== version
-      || event.eventKey !== key
+      || event.version !== version || event.eventKey !== key
       || !APPROVAL_ID_PATTERN.test(String(event.approvalId || ''))
       || !BUSINESS_KEY_PATTERN.test(String(event.businessKey || ''))
       || !CONTENT_HASH_PATTERN.test(String(event.contentHash || ''))
-      || event.dataType !== 'exact_price'
-      || event.operation !== 'upsert') {
+      || event.dataType !== 'exact_price' || event.operation !== 'upsert') {
     throw new AutoApprovalError('INVALID_PUBLIC_EVENT', '公共批准事件结构无效', 500, { key, version });
   }
   return event;
@@ -281,7 +281,6 @@ export async function buildPublicSnapshot({ store, groupId, libraryId, now = Dat
     }));
   }
   const publicVersion = events.length ? events[events.length - 1].version : 0;
-  const generatedAt = events.length ? events[events.length - 1].approvedAt : new Date(now).toISOString();
   return Object.freeze({
     schemaVersion: PUBLIC_SNAPSHOT_SCHEMA_VERSION,
     payloadSchemaVersion: 1,
@@ -290,7 +289,7 @@ export async function buildPublicSnapshot({ store, groupId, libraryId, now = Dat
     publicVersion,
     snapshotVersion: publicVersion,
     cursor: `pv_${publicVersion}`,
-    generatedAt,
+    generatedAt: events.length ? events[events.length - 1].approvedAt : new Date(now).toISOString(),
     records: Object.freeze([...records.values()].sort((a, b) => a.businessKey.localeCompare(b.businessKey))),
     tombstones: Object.freeze([]),
   });
@@ -303,7 +302,7 @@ async function ensureLatestSnapshot(store, groupId, libraryId, now) {
   try {
     await putJSONOnlyIfNew(store, key, snapshot);
   } catch (error) {
-    if (!ignoreAlreadyExists(error)) throw error;
+    if (!alreadyExists(error)) throw error;
     const existing = await getJSONStrong(store, key);
     if (!existing || canonicalize(existing) !== canonicalize(snapshot)) {
       throw new AutoApprovalError('SNAPSHOT_VERSION_CONFLICT', '同一公共版本对应了不同快照', 500, { key }, error);
@@ -327,7 +326,7 @@ async function reserveEventSlot(store, submission, approvalId, approvalMode, mar
     const version = maxVersion + 1;
     const eventKey = publicEventKey(submission.libraryId, version);
     const deviceIds = [...markers.keys()].sort();
-    const submissionIds = deviceIds.map(deviceId => String(markers.get(deviceId)?.submissionId || '')).filter(Boolean);
+    const submissionIds = deviceIds.map(id => String(markers.get(id)?.submissionId || '')).filter(Boolean);
     const event = Object.freeze({
       schemaVersion: PUBLIC_EVENT_SCHEMA_VERSION,
       version,
@@ -351,7 +350,7 @@ async function reserveEventSlot(store, submission, approvalId, approvalMode, mar
       await putJSONOnlyIfNew(store, eventKey, event);
       return event;
     } catch (error) {
-      if (!ignoreAlreadyExists(error)) throw error;
+      if (!alreadyExists(error)) throw error;
     }
   }
   throw new AutoApprovalError('PUBLIC_EVENT_RESERVATION_EXHAUSTED', '公共事件版本预留重试次数已耗尽', 503);
@@ -360,9 +359,9 @@ async function reserveEventSlot(store, submission, approvalId, approvalMode, mar
 async function publishAutomaticApproval({ store, submission, approvalMode, markers, now }) {
   const approvalId = approvalIdFor(submission);
   const indexKey = approvalIndexKey(submission.libraryId, approvalId);
-  const existingIndex = await getJSONStrong(store, indexKey);
-  if (existingIndex) {
-    const index = assertApprovalIndex(existingIndex, approvalId);
+  const existing = await getJSONStrong(store, indexKey);
+  if (existing) {
+    const index = assertApprovalIndex(existing, approvalId);
     const event = assertPublicEvent(await getJSONStrong(store, index.eventKey), index.eventKey, index.version);
     const latest = await ensureLatestSnapshot(store, submission.groupId, submission.libraryId, now);
     return Object.freeze({ approvalId, index, event, ...latest, duplicateApproval: true });
@@ -385,7 +384,7 @@ async function publishAutomaticApproval({ store, submission, approvalMode, marke
   try {
     await putJSONOnlyIfNew(store, indexKey, proposedIndex);
   } catch (error) {
-    if (!ignoreAlreadyExists(error)) throw error;
+    if (!alreadyExists(error)) throw error;
     index = assertApprovalIndex(await getJSONStrong(store, indexKey), approvalId);
   }
 
@@ -401,9 +400,8 @@ async function publishAutomaticApproval({ store, submission, approvalMode, marke
 }
 
 async function ensureReviewMarkers({ store, submission, confirmations, reason, existingRecord, now }) {
-  const hashes = [...confirmations.keys()].sort();
-  if (!hashes.includes(submission.contentHash)) hashes.push(submission.contentHash);
-  for (const contentHash of hashes) {
+  const hashes = new Set([...confirmations.keys(), submission.contentHash]);
+  for (const contentHash of [...hashes].sort()) {
     const markers = confirmations.get(contentHash) || new Map();
     const key = reviewMarkerKey(submission.libraryId, submission.businessKey, contentHash);
     const marker = Object.freeze({
@@ -421,7 +419,7 @@ async function ensureReviewMarkers({ store, submission, confirmations, reason, e
     try {
       await putJSONOnlyIfNew(store, key, marker);
     } catch (error) {
-      if (!ignoreAlreadyExists(error)) throw error;
+      if (!alreadyExists(error)) throw error;
     }
   }
 }
@@ -443,13 +441,13 @@ export async function reviewExactPriceCandidate({
   const confirmations = await collectBusinessConfirmations(store, submission);
   const matchingMarkers = confirmations.get(submission.contentHash) || new Map();
   const trustedDevice = Boolean(await trustedDeviceResolver(store, submission.deviceId));
-  const currentSnapshot = await buildPublicSnapshot({
+  const snapshot = await buildPublicSnapshot({
     store,
     groupId: submission.groupId,
     libraryId: submission.libraryId,
     now,
   });
-  const existingRecord = findSnapshotRecord(currentSnapshot, submission.businessKey);
+  const existingRecord = findSnapshotRecord(snapshot, submission.businessKey);
   const conflictingCandidateCount = [...confirmations.keys()].filter(hash => hash !== submission.contentHash).length;
   const eligibility = evaluateExactPriceCandidate({
     submission,
@@ -469,7 +467,8 @@ export async function reviewExactPriceCandidate({
       reason: eligibility.reason,
       approvalMode: 'public_duplicate',
       matchingDistinctDeviceCount: matchingMarkers.size,
-      publicVersion: currentSnapshot.publicVersion,
+      conflictingCandidateCount,
+      publicVersion: snapshot.publicVersion,
       eventVersion: existingRecord?.approvedVersion || null,
       publicMutationApplied: false,
       autoApprovalEnabled: true,
@@ -477,14 +476,7 @@ export async function reviewExactPriceCandidate({
   }
 
   if (eligibility.decision === 'pending_review') {
-    await ensureReviewMarkers({
-      store,
-      submission,
-      confirmations,
-      reason: eligibility.reason,
-      existingRecord,
-      now,
-    });
+    await ensureReviewMarkers({ store, submission, confirmations, reason: eligibility.reason, existingRecord, now });
     return Object.freeze({
       schemaVersion: AUTO_APPROVAL_SCHEMA_VERSION,
       status: 'pending_review',
@@ -493,7 +485,7 @@ export async function reviewExactPriceCandidate({
       approvalMode: null,
       matchingDistinctDeviceCount: matchingMarkers.size,
       conflictingCandidateCount,
-      publicVersion: currentSnapshot.publicVersion,
+      publicVersion: snapshot.publicVersion,
       eventVersion: null,
       publicMutationApplied: false,
       autoApprovalEnabled: true,
@@ -509,7 +501,7 @@ export async function reviewExactPriceCandidate({
       approvalMode: null,
       matchingDistinctDeviceCount: matchingMarkers.size,
       conflictingCandidateCount,
-      publicVersion: currentSnapshot.publicVersion,
+      publicVersion: snapshot.publicVersion,
       eventVersion: null,
       publicMutationApplied: false,
       autoApprovalEnabled: true,
