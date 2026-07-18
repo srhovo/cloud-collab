@@ -72,6 +72,28 @@ export async function putJSONOnlyIfNew(store, key, value) {
     return Object.freeze({ created: true, key: normalizedKey });
   } catch (error) {
     if (error instanceof BlobRepositoryError) throw error;
+
+    // onlyIfNew可能在“预读为空、写入时被另一请求抢占”时直接抛出平台错误。
+    // 强一致复读若发现对象已经存在，应统一归类为并发占用，而不是普通存储故障。
+    let raced = null;
+    try {
+      raced = await store.get(normalizedKey, { type: 'json', consistency: 'strong' });
+    } catch (readError) {
+      throw new BlobRepositoryError(
+        'BLOB_ONLY_IF_NEW_FAILED',
+        'Blob不可变写入失败且无法核验并发结果',
+        { key: normalizedKey },
+        readError,
+      );
+    }
+    if (raced !== null && raced !== undefined) {
+      throw new BlobRepositoryError(
+        'BLOB_ALREADY_EXISTS',
+        'Blob对象被并发请求占用，条件写入未执行',
+        { key: normalizedKey },
+        error,
+      );
+    }
     throw new BlobRepositoryError('BLOB_ONLY_IF_NEW_FAILED', 'Blob不可变写入失败', { key: normalizedKey }, error);
   }
 }
