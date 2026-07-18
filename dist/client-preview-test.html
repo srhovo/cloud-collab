@@ -33,7 +33,7 @@
         <button id="clearBtn" class="secondary" type="button">清空并关闭</button>
       </div>
       <div id="status" class="status" aria-live="polite">尚未加载。</div>
-      <p class="note">本页不会把密码写入 localStorage、sessionStorage、IndexedDB、日志或网址。它只为当前页面内的真实8.2.28客户端提供临时运行时门禁，并自动保留EdgeOne的预览访问参数。</p>
+      <p class="note">本页不会把密码写入 localStorage、sessionStorage、IndexedDB、日志或网址。若EdgeOne保留预览参数就自动沿用；若参数在验证后被移除，则使用当前同源预览会话。</p>
       <ol>
         <li>先验证“本地模式”和“只接收更新”不会上传。</li>
         <li>再把测试库绑定为“参与协作”，验证首次候选和后续普通精确价格修改。</li>
@@ -69,12 +69,16 @@
 
   function withPreviewAccess(value) {
     const url = new URL(typeof value === 'string' ? value : value.url, window.location.origin);
-    if (url.origin === window.location.origin) {
-      for (const [name, paramValue] of previewParams()) {
-        if (!url.searchParams.has(name)) url.searchParams.set(name, paramValue);
-      }
+    if (url.origin !== window.location.origin) throw new Error('验收页只允许访问当前预览部署。');
+    for (const [name, paramValue] of previewParams()) {
+      if (!url.searchParams.has(name)) url.searchParams.set(name, paramValue);
     }
     return url;
+  }
+
+  function sameOriginFetch(input, init = {}) {
+    const url = withPreviewAccess(input);
+    return window.fetch(url.href, { ...init, credentials: 'same-origin' });
   }
 
   function clearRuntime() {
@@ -97,19 +101,13 @@
       setStatus('临时预览写入密码不足32字节，请重新粘贴完整值。', 'error');
       return;
     }
-    const params = previewParams();
-    if (!params.get('eo_token') || !params.get('eo_time')) {
-      setStatus('当前地址缺少EdgeOne预览访问参数，请从该部署的“预览”入口重新打开本页。', 'error');
-      return;
-    }
 
     loadBtn.disabled = true;
     keyInput.disabled = true;
     setStatus('正在载入真实8.2.28候选……');
     try {
       activeKey = key;
-      const indexUrl = withPreviewAccess('/index.html');
-      const response = await fetch(indexUrl.href, { method: 'GET', credentials: 'omit', cache: 'no-store', redirect: 'error', referrerPolicy: 'no-referrer' });
+      const response = await sameOriginFetch('/index.html', { method: 'GET', cache: 'no-store', redirect: 'error', referrerPolicy: 'no-referrer' });
       if (!response.ok) throw new Error(`候选页面载入失败（HTTP ${response.status}）`);
       let html = await response.text();
       html = html.replace(/<meta name="cloud-collab-api-base" content="[^"]*">/, `<meta name="cloud-collab-api-base" content="${window.location.origin}">`);
@@ -117,9 +115,8 @@
 
       frame.src = 'about:blank';
       const child = frame.contentWindow;
-      const parentFetch = window.fetch.bind(window);
       child.CloudCollabPreviewRuntime = Object.freeze({ getWriteAccess: () => activeKey });
-      child.fetch = (input, init = {}) => parentFetch(withPreviewAccess(input).href, init);
+      child.fetch = sameOriginFetch;
       child.document.open();
       child.document.write(html);
       child.document.close();
