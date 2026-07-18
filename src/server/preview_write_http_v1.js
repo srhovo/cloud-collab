@@ -2,6 +2,7 @@ import { MAX_SUBMISSION_BYTES } from './submission_policy_v1.js';
 import { createEdgeOneBlobStore } from './edgeone_blob_runtime_v1.js';
 import {
   acceptPreviewSubmission,
+  assertPreviewRequestAccess,
   readPreviewWriteConfig,
   registerPreviewDevice,
 } from './preview_write_runtime_v1.js';
@@ -14,8 +15,8 @@ function corsHeaders(extra = {}) {
   return {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Accept, Content-Type, Authorization',
-    'Access-Control-Max-Age': '86400',
+    'Access-Control-Allow-Headers': 'Accept, Content-Type, Authorization, X-Cloud-Collab-Preview-Key',
+    'Access-Control-Max-Age': '600',
     'Cache-Control': 'no-store',
     'Cross-Origin-Resource-Policy': 'cross-origin',
     'X-Content-Type-Options': 'nosniff',
@@ -126,13 +127,19 @@ export async function handleDeviceRegisterRequest(context, dependencies = {}) {
 
   try {
     const env = context?.env || {};
-    readPreviewWriteConfig(env);
+    const config = readPreviewWriteConfig(env);
+    assertPreviewRequestAccess(context.request, config);
     const input = await readJsonBody(context.request, MAX_REGISTRATION_BYTES);
     const createStore = dependencies.createStore || createEdgeOneBlobStore;
     const register = dependencies.registerPreview || registerPreviewDevice;
     const store = createStore(env);
     const result = await register({ store, input, env, now: dependencies.now?.() || Date.now() });
-    return success(result, 201);
+    return success({
+      ...result,
+      submissionEnabled: false,
+      publicMutationAllowed: false,
+      autoApprovalEnabled: false,
+    }, 201);
   } catch (error) {
     return failure(error);
   }
@@ -145,7 +152,8 @@ export async function handleSubmissionCreateRequest(context, dependencies = {}) 
 
   try {
     const env = context?.env || {};
-    readPreviewWriteConfig(env);
+    const config = readPreviewWriteConfig(env);
+    assertPreviewRequestAccess(context.request, config);
     const rawSubmission = await readJsonBody(context.request, MAX_SUBMISSION_BYTES);
     const createStore = dependencies.createStore || createEdgeOneBlobStore;
     const accept = dependencies.acceptPreview || acceptPreviewSubmission;
@@ -157,7 +165,11 @@ export async function handleSubmissionCreateRequest(context, dependencies = {}) 
       env,
       now: dependencies.now?.() || Date.now(),
     });
-    return success(result, result?.duplicate ? 200 : 202);
+    return success({
+      ...result,
+      publicMutationAllowed: false,
+      autoApprovalEnabled: false,
+    }, result?.duplicate ? 200 : 202);
   } catch (error) {
     return failure(error);
   }

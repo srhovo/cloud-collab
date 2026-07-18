@@ -95,10 +95,17 @@ const packageJson = JSON.parse(read('package.json'));
 const envExample = read('.env.example');
 check('Blob SDK version is pinned', packageJson.dependencies?.['@edgeone/pages-blob'] === '0.0.14');
 check('preview write defaults disabled in env example', envExample.includes('CLOUD_WRITE_PREVIEW_ENABLED=0'));
-check('preview write requires explicit feature flag and fixture scope env', ['CLOUD_WRITE_PREVIEW_ENABLED','CLOUD_WRITE_ALLOWED_GROUP_ID','CLOUD_WRITE_ALLOWED_LIBRARY_ID','CLOUD_RATE_LIMIT_SALT'].every(token => previewRuntime.includes(token)));
-check('HTTP handlers fail closed before Blob initialization', previewHttp.indexOf('readPreviewWriteConfig(env);') < previewHttp.indexOf('createStore(env)'));
-check('write HTTP CORS allows only POST/OPTIONS and explicit Authorization', previewHttp.includes("'Access-Control-Allow-Methods': 'POST, OPTIONS'") && previewHttp.includes('Accept, Content-Type, Authorization'));
+check('preview secrets remain blank in env example', /CLOUD_WRITE_PREVIEW_KEY=\s*(?:\r?\n|$)/.test(envExample) && /CLOUD_RATE_LIMIT_SALT=\s*(?:\r?\n|$)/.test(envExample));
+check('preview write requires feature flag, access key, fixed scope and rate salt', ['CLOUD_WRITE_PREVIEW_ENABLED','CLOUD_WRITE_PREVIEW_KEY','CLOUD_WRITE_ALLOWED_GROUP_ID','CLOUD_WRITE_ALLOWED_LIBRARY_ID','CLOUD_RATE_LIMIT_SALT'].every(token => previewRuntime.includes(token)));
+check('preview scope is hard-coded to fixture IDs', previewRuntime.includes("PREVIEW_ALLOWED_GROUP_ID = 'group_fixture'") && previewRuntime.includes("PREVIEW_ALLOWED_LIBRARY_ID = 'lib_receive_fixture'") && previewRuntime.includes('PREVIEW_SCOPE_MISCONFIGURED'));
+check('preview access key uses timing-safe comparison', previewRuntime.includes('timingSafeEqual') && previewRuntime.includes('assertPreviewRequestAccess'));
+const accessGateIndex = previewHttp.indexOf('assertPreviewRequestAccess(context.request, config);');
+const bodyReadIndex = previewHttp.indexOf('readJsonBody(context.request');
+const storeCreateIndex = previewHttp.indexOf('createStore(env)');
+check('HTTP handlers reject bad preview access before body and Blob', accessGateIndex >= 0 && accessGateIndex < bodyReadIndex && accessGateIndex < storeCreateIndex);
+check('write HTTP CORS allows only POST/OPTIONS and explicit secrets', previewHttp.includes("'Access-Control-Allow-Methods': 'POST, OPTIONS'") && previewHttp.includes('Accept, Content-Type, Authorization, X-Cloud-Collab-Preview-Key'));
 check('registration and submission request limits are present', previewHttp.includes('MAX_REGISTRATION_BYTES = 4 * 1024') && previewHttp.includes('MAX_SUBMISSION_BYTES'));
+check('registration response cannot imply mutation rights', previewHttp.includes('submissionEnabled: false') && previewHttp.includes('publicMutationAllowed: false') && previewHttp.includes('autoApprovalEnabled: false'));
 check('Blob runtime uses strong consistency', edgeOneBlobRuntime.includes("getStore({ name, consistency: 'strong' })"));
 check('immutable Blob writes remain only-if-new', blobRepository.includes("{ onlyIfNew: true }"));
 check('device token plaintext is returned once but only hash is persisted', deviceRegistration.includes('deviceToken,') && deviceRegistration.includes('tokenHash,') && !deviceRegistration.includes('profile.deviceToken'));
@@ -134,6 +141,7 @@ const productionFiles = [
   read('src/server/submission_policy_v1.js'),
   read('src/cloud_collab_readonly_client.js'),
   read('src/cloud_collab_snapshot_sync.js'),
+  envExample,
 ];
 check('no credential is hardcoded', forbiddenSecretPatterns.every(pattern => productionFiles.every(text => !pattern.test(text))));
 
