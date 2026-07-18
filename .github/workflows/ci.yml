@@ -1,4 +1,4 @@
-name: stage4c-client-ci
+name: stage4c-preview-harness-ci
 
 on:
   push:
@@ -17,7 +17,14 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm install --ignore-scripts
-      - run: npm run ci
+      - name: Build 8.2.28 candidate
+        run: npm run build
+      - name: Validate preview harness and cleanup tools
+        run: node --test tests/stage4c-preview-harness.test.mjs tests/stage4c-preview-cleanup.test.mjs tests/stage4c-preview-cleanup-limit.test.mjs tests/stage4c-preview-cleanup-operator.test.mjs
+      - name: Run all Node tests
+        run: npm test
+      - name: Run static and privacy validation
+        run: npm run validate
       - name: Install browser test runtime
         run: |
           python3 -m pip install --disable-pip-version-check playwright
