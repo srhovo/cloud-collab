@@ -12,7 +12,9 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "test": "node --test tests/*.test.mjs",
-    "validate": "node scripts/validate.mjs",
+    "validate:base": "node scripts/validate.mjs",
+    "validate:cleanup": "node scripts/validate-stage4c-cleanup.mjs",
+    "validate": "npm run validate:base && npm run validate:cleanup",
     "ci": "npm run build && npm test && npm run validate"
   }
 }
