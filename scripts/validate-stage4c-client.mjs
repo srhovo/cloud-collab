@@ -56,9 +56,10 @@ check('dispatcher degrades safely while disabled, offline or hidden',
   dispatcher.includes("status: 'disabled'")
   && dispatcher.includes("status: 'offline'")
   && dispatcher.includes("status: 'hidden'"));
+const dispatchDueBlock = dispatcher.slice(dispatcher.indexOf('async dispatchDue'), dispatcher.indexOf('start({ intervalMs'));
 check('dispatcher requires collaborate binding before network submission',
-  dispatcher.indexOf("binding.mode !== 'collaborate'") >= 0
-  && dispatcher.indexOf("binding.mode !== 'collaborate'") < dispatcher.indexOf('ensureCredential()'));
+  dispatchDueBlock.indexOf("binding.mode !== 'collaborate'") >= 0
+  && dispatchDueBlock.indexOf("binding.mode !== 'collaborate'") < dispatchDueBlock.indexOf('credential = await this.ensureCredential()'));
 check('dispatcher writes acknowledged, retry_wait and blocked states',
   dispatcher.includes("'retry_wait'")
   && dispatcher.includes('markAcknowledged')
@@ -82,9 +83,10 @@ check('first-binding skips public-identical, conflicts and already queued record
 check('receive/local mode cannot create first-binding candidates',
   builder.includes("binding.mode !== 'collaborate'")
   && featureMethods.includes("binding.mode !== 'collaborate'"));
+const bindingCallStart = output.indexOf('const syncResult = await this.syncBinding');
+const initialQueueCall = output.indexOf('await this.handleCollaborativeBindingReady(binding, syncResult)', bindingCallStart);
 check('public comparison precedes initial candidate generation',
-  output.indexOf('const syncResult = await this.syncBinding') >= 0
-  && output.indexOf('const syncResult = await this.syncBinding') < output.indexOf('handleCollaborativeBindingReady(binding, syncResult)'));
+  bindingCallStart >= 0 && initialQueueCall > bindingCallStart);
 check('cloud pull path still never enqueues submissions',
   !output.slice(output.indexOf('async syncBinding'), output.indexOf('commitSyncMetadata')).includes('enqueueSubmission'));
 
