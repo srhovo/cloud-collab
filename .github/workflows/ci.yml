@@ -18,11 +18,15 @@ jobs:
           cache: npm
       - run: npm install --ignore-scripts
       - run: npm run ci
-      - name: Upload CI results
+      - name: Upload CI results and candidate
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: stage4c-ci-results-${{ github.run_id }}
-          path: test-results/
+          path: |
+            test-results/
+            dist/index.html
+            dist/码单器8.2.28_云端协作候选版.html
+            dist/build-manifest.json
           if-no-files-found: warn
           retention-days: 7
