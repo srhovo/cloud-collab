@@ -39,9 +39,16 @@ export function success(data, { status = 200 } = {}) {
 }
 
 export function failure(error) {
+  const status = Number(error?.status);
   const normalized = error instanceof WriteFoundationError
     ? error
-    : new WriteFoundationError('INTERNAL_ERROR', '写入基础链路暂时不可用', { status: 500, retryable: true });
+    : (error && typeof error.code === 'string' && Number.isInteger(status)
+      ? new WriteFoundationError(error.code, error.message || error.code, {
+        status,
+        details: error.details ?? null,
+        retryable: Boolean(error.retryable) || status === 408 || status === 429 || status >= 500,
+      })
+      : new WriteFoundationError('INTERNAL_ERROR', '写入基础链路暂时不可用', { status: 500, retryable: true }));
   return jsonResponse({
     ok: false,
     serviceId: SERVICE_ID,
