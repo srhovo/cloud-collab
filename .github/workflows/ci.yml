@@ -1,47 +1,29 @@
-name: stage4d-orphan-event-fix
+name: stage4c-client-ci
 
 on:
   push:
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  apply-orphan-event-fix:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/agent/stage4d-auto-approval-foundation'
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          ref: agent/stage4d-auto-approval-foundation
-          fetch-depth: 0
-      - name: Apply exact orphan-event filter fix
-        shell: python
+          node-version: 22
+          cache: npm
+      - run: npm install --ignore-scripts
+      - run: npm run ci
+      - name: Install browser test runtime
         run: |
-          from pathlib import Path
-
-          path = Path('src/server/auto_approval_engine_v1.js')
-          text = path.read_text(encoding='utf-8')
-          old = """    const validIndex = assertApprovalIndex(index, event.approvalId);
-              assertIndexEventLink(validIndex, event);
-              events.push(event);
-          """
-          new = """    const validIndex = assertApprovalIndex(index, event.approvalId);
-              if (validIndex.version !== version || validIndex.eventKey !== key) continue;
-              assertIndexEventLink(validIndex, event);
-              events.push(event);
-          """
-          if text.count(old) != 1:
-            raise SystemExit(f'orphan-event block match count: {text.count(old)}')
-          path.write_text(text.replace(old, new, 1), encoding='utf-8')
-      - name: Commit exact fix
-        shell: bash
-        run: |
-          git diff --check
-          git diff -- src/server/auto_approval_engine_v1.js
-          git config user.name "stage4d-fix-bot"
-          git config user.email "stage4d-fix-bot@users.noreply.github.com"
-          git add src/server/auto_approval_engine_v1.js
-          git commit -m "阶段4D：忽略未被索引采用的孤立事件 [orphan-fix]"
-          git push origin HEAD:agent/stage4d-auto-approval-foundation
+          python3 -m pip install --disable-pip-version-check playwright
+          python3 -m playwright install --with-deps chromium
+          CHROMIUM_PATH="$(find "$HOME/.cache/ms-playwright" -type f -name chrome | head -n 1)"
+          test -n "$CHROMIUM_PATH"
+          sudo ln -sf "$CHROMIUM_PATH" /usr/bin/chromium
+      - run: python3 tests/core_compare.py
+      - run: python3 tests/browser_integration.py
