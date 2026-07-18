@@ -1,6 +1,6 @@
 {
-  "name": "mdq-cloud-collab-submission-stage4a",
-  "version": "0.5.0",
+  "name": "mdq-cloud-collab-submission-stage4b",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -11,5 +11,8 @@
     "test": "node --test tests/*.test.mjs",
     "validate": "node scripts/validate.mjs",
     "ci": "npm run build && npm test && npm run validate"
+  },
+  "dependencies": {
+    "@edgeone/pages-blob": "latest"
   }
 }
