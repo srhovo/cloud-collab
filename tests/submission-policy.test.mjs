@@ -79,6 +79,7 @@ test('rejects invalid price precision and control characters', () => {
 });
 
 test('enforces the 64KB request limit', () => {
+  assert.equal(MAX_SUBMISSION_BYTES, 64 * 1024);
   assert.ok(assertSubmissionRequestBytes(BASE) < MAX_SUBMISSION_BYTES);
   expectCode('SUBMISSION_TOO_LARGE', () => assertSubmissionRequestBytes('x'.repeat(MAX_SUBMISSION_BYTES + 1)));
 });
@@ -105,22 +106,37 @@ test('same public content is a no-op', () => {
     existingRecord: { businessKey: hashes.businessKey, contentHash: hashes.contentHash, unitPrice: 110 },
   });
   assert.equal(decision.decision, 'duplicate_noop');
+  assert.equal(decision.autoApprovalEnabled, false);
 });
 
-test('price changes over 10 percent or conflicting candidates require review', () => {
+test('any existing price change requires review until a versioned policy exists', () => {
   const hashes = computeSubmissionHashes(BASE);
-  const over = evaluateExactPriceCandidate({
-    submission: { ...clone(BASE), payload: { ...BASE.payload, unitPrice: 120 } },
-    existingRecord: { businessKey: hashes.businessKey, contentHash: 'ch_v1_0000000000000000000000000000000000000000000', unitPrice: 100 },
-    matchingDeviceCount: 2,
-  });
-  assert.equal(over.decision, 'pending_review');
-  assert.equal(over.reason, 'price_change_over_10_percent');
+  for (const unitPrice of [105, 120]) {
+    const decision = evaluateExactPriceCandidate({
+      submission: { ...clone(BASE), payload: { ...BASE.payload, unitPrice } },
+      existingRecord: {
+        businessKey: hashes.businessKey,
+        contentHash: 'ch_v1_fmOBmfqgyeg_JeMum9_V3xFSi9hzH_KUTdd8wGvnEls',
+        unitPrice: 100,
+      },
+      matchingDeviceCount: 2,
+      trustedDevice: true,
+    });
+    assert.equal(decision.decision, 'pending_review');
+    assert.equal(decision.reason, 'existing_price_change_requires_policy');
+    assert.equal(decision.publicMutationAllowed, false);
+    assert.equal(decision.autoApprovalEnabled, false);
+    assert.equal(Object.hasOwn(decision, 'changeRatio'), false);
+  }
+});
 
+test('conflicting candidates require review', () => {
   const conflict = evaluateExactPriceCandidate({
     submission: BASE,
     conflictingCandidateCount: 1,
   });
   assert.equal(conflict.decision, 'pending_review');
   assert.equal(conflict.reason, 'conflict_detected');
+  assert.equal(conflict.publicMutationAllowed, false);
+  assert.equal(conflict.autoApprovalEnabled, false);
 });
