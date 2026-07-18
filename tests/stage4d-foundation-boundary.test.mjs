@@ -23,12 +23,16 @@ test('existing public submission route does not import or invoke auto approval f
   assert.match(http, /autoApprovalEnabled:\s*false/);
 });
 
-test('foundation introduces no deployment switch or secret and keeps preview scope unchanged', () => {
+test('only the isolated auto-approval preview switch is declared and it defaults off', () => {
   const envExample = read('.env.example');
   const runtime = read('src/server/preview_write_runtime_v1.js');
   const client = read('src/cloud_collab_submission_client.js');
+  const autoApprovalVariables = envExample
+    .split(/\r?\n/)
+    .filter(line => line.startsWith('CLOUD_') && line.includes('AUTO_APPROVAL'));
 
-  assert.doesNotMatch(envExample, /AUTO_APPROVAL|PUBLIC_WRITE|TRUSTED_DEVICE/);
+  assert.deepEqual(autoApprovalVariables, ['CLOUD_AUTO_APPROVAL_PREVIEW_ENABLED=0']);
+  assert.doesNotMatch(envExample, /PUBLIC_WRITE|TRUSTED_DEVICE/);
   assert.match(runtime, /PREVIEW_ALLOWED_GROUP_ID\s*=\s*'group_fixture'/);
   assert.match(runtime, /PREVIEW_ALLOWED_LIBRARY_ID\s*=\s*'lib_receive_fixture'/);
   assert.match(client, /PREVIEW_ALLOWED_GROUP_ID\s*=\s*'group_fixture'/);
