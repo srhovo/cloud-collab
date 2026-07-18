@@ -165,7 +165,13 @@ function normalizeBaseline(value = null) {
     return Object.freeze({ approvedVersion: 0, contentHash: null, unitPrice: null });
   }
   assertExactKeys(value, ['approvedVersion', 'contentHash', 'unitPrice'], 'INVALID_BASELINE_RECORD', '公共基线摘要结构无效');
-  const approvedVersion = normalizePublicVersion(value.approvedVersion);
+  const approvedVersion = normalizePublicVersion(value.approvedVersion, { allowZero: true });
+  if (approvedVersion === 0) {
+    if (value.contentHash !== null || value.unitPrice !== null) {
+      throw new AutoApprovalError('INVALID_BASELINE_RECORD', '空公共基线必须使用null内容', 500);
+    }
+    return Object.freeze({ approvedVersion: 0, contentHash: null, unitPrice: null });
+  }
   const contentHash = normalizeContentHash(value.contentHash);
   const unitPrice = Number(value.unitPrice);
   if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
@@ -386,7 +392,7 @@ function eventVersionFromKey(prefix, key) {
 
 function assertBaselineObject(value) {
   assertExactKeys(value, ['approvedVersion', 'contentHash', 'unitPrice'], 'INVALID_EVENT_BASELINE', '批准事件基线结构无效');
-  return normalizeBaseline(value.approvedVersion === 0 ? null : value);
+  return normalizeBaseline(value);
 }
 
 function assertPublicEvent(event, key, version) {
