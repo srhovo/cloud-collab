@@ -14,7 +14,9 @@ const DATA = Object.freeze({
   },
   capabilities: {
     publicVersion: true,
-    snapshotRead: false,
+    snapshotRead: true,
+    incrementalRead: true,
+    exactPriceReceive: true,
     submission: false,
     adminReview: false,
   },

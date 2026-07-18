@@ -6,7 +6,7 @@
   'use strict';
 
   const CLIENT_PROTOCOL_VERSION = 1;
-  const MAX_RESPONSE_BYTES = 65536;
+  const MAX_RESPONSE_BYTES = 524288;
   const GROUP_ID_PATTERN = /^group_[a-z0-9][a-z0-9_-]{2,47}$/;
   const LIBRARY_ID_PATTERN = /^lib_[a-z0-9][a-z0-9_-]{2,53}$/;
 
@@ -89,10 +89,10 @@
           signal: controller?.signal,
         });
         const length = Number(response.headers?.get?.('content-length') || 0);
-        if (length > MAX_RESPONSE_BYTES) throw new ReadonlyApiError('RESPONSE_TOO_LARGE', '服务器响应超过64KB限制');
+        if (length > MAX_RESPONSE_BYTES) throw new ReadonlyApiError('RESPONSE_TOO_LARGE', '服务器响应超过512KB限制');
         const text = await response.text();
         if (new TextEncoder().encode(text).byteLength > MAX_RESPONSE_BYTES) {
-          throw new ReadonlyApiError('RESPONSE_TOO_LARGE', '服务器响应超过64KB限制');
+          throw new ReadonlyApiError('RESPONSE_TOO_LARGE', '服务器响应超过512KB限制');
         }
         let body;
         try { body = JSON.parse(text); }
@@ -110,13 +110,38 @@
     health() { return this.request('/api/health'); }
     protocol() { return this.request('/api/protocol'); }
 
-    publicVersion(groupId, libraryId) {
+    normalizeScope(groupId, libraryId) {
       const group = String(groupId || '').trim().toLowerCase();
       const library = String(libraryId || '').trim().toLowerCase();
       if (!GROUP_ID_PATTERN.test(group) || !LIBRARY_ID_PATTERN.test(library)) {
         throw new ReadonlyApiError('INVALID_PUBLIC_SCOPE', 'groupId 或 libraryId 格式无效');
       }
-      return this.request('/api/public-version', { groupId: group, libraryId: library });
+      return { groupId: group, libraryId: library };
+    }
+
+    publicVersion(groupId, libraryId) {
+      const scope = this.normalizeScope(groupId, libraryId);
+      return this.request('/api/public-version', scope);
+    }
+
+    publicSnapshot(groupId, libraryId, { ifVersion = null } = {}) {
+      const scope = this.normalizeScope(groupId, libraryId);
+      if (ifVersion !== null && (!Number.isInteger(Number(ifVersion)) || Number(ifVersion) < 0)) {
+        throw new ReadonlyApiError('INVALID_PUBLIC_VERSION', 'ifVersion 必须是非负整数');
+      }
+      return this.request('/api/public-snapshot', {
+        ...scope,
+        ...(ifVersion === null ? {} : { ifVersion: Number(ifVersion) }),
+      });
+    }
+
+    publicChanges(groupId, libraryId, { sinceVersion = 0, limit = 100 } = {}) {
+      const scope = this.normalizeScope(groupId, libraryId);
+      const since = Number(sinceVersion);
+      const count = Number(limit);
+      if (!Number.isInteger(since) || since < 0) throw new ReadonlyApiError('INVALID_PUBLIC_VERSION', 'sinceVersion 必须是非负整数');
+      if (!Number.isInteger(count) || count < 1 || count > 100) throw new ReadonlyApiError('INVALID_CHANGE_LIMIT', 'limit 必须位于1至100');
+      return this.request('/api/public-changes', { ...scope, sinceVersion: since, limit: count });
     }
   }
 

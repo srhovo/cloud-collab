@@ -79,7 +79,7 @@ test('client rejects error envelopes, invalid JSON and oversized responses', asy
 
   const largeClient = new API.CloudCollabReadonlyApi({
     baseUrl: 'https://api.example',
-    fetchImpl: async () => new Response('x', { headers: { 'content-length': '70000' } }),
+    fetchImpl: async () => new Response('x', { headers: { 'content-length': '600000' } }),
   });
   await assert.rejects(() => largeClient.health(), error => error.code === 'RESPONSE_TOO_LARGE');
 });
@@ -90,4 +90,25 @@ test('unconfigured client fails without making a request', async () => {
   assert.equal(client.isConfigured(), false);
   await assert.rejects(() => client.health(), error => error.code === 'API_NOT_CONFIGURED');
   assert.equal(calls, 0);
+});
+
+
+test('snapshot and incremental methods validate versions and send query-only GETs', async () => {
+  const calls = [];
+  const client = new API.CloudCollabReadonlyApi({
+    baseUrl: 'https://api.example',
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options });
+      if (url.includes('public-snapshot')) return envelope({ status: 'not_modified', snapshot: null });
+      return envelope({ status: 'changes', changes: [], nextVersion: 2, hasMore: false });
+    },
+  });
+  assert.equal((await client.publicSnapshot('group_fixture', 'lib_receive_fixture', { ifVersion: 2 })).status, 'not_modified');
+  assert.equal((await client.publicChanges('group_fixture', 'lib_receive_fixture', { sinceVersion: 2, limit: 50 })).nextVersion, 2);
+  assert.match(calls[0].url, /ifVersion=2/);
+  assert.match(calls[1].url, /sinceVersion=2/);
+  assert.match(calls[1].url, /limit=50/);
+  assert.equal(calls.every(call => call.options.credentials === 'omit' && call.options.method === 'GET'), true);
+  assert.throws(() => client.publicSnapshot('group_fixture', 'lib_receive_fixture', { ifVersion: -1 }), error => error.code === 'INVALID_PUBLIC_VERSION');
+  assert.throws(() => client.publicChanges('group_fixture', 'lib_receive_fixture', { limit: 101 }), error => error.code === 'INVALID_CHANGE_LIMIT');
 });

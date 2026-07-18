@@ -35,7 +35,13 @@ export default function onRequest(context) {
   }
 
   return success({
-    ...library,
+    groupId: library.groupId,
+    libraryId: library.libraryId,
+    publicVersion: library.publicVersion,
+    snapshotVersion: library.snapshotVersion,
+    updatedAt: library.updatedAt,
+    status: library.status,
+    snapshotAvailable: library.snapshotAvailable,
     recordCounts: { ...library.recordCounts },
     writeEnabled: false,
   }, { cacheSeconds: cacheSeconds(), head: method.isHead });

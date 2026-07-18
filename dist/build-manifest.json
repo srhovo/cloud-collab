@@ -3,7 +3,8 @@
   "source": "src/码单器8.2.26_公共协作本地候选版.html",
   "output": "dist/index.html",
   "apiBase": "same-origin-or-disabled-for-file",
-  "sha256": "c0917dfd90038aa742da52d60e232cd3f1d6fdd626e37e2472798dc74afcdc62",
-  "bytes": 990144,
-  "generatedAt": "2026-07-18T00:36:05.317Z"
+  "stage": "3B-public-snapshot-receive",
+  "sha256": "204f307f10127d346d55ec7a9f8d50c03e6048579768bffc32620fdb90fe098e",
+  "bytes": 1022483,
+  "generatedAt": "2026-07-18T04:04:05.362Z"
 }

@@ -5,7 +5,7 @@ from playwright.sync_api import sync_playwright
 ROOT = Path(__file__).resolve().parents[1]
 BASE = (ROOT/'src/码单器8.2.26_公共协作本地候选版.html').read_text(encoding='utf-8')
 CAND = (ROOT/'dist/index.html').read_text(encoding='utf-8')
-OUT = ROOT/'test-results/阶段3A_核心计算对比结果.json'
+OUT = ROOT/'test-results/阶段3B_核心计算对比结果.json'
 
 def run(browser, html):
     page = browser.new_page()
