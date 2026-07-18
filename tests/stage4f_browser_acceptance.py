@@ -3,7 +3,7 @@ from urllib.parse import urlparse
 import json
 import time
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import expect, sync_playwright
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -138,7 +138,7 @@ with sync_playwright() as playwright:
     page.locator('#previewKey').fill(PREVIEW_KEY)
     page.locator('#batchId').fill('BROWSER4F')
     page.locator('#loadBtn').click()
-    page.wait_for_function("document.querySelector('#loadStatus').textContent.includes('已加载')", timeout=20_000)
+    expect(page.locator('#loadStatus')).to_contain_text('已加载', timeout=20_000)
     assert page.locator('#previewKey').input_value() == ''
     assert '…' in page.locator('#deviceMetric').text_content()
 
@@ -146,23 +146,28 @@ with sync_playwright() as playwright:
     page.locator('#unitPrice').fill('77')
     page.locator('#offlineBtn').click()
     page.locator('#submitBtn').click()
-    page.wait_for_function("document.querySelector('#submitStatus').textContent.includes('离线降级')", timeout=10_000)
+    expect(page.locator('#submitStatus')).to_contain_text('离线降级', timeout=10_000)
     assert '待发1' in page.locator('#queueMetric').text_content()
     assert not any(item['path'] in ['/api/device/register', '/api/preview/submissions/create'] for item in requests)
 
     page.locator('#recoverBtn').click()
-    page.wait_for_function("document.querySelector('#submitStatus').textContent.includes('恢复重试完成')", timeout=15_000)
+    expect(page.locator('#submitStatus')).to_contain_text('恢复重试完成', timeout=15_000)
     assert any(item['path'] == '/api/device/register' and item['previewHeaderPresent'] for item in requests)
     assert any(item['path'] == '/api/preview/submissions/create' and item['previewHeaderPresent'] for item in requests)
     assert not any(item['path'] == '/api/submissions/create' for item in requests)
 
     page.locator('#readBtn').click()
-    page.wait_for_function("document.querySelector('#readStatus').textContent.includes('一致性通过')", timeout=10_000)
+    expect(page.locator('#readStatus')).to_contain_text('一致性通过', timeout=10_000)
     for path in ['/api/preview/public-version', '/api/preview/public-snapshot', '/api/preview/public-changes']:
         assert any(item['path'] == path and item['previewHeaderPresent'] for item in requests), path
     assert page.locator('#consistencyMetric').text_content() == '通过'
 
-    storage_values = page.evaluate("Object.keys(localStorage).map(key => localStorage.getItem(key))")
+    storage_state = context.storage_state()
+    storage_values = [
+        item.get('value', '')
+        for origin in storage_state.get('origins', [])
+        for item in origin.get('localStorage', [])
+    ]
     assert all(PREVIEW_KEY not in (value or '') for value in storage_values)
     assert PREVIEW_KEY not in page.locator('body').inner_text()
     assert not console_errors, console_errors
