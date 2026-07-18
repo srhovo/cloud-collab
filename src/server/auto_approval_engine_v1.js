@@ -505,6 +505,7 @@ export async function listValidPublicEvents({ store, libraryId } = {}) {
     const index = await getJSONStrong(store, approvalIndexKey(normalizedLibraryId, event.approvalId));
     if (!index) continue;
     const validIndex = assertApprovalIndex(index, event.approvalId);
+    if (validIndex.version !== version || validIndex.eventKey !== key) continue;
     assertIndexEventLink(validIndex, event);
     events.push(event);
   }
