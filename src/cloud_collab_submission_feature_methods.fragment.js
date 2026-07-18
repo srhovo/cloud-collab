@@ -2,8 +2,10 @@
   const target = this.app.el.cloudUploadSummary;
   if (!target) return;
   const state = this.app.cloudCollabState || {};
-  const credential = this.stores.credentialStore.getRedacted();
-  const queue = this.stores.queueStore.list();
+  let credential = null;
+  let queue = [];
+  try { credential = this.stores.credentialStore.getRedacted(); } catch (error) { appLogSilent(error); }
+  try { queue = this.stores.queueStore.list(); } catch (error) { appLogSilent(error); }
   const active = queue.filter(item => item.deliveryState !== 'acknowledged');
   const blocked = active.filter(item => item.deliveryState === 'blocked');
   const retrying = active.filter(item => item.deliveryState === 'retry_wait');
@@ -70,7 +72,12 @@
   }
   this.updateUploadState({ uploadStatus: 'sending', uploadErrorCode: null, uploadCheckedAt: Date.now() });
   const result = await this.submissionDispatcher.flush({ limit: 10 });
-  this.updateUploadState({ uploadStatus: result?.status || 'idle', uploadErrorCode: result?.errorCode || null, uploadErrorCategory: result?.category || null, uploadCheckedAt: Date.now() });
+  this.updateUploadState({
+   uploadStatus: result?.status || 'idle',
+   uploadErrorCode: result?.errorCode || null,
+   uploadErrorCategory: result?.category || null,
+   uploadCheckedAt: Date.now()
+  });
   this.refresh();
   if (interactive) {
    if (result?.status === 'offline') this.setStatus('当前离线，待上传队列保持原状；正常码单不受影响。', 'success');
@@ -82,7 +89,7 @@
  }
 
  async retryRecoverableUploads() {
-  const recoverable = new Set(['API_TIMEOUT', 'API_UNREACHABLE', 'HTTP_500', 'HTTP_502', 'HTTP_503', 'HTTP_504']);
+  const recoverable = new Set(['PREVIEW_WRITE_DISABLED', 'API_TIMEOUT', 'API_UNREACHABLE', 'HTTP_500', 'HTTP_502', 'HTTP_503', 'HTTP_504']);
   let requeued = 0;
   try {
    this.stores.queueStore.list().filter(item => item.deliveryState === 'blocked' && recoverable.has(item.lastErrorCode)).forEach(item => {
@@ -143,13 +150,25 @@
   if (!['round', 'hour'].includes(settleType)) return { inserted: false, status: 'unsupported' };
   const meta = this.stores.metaStore.loadResult();
   if (!meta.ok || !meta.exists) return { inserted: false, status: 'identity_required' };
-  const hashes = await CloudCollabSnapshotSync.computeExactPriceHashes(binding.groupId, binding.libraryId, { serviceName: record?.serviceType, settleType, unitPrice: record?.unitPrice });
+  const hashes = await CloudCollabSnapshotSync.computeExactPriceHashes(binding.groupId, binding.libraryId, {
+   serviceName: record?.serviceType,
+   settleType,
+   unitPrice: record?.unitPrice
+  });
   const scope = this.stores.syncStore.getScope(binding.groupId, binding.libraryId);
   if (scope?.baseHashes?.[hashes.businessKey] === hashes.contentHash) return { inserted: false, status: 'already_public' };
   const submission = await CloudCollabSubmission.buildExactPriceSubmission({
-   snapshotSync: CloudCollabSnapshotSync, deviceId: meta.value.deviceId, submissionId: this.submissionIdFactory.submissionId(),
-   groupId: binding.groupId, libraryId: binding.libraryId, serviceName: hashes.payload.serviceName,
-   settleType: hashes.payload.settleType, unitPrice: hashes.payload.unitPrice, origin: 'user', clientCreatedAt: Date.now(), appVersion: '8.2.28'
+   snapshotSync: CloudCollabSnapshotSync,
+   deviceId: meta.value.deviceId,
+   submissionId: this.submissionIdFactory.submissionId(),
+   groupId: binding.groupId,
+   libraryId: binding.libraryId,
+   serviceName: hashes.payload.serviceName,
+   settleType: hashes.payload.settleType,
+   unitPrice: hashes.payload.unitPrice,
+   origin: 'user',
+   clientCreatedAt: Date.now(),
+   appVersion: '8.2.28'
   });
   const result = this.stores.coordinator.enqueueSubmission(localLibraryId, submission);
   this.refresh();
