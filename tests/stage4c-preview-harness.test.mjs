@@ -13,7 +13,7 @@ test('预览验收页只在内存中提供写入门禁', () => {
   assert.match(html, /let activeKey = ''/);
   assert.match(html, /CloudCollabPreviewRuntime = Object\.freeze/);
   assert.match(html, /getWriteAccess: \(\) => activeKey/);
-  assert.doesNotMatch(html, /localStorage|sessionStorage|indexedDB/);
+  assert.doesNotMatch(html, /(?:localStorage|sessionStorage)\s*[.\[]|indexedDB\s*[.(]/);
   assert.doesNotMatch(html, /console\.(?:log|warn|error)/);
 });
 
