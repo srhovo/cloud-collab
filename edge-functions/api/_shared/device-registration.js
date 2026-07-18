@@ -7,6 +7,8 @@ const MAX_TOKEN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 const CROCKFORD_ULID = '[0-9A-HJKMNP-TV-Z]{26}';
 const DEVICE_ID_PATTERN = new RegExp(`^dev_${CROCKFORD_ULID}$`);
 const APP_VERSION_PATTERN = /^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$/;
+const TOKEN_HASH_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+const TOKEN_NONCE_PATTERN = /^[A-Za-z0-9_-]{22}$/;
 
 export class DeviceRegistrationError extends Error {
   constructor(code, message, details = null) {
@@ -160,13 +162,15 @@ export async function issueDeviceToken({ deviceId, tokenVersion, secret, issuedA
   if (!Number.isSafeInteger(issuedAt) || !Number.isSafeInteger(expiresAt) || expiresAt <= issuedAt) {
     throw new DeviceRegistrationError('INVALID_TOKEN_TIME', '设备令牌时间范围无效');
   }
+  const normalizedNonce = nonce || randomNonce();
+  if (!TOKEN_NONCE_PATTERN.test(normalizedNonce)) throw new DeviceRegistrationError('INVALID_TOKEN_NONCE', '设备令牌随机数无效');
   const payload = Object.freeze({
     version: TOKEN_VERSION,
     deviceId,
     tokenVersion,
     issuedAt,
     expiresAt,
-    nonce: nonce || randomNonce(),
+    nonce: normalizedNonce,
   });
   const encodedPayload = bytesToBase64Url(textEncoder().encode(canonicalize(payload)));
   const key = await importHmacKey(secret);
@@ -191,18 +195,20 @@ export async function verifyDeviceToken(token, { secret, now = Date.now() } = {}
   try { payload = JSON.parse(textDecoder().decode(base64UrlToBytes(encodedPayload))); }
   catch (_) { throw new DeviceRegistrationError('INVALID_DEVICE_TOKEN_PAYLOAD', '设备令牌内容无效'); }
   assertExactKeys(payload, ['version', 'deviceId', 'tokenVersion', 'issuedAt', 'expiresAt', 'nonce'], 'INVALID_DEVICE_TOKEN_PAYLOAD', '设备令牌字段无效');
-  if (payload.version !== TOKEN_VERSION || !DEVICE_ID_PATTERN.test(payload.deviceId)) {
+  if (payload.version !== TOKEN_VERSION || !DEVICE_ID_PATTERN.test(payload.deviceId) || !TOKEN_NONCE_PATTERN.test(payload.nonce)) {
     throw new DeviceRegistrationError('INVALID_DEVICE_TOKEN_PAYLOAD', '设备令牌身份无效');
   }
   if (!Number.isInteger(payload.tokenVersion) || payload.tokenVersion < 1
-    || !Number.isSafeInteger(payload.issuedAt) || !Number.isSafeInteger(payload.expiresAt)) {
+    || !Number.isSafeInteger(payload.issuedAt) || !Number.isSafeInteger(payload.expiresAt)
+    || payload.expiresAt <= payload.issuedAt) {
     throw new DeviceRegistrationError('INVALID_DEVICE_TOKEN_PAYLOAD', '设备令牌版本或时间无效');
   }
   if (payload.expiresAt <= now) throw new DeviceRegistrationError('DEVICE_TOKEN_EXPIRED', '设备令牌已过期');
   return Object.freeze({ payload: Object.freeze(payload), tokenHash: await sha256Base64Url(token) });
 }
 
-function deviceKey(deviceId) {
+export function deviceStorageKey(deviceId) {
+  if (!DEVICE_ID_PATTERN.test(String(deviceId || ''))) throw new DeviceRegistrationError('INVALID_DEVICE_ID', 'deviceId格式无效');
   return `device:v1:${deviceId}`;
 }
 
@@ -211,13 +217,57 @@ function parseStoredDevice(raw, deviceId) {
   let value;
   try { value = typeof raw === 'string' ? JSON.parse(raw) : raw; }
   catch (_) { throw new DeviceRegistrationError('DEVICE_RECORD_CORRUPT', '设备记录无法解析'); }
-  if (!isPlainObject(value) || value.schemaVersion !== DEVICE_SCHEMA_VERSION || value.deviceId !== deviceId) {
-    throw new DeviceRegistrationError('DEVICE_RECORD_CORRUPT', '设备记录结构无效');
+  assertExactKeys(value, [
+    'schemaVersion', 'deviceId', 'nickname', 'nicknameTag', 'status', 'trusted',
+    'tokenVersion', 'tokenHash', 'issuedAt', 'expiresAt', 'createdAt',
+    'lastRegisteredAt', 'lastClientContext',
+  ], 'DEVICE_RECORD_CORRUPT', '设备记录字段无效');
+  if (value.schemaVersion !== DEVICE_SCHEMA_VERSION || value.deviceId !== deviceId
+    || !DEVICE_ID_PATTERN.test(value.deviceId) || value.nicknameTag !== value.deviceId.slice(-4)) {
+    throw new DeviceRegistrationError('DEVICE_RECORD_CORRUPT', '设备记录身份无效');
   }
-  if (!['active', 'banned'].includes(value.status) || !Number.isInteger(value.tokenVersion) || value.tokenVersion < 1) {
+  if (!['active', 'banned'].includes(value.status) || typeof value.trusted !== 'boolean'
+    || !Number.isInteger(value.tokenVersion) || value.tokenVersion < 1
+    || !TOKEN_HASH_PATTERN.test(value.tokenHash)) {
     throw new DeviceRegistrationError('DEVICE_RECORD_CORRUPT', '设备记录状态无效');
   }
-  return value;
+  for (const key of ['issuedAt', 'expiresAt', 'createdAt', 'lastRegisteredAt']) {
+    if (!Number.isSafeInteger(value[key]) || value[key] < 0) throw new DeviceRegistrationError('DEVICE_RECORD_CORRUPT', '设备记录时间无效');
+  }
+  normalizeClientContext(value.lastClientContext);
+  if (value.nickname !== null) normalizeNickname(value.nickname);
+  return Object.freeze(value);
+}
+
+async function readStoredDevice(kv, deviceId) {
+  if (!kv || typeof kv.get !== 'function') throw new DeviceRegistrationError('DEVICE_REGISTRY_NOT_CONFIGURED', '设备注册存储尚未配置');
+  try { return parseStoredDevice(await kv.get(deviceStorageKey(deviceId)), deviceId); }
+  catch (error) {
+    if (error instanceof DeviceRegistrationError) throw error;
+    throw new DeviceRegistrationError('DEVICE_REGISTRY_READ_FAILED', '读取设备注册信息失败');
+  }
+}
+
+export async function authenticateDeviceToken({ authorization, kv, secret, now = Date.now() } = {}) {
+  const match = /^Bearer\s+(.+)$/i.exec(String(authorization || '').trim());
+  if (!match) throw new DeviceRegistrationError('DEVICE_TOKEN_REQUIRED', '缺少设备令牌');
+  const verified = await verifyDeviceToken(match[1], { secret, now });
+  const record = await readStoredDevice(kv, verified.payload.deviceId);
+  if (!record) throw new DeviceRegistrationError('DEVICE_NOT_REGISTERED', '设备尚未注册');
+  if (record.status === 'banned') throw new DeviceRegistrationError('DEVICE_BANNED', '该设备已被禁用');
+  if (record.expiresAt <= now) throw new DeviceRegistrationError('DEVICE_TOKEN_EXPIRED', '设备令牌已过期');
+  if (record.tokenVersion !== verified.payload.tokenVersion || record.tokenHash !== verified.tokenHash) {
+    throw new DeviceRegistrationError('DEVICE_TOKEN_REVOKED', '设备令牌已失效');
+  }
+  return Object.freeze({
+    deviceId: record.deviceId,
+    nickname: record.nickname,
+    nicknameTag: record.nicknameTag,
+    trusted: record.trusted,
+    tokenVersion: record.tokenVersion,
+    issuedAt: record.issuedAt,
+    expiresAt: record.expiresAt,
+  });
 }
 
 export async function registerDevice({
@@ -234,18 +284,13 @@ export async function registerDevice({
     throw new DeviceRegistrationError('INVALID_TOKEN_TTL', '设备令牌有效期配置无效');
   }
   const normalized = normalizeRegisterRequest(request);
-  const key = deviceKey(normalized.deviceId);
-  let existing;
-  try { existing = parseStoredDevice(await kv.get(key), normalized.deviceId); }
-  catch (error) {
-    if (error instanceof DeviceRegistrationError) throw error;
-    throw new DeviceRegistrationError('DEVICE_REGISTRY_READ_FAILED', '读取设备注册信息失败');
-  }
+  const existing = await readStoredDevice(kv, normalized.deviceId);
   if (existing?.status === 'banned') throw new DeviceRegistrationError('DEVICE_BANNED', '该设备已被禁用');
-  const tokenVersion = (existing?.tokenVersion || 0) + 1;
+  if (existing) throw new DeviceRegistrationError('DEVICE_ALREADY_REGISTERED', '该设备已注册；令牌轮换必须使用已鉴权接口');
+
   const issued = await issueDeviceToken({
     deviceId: normalized.deviceId,
-    tokenVersion,
+    tokenVersion: 1,
     secret,
     issuedAt: now,
     expiresAt: now + ttlMs,
@@ -256,16 +301,16 @@ export async function registerDevice({
     nickname: normalized.nickname,
     nicknameTag: normalized.deviceId.slice(-4),
     status: 'active',
-    trusted: existing?.trusted === true,
-    tokenVersion,
+    trusted: false,
+    tokenVersion: 1,
     tokenHash: issued.tokenHash,
     issuedAt: issued.payload.issuedAt,
     expiresAt: issued.payload.expiresAt,
-    createdAt: existing?.createdAt || now,
+    createdAt: now,
     lastRegisteredAt: now,
     lastClientContext: normalized.clientContext,
   });
-  try { await kv.put(key, JSON.stringify(record)); }
+  try { await kv.put(deviceStorageKey(normalized.deviceId), JSON.stringify(record)); }
   catch (_) { throw new DeviceRegistrationError('DEVICE_REGISTRY_WRITE_FAILED', '保存设备注册信息失败'); }
   return Object.freeze({
     device: Object.freeze({
