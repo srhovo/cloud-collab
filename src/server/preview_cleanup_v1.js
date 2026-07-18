@@ -3,7 +3,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 export const PREVIEW_CLEANUP_SCHEMA_VERSION = 1;
 export const PREVIEW_CLEANUP_NAMESPACE = 'cloud-collab-preview-v1';
 export const PREVIEW_CLEANUP_CONFIRMATION = 'DELETE_SYNTHETIC_PREVIEW_V1';
-export const PREVIEW_CLEANUP_MAX_OBJECTS = 10_000;
+export const PREVIEW_CLEANUP_MAX_OBJECTS = 500;
 
 const FIXTURE_GROUP_ID = 'group_fixture';
 const FIXTURE_LIBRARY_ID = 'lib_receive_fixture';
