@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "serviceId": "cloud-collab-readonly",
+  "apiVersion": "2026-07-18",
+  "protocolVersion": 1,
+  "writeEnabled": false,
+  "supportedReceiveDataTypes": ["exact_price"],
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/api/health",
+      "cache": "no-store",
+      "authentication": "none"
+    },
+    {
+      "method": "GET",
+      "path": "/api/protocol",
+      "cacheSeconds": 300,
+      "authentication": "none"
+    },
+    {
+      "method": "GET",
+      "path": "/api/public-version?groupId={groupId}&libraryId={libraryId}",
+      "cacheSeconds": 300,
+      "authentication": "none"
+    },
+    {
+      "method": "GET",
+      "path": "/api/public-snapshot?groupId={groupId}&libraryId={libraryId}&ifVersion={version}",
+      "cacheSeconds": 300,
+      "authentication": "none",
+      "maximumRecords": 5000,
+      "statuses": ["snapshot", "not_modified", "snapshot_unavailable"]
+    },
+    {
+      "method": "GET",
+      "path": "/api/public-changes?groupId={groupId}&libraryId={libraryId}&sinceVersion={version}&limit={1-100}",
+      "cacheSeconds": 300,
+      "authentication": "none",
+      "maximumPageSize": 100,
+      "statuses": ["changes", "not_modified"]
+    }
+  ],
+  "snapshot": {
+    "schemaVersion": 1,
+    "payloadSchemaVersion": 1,
+    "hashAlgorithm": "SHA-256",
+    "businessKeyPrefix": "bk_v1_",
+    "contentHashPrefix": "ch_v1_",
+    "operations": ["upsert", "delete"]
+  },
+  "cors": {
+    "allowOrigin": "*",
+    "allowMethods": ["GET", "HEAD", "OPTIONS"],
+    "credentials": false
+  },
+  "forbidden": [
+    "POST/PUT/PATCH/DELETE",
+    "Authorization header",
+    "deviceId or deviceToken",
+    "submission",
+    "administrator write operations",
+    "orders, history, notes, layouts or personal usage data"
+  ]
+}
