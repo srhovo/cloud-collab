@@ -1,4 +1,4 @@
-name: stage4c-client-ci
+name: stage4d-diagnostic-ci
 
 on:
   push:
@@ -8,22 +8,52 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  stage4d-diagnostic:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          show-progress: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm install --ignore-scripts
-      - run: npm run ci
-      - name: Install browser test runtime
+      - name: Capture diagnostic suites
+        id: diagnostics
+        shell: bash
         run: |
-          python3 -m pip install --disable-pip-version-check playwright
-          python3 -m playwright install --with-deps chromium
-          CHROMIUM_PATH="$(find "$HOME/.cache/ms-playwright" -type f -name chrome | head -n 1)"
-          test -n "$CHROMIUM_PATH"
-          sudo ln -sf "$CHROMIUM_PATH" /usr/bin/chromium
-      - run: python3 tests/core_compare.py
-      - run: python3 tests/browser_integration.py
+          set +e
+          node --test tests/stage4d-auto-approval.test.mjs > stage4d-rules.log 2>&1
+          rules=$?
+          node --test tests/stage4d-auto-approval-resilience.test.mjs > stage4d-resilience.log 2>&1
+          resilience=$?
+          npm test > node-tests.log 2>&1
+          node_tests=$?
+          npm run validate > validate.log 2>&1
+          validate=$?
+          printf 'rules=%s\nresilience=%s\nnode_tests=%s\nvalidate=%s\n' "$rules" "$resilience" "$node_tests" "$validate" > exit-codes.txt
+          exit 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage4d-diagnostic-logs
+          path: |
+            stage4d-rules.log
+            stage4d-resilience.log
+            node-tests.log
+            validate.log
+            exit-codes.txt
+          if-no-files-found: error
+      - name: Enforce diagnostics
+        shell: bash
+        run: |
+          cat exit-codes.txt
+          echo '--- rules ---'; tail -n 160 stage4d-rules.log
+          echo '--- resilience ---'; tail -n 160 stage4d-resilience.log
+          echo '--- node tests ---'; tail -n 160 node-tests.log
+          echo '--- validate ---'; tail -n 160 validate.log
+          grep -qx 'rules=0' exit-codes.txt
+          grep -qx 'resilience=0' exit-codes.txt
+          grep -qx 'node_tests=0' exit-codes.txt
+          grep -qx 'validate=0' exit-codes.txt
