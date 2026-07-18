@@ -1,0 +1,64 @@
+name: stage4d-diagnostic
+
+on:
+  push:
+    branches:
+      - agent/stage4d-auto-approval-foundation
+  pull_request:
+    paths:
+      - 'src/server/auto_approval*.js'
+      - 'tests/stage4d-*.test.mjs'
+      - '.github/workflows/stage4d-diagnostic.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run rule tests
+        id: rules
+        shell: bash
+        run: |
+          set +e
+          node --test tests/stage4d-auto-approval.test.mjs > stage4d-rules.log 2>&1
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Run resilience tests
+        id: resilience
+        shell: bash
+        run: |
+          set +e
+          node --test tests/stage4d-auto-approval-resilience.test.mjs > stage4d-resilience.log 2>&1
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Run boundary tests
+        id: boundary
+        shell: bash
+        run: |
+          set +e
+          node --test tests/stage4d-foundation-boundary.test.mjs > stage4d-boundary.log 2>&1
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          exit 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage4d-diagnostic-logs
+          path: |
+            stage4d-rules.log
+            stage4d-resilience.log
+            stage4d-boundary.log
+          if-no-files-found: error
+      - name: Enforce diagnostic result
+        run: |
+          cat stage4d-rules.log
+          cat stage4d-resilience.log
+          cat stage4d-boundary.log
+          test "${{ steps.rules.outputs.exit_code }}" = "0"
+          test "${{ steps.resilience.outputs.exit_code }}" = "0"
+          test "${{ steps.boundary.outputs.exit_code }}" = "0"
