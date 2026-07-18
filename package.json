@@ -1,6 +1,6 @@
 {
-  "name": "mdq-cloud-collab-readonly-stage3a",
-  "version": "0.3.0",
+  "name": "mdq-cloud-collab-receive-stage3b",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "engines": {

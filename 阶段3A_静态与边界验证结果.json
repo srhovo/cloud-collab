@@ -1,0 +1,154 @@
+{
+  "stage": "3A",
+  "candidateSha256": "dc2bf3185005923a7106ea1f1a4f86347eff6d49d0f4e8db1f4e38d59dcc7ee0",
+  "total": 27,
+  "passed": 22,
+  "failed": 5,
+  "checks": [
+    {
+      "name": "Stage2C source SHA is frozen",
+      "ok": true,
+      "details": "d8c6f537885d423fecb84aaa82a8e26e0ccaf0d83b5c499ee525ca6b07ab3eea"
+    },
+    {
+      "name": "candidate is 8.2.27",
+      "ok": false,
+      "details": null
+    },
+    {
+      "name": "legacy schema versions unchanged",
+      "ok": true,
+      "details": null
+    },
+    {
+      "name": "single inline script retained",
+      "ok": true,
+      "details": null
+    },
+    {
+      "name": "candidate JavaScript syntax passes",
+      "ok": true,
+      "details": ""
+    },
+    {
+      "name": "LocalDataSchemaManager unchanged from Stage2C",
+      "ok": true,
+      "details": null
+    },
+    {
+      "name": "BossDirectory unchanged from Stage2C",
+      "ok": true,
+      "details": null
+    },
+    {
+      "name": "PriceLibraryStore unchanged from Stage2C",
+      "ok": true,
+      "details": null
+    },
+    {
+      "name": "OrderFlowFeature unchanged from Stage2C",
+      "ok": true,
+      "details": null
+    },
+    {
+      "name": "DataPortabilityFeature unchanged from Stage2C",
+      "ok": true,
+      "details": null
+    },
+    {
+      "name": "API base is build-time meta config",
+      "ok": true,
+      "details": null
+    },
+    {
+      "name": "startup schedules readonly check without await",
+      "ok": false,
+      "details": null
+    },
+    {
+      "name": "readonly client omits credentials",
+      "ok": true,
+      "details": null
+    },
+    {
+      "name": "readonly client sends no Authorization header",
+      "ok": true,
+      "details": null
+    },
+    {
+      "name": "readonly API response is not persisted",
+      "ok": true,
+      "details": null
+    },
+    {
+      "name": "public-version response is transient",
+      "ok": false,
+      "details": null
+    },
+    {
+      "name": "no submission/admin endpoint exists",
+      "ok": true,
+      "details": null
+    },
+    {
+      "name": "only three public API routes exist",
+      "ok": false,
+      "details": [
+        "health.js",
+        "protocol.js",
+        "public-changes.js",
+        "public-snapshot.js",
+        "public-version.js"
+      ]
+    },
+    {
+      "name": "edge routes use read-only method gate",
+      "ok": true,
+      "details": null
+    },
+    {
+      "name": "edge routes expose no write capability",
+      "ok": true,
+      "details": null
+    },
+    {
+      "name": "CORS allows credential-free local HTML reads",
+      "ok": true,
+      "details": null
+    },
+    {
+      "name": "test catalog contains no business records",
+      "ok": false,
+      "details": null
+    },
+    {
+      "name": "cloud keys remain excluded from standard backup",
+      "ok": true,
+      "details": null
+    },
+    {
+      "name": "cloud keys remain outside legacy schema migration",
+      "ok": true,
+      "details": null
+    },
+    {
+      "name": "no new cloud persistence key added",
+      "ok": true,
+      "details": null
+    },
+    {
+      "name": "no credential is hardcoded",
+      "ok": true,
+      "details": null
+    },
+    {
+      "name": "build is reproducible",
+      "ok": true,
+      "details": {
+        "before": "dc2bf3185005923a7106ea1f1a4f86347eff6d49d0f4e8db1f4e38d59dcc7ee0",
+        "after": "dc2bf3185005923a7106ea1f1a4f86347eff6d49d0f4e8db1f4e38d59dcc7ee0",
+        "stderr": ""
+      }
+    }
+  ]
+}

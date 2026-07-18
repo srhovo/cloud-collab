@@ -1,0 +1,10 @@
+{
+  "version": "8.2.27",
+  "source": "src/码单器8.2.26_公共协作本地候选版.html",
+  "output": "dist/index.html",
+  "apiBase": "same-origin-or-disabled-for-file",
+  "stage": "3B-public-snapshot-receive",
+  "sha256": "204f307f10127d346d55ec7a9f8d50c03e6048579768bffc32620fdb90fe098e",
+  "bytes": 1022483,
+  "generatedAt": "2026-07-18T04:04:05.362Z"
+}

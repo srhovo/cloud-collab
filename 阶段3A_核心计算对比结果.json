@@ -1,0 +1,19 @@
+{
+  "baseVersion": "8.2.26",
+  "candidateVersion": "8.2.27",
+  "same": true,
+  "base": {
+    "discountedPrice": "100",
+    "groupCommission": "5",
+    "platformCommission": "20",
+    "earnings": "75",
+    "output": "派单：派单A\n陪陪：陪陪A\n老板：老板A\n类型：王者荣耀\n时长：1小时\n总价：100\n团抽：5\n派抽：20\n到手：75\n备注：兼容测试"
+  },
+  "candidate": {
+    "discountedPrice": "100",
+    "groupCommission": "5",
+    "platformCommission": "20",
+    "earnings": "75",
+    "output": "派单：派单A\n陪陪：陪陪A\n老板：老板A\n类型：王者荣耀\n时长：1小时\n总价：100\n团抽：5\n派抽：20\n到手：75\n备注：兼容测试"
+  }
+}
