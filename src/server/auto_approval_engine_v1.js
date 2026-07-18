@@ -459,7 +459,7 @@ function assertIndexEventLink(index, event) {
       || index.eventKey !== event.eventKey
       || index.baselineApprovedVersion !== event.baseline.approvedVersion
       || index.baselineContentHash !== event.baseline.contentHash) {
-    throw new AutoApprovalError('APPROVAL_EVENT_MISMATCH', `批准索引与公共事件不一致:${canonicalize({ index, event })}`, 500, { approvalId: index.approvalId });
+    throw new AutoApprovalError('APPROVAL_EVENT_MISMATCH', '批准索引与公共事件不一致', 500, { approvalId: index.approvalId });
   }
   return true;
 }
