@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import {
   getJSONStrong,
   normalizeBlobKey,
@@ -12,6 +12,8 @@ import { normalizeSubmission } from './submission_policy_v1.js';
 export const PREVIEW_WRITE_CONFIG_VERSION = 1;
 export const REGISTRATION_RATE_SLOT_MS = 60_000;
 export const SUBMISSION_RATE_SLOT_MS = 5_000;
+export const PREVIEW_ALLOWED_GROUP_ID = 'group_fixture';
+export const PREVIEW_ALLOWED_LIBRARY_ID = 'lib_receive_fixture';
 
 const GROUP_ID_PATTERN = /^group_[a-z0-9][a-z0-9_]{2,47}$/;
 const LIBRARY_ID_PATTERN = /^lib_[a-z0-9][a-z0-9_]{2,55}$/;
@@ -33,20 +35,66 @@ function normalizeScopedId(value, pattern, code, label) {
   return text;
 }
 
+function secretByteLength(value) {
+  return Buffer.byteLength(String(value || ''), 'utf8');
+}
+
+function safeSecretEqual(left, right) {
+  const a = Buffer.from(String(left || ''), 'utf8');
+  const b = Buffer.from(String(right || ''), 'utf8');
+  return a.length === b.length && a.length > 0 && timingSafeEqual(a, b);
+}
+
 export function readPreviewWriteConfig(env = {}) {
   if (String(env.CLOUD_WRITE_PREVIEW_ENABLED || '').trim() !== '1') {
     throw new PreviewWriteError('PREVIEW_WRITE_DISABLED', '预览写入功能未开启', 503);
   }
-  const rateLimitSalt = String(env.CLOUD_RATE_LIMIT_SALT || '').trim();
-  if (rateLimitSalt.length < 16 || rateLimitSalt.length > 256) {
+
+  const previewAccessKey = String(env.CLOUD_WRITE_PREVIEW_KEY || '');
+  if (secretByteLength(previewAccessKey) < 32 || secretByteLength(previewAccessKey) > 256) {
+    throw new PreviewWriteError('PREVIEW_ACCESS_KEY_NOT_CONFIGURED', '预览访问密钥尚未正确配置', 503);
+  }
+
+  const rateLimitSalt = String(env.CLOUD_RATE_LIMIT_SALT || '');
+  if (secretByteLength(rateLimitSalt) < 32 || secretByteLength(rateLimitSalt) > 256) {
     throw new PreviewWriteError('RATE_LIMIT_SALT_NOT_CONFIGURED', '预览限流盐值尚未正确配置', 503);
   }
+
+  const allowedGroupId = normalizeScopedId(
+    env.CLOUD_WRITE_ALLOWED_GROUP_ID,
+    GROUP_ID_PATTERN,
+    'INVALID_ALLOWED_GROUP_ID',
+    '允许写入的groupId',
+  );
+  const allowedLibraryId = normalizeScopedId(
+    env.CLOUD_WRITE_ALLOWED_LIBRARY_ID,
+    LIBRARY_ID_PATTERN,
+    'INVALID_ALLOWED_LIBRARY_ID',
+    '允许写入的libraryId',
+  );
+  if (allowedGroupId !== PREVIEW_ALLOWED_GROUP_ID || allowedLibraryId !== PREVIEW_ALLOWED_LIBRARY_ID) {
+    throw new PreviewWriteError(
+      'PREVIEW_SCOPE_MISCONFIGURED',
+      '预览写入作用域必须固定为合成测试库',
+      503,
+    );
+  }
+
   return Object.freeze({
     schemaVersion: PREVIEW_WRITE_CONFIG_VERSION,
-    allowedGroupId: normalizeScopedId(env.CLOUD_WRITE_ALLOWED_GROUP_ID, GROUP_ID_PATTERN, 'INVALID_ALLOWED_GROUP_ID', '允许写入的groupId'),
-    allowedLibraryId: normalizeScopedId(env.CLOUD_WRITE_ALLOWED_LIBRARY_ID, LIBRARY_ID_PATTERN, 'INVALID_ALLOWED_LIBRARY_ID', '允许写入的libraryId'),
+    allowedGroupId,
+    allowedLibraryId,
+    previewAccessKey,
     rateLimitSalt,
   });
+}
+
+export function assertPreviewRequestAccess(request, config) {
+  const supplied = String(request?.headers?.get?.('x-cloud-collab-preview-key') || '');
+  if (!safeSecretEqual(config?.previewAccessKey, supplied)) {
+    throw new PreviewWriteError('PREVIEW_ACCESS_DENIED', '预览写入访问凭据无效', 403);
+  }
+  return true;
 }
 
 function hashRateSubject(salt, subject) {
