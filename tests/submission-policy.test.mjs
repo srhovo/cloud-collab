@@ -10,63 +10,90 @@ import {
   normalizeSubmission,
 } from '../src/server/submission_policy_v1.js';
 
-const BASE = Object.freeze({
+const RAW_BASE = Object.freeze({
   schemaVersion: 1,
+  payloadSchemaVersion: 1,
   submissionId: 'sub_01JABCDEF0123456789XYZABCD',
   deviceId: 'dev_01JABCDEF0123456789XYZABCD',
   groupId: 'group_fixture',
   libraryId: 'lib_receive_fixture',
+  bossId: null,
   dataType: 'exact_price',
   operation: 'upsert',
-  basePublicVersion: 3,
+  origin: 'user',
   clientCreatedAt: 1784376000000,
+  businessKey: 'bk_v1_ja06mv-cCqOze_uiSIK4YjKoixcrewF-NIQXmAiTyTQ',
+  contentHash: 'ch_v1_8cLsoYwgKnmAXyDgNjXMkDLlD2t2JjdXyKrde_KhoqA',
+  idempotencyKey: '',
   payload: { serviceName: ' 测试服务A ', settleType: 'ROUND', unitPrice: 110 },
+  clientContext: { appVersion: '8.2.28', projectionSpecVersion: 1, queueSchemaVersion: 1 },
 });
 
 function clone(value) { return JSON.parse(JSON.stringify(value)); }
+function withComputed(input = RAW_BASE) {
+  const value = clone(input);
+  value.idempotencyKey = buildIdempotencyKey(value.deviceId, value.submissionId);
+  return value;
+}
 function expectCode(code, fn) {
   assert.throws(fn, error => error instanceof SubmissionValidationError && error.code === code);
 }
 
-test('normalizes the strict exact-price submission whitelist', () => {
+const BASE = Object.freeze(withComputed());
+
+test('accepts the frozen atomic envelope and normalizes exact price payload', () => {
   const value = normalizeSubmission(BASE);
   assert.equal(value.groupId, 'group_fixture');
+  assert.equal(value.origin, 'user');
   assert.deepEqual(value.payload, { serviceName: '测试服务A', settleType: 'round', unitPrice: 110 });
-  assert.equal(Object.isFrozen(value), true);
-  assert.equal(Object.isFrozen(value.payload), true);
+  assert.deepEqual(value.clientContext, { appVersion: '8.2.28', projectionSpecVersion: 1, queueSchemaVersion: 1 });
 });
 
-test('hashes match the Stage3B synthetic public fixture', () => {
+test('server hashes match the Stage3B synthetic public fixture', () => {
   const result = computeSubmissionHashes(BASE);
   assert.equal(result.businessKey, 'bk_v1_ja06mv-cCqOze_uiSIK4YjKoixcrewF-NIQXmAiTyTQ');
   assert.equal(result.contentHash, 'ch_v1_8cLsoYwgKnmAXyDgNjXMkDLlD2t2JjdXyKrde_KhoqA');
 });
 
-test('idempotency key is deterministic and device-scoped', () => {
+test('idempotency key follows frozen ik_v1 canonical object rule', () => {
   const first = buildIdempotencyKey(BASE.deviceId, BASE.submissionId);
   const second = buildIdempotencyKey(BASE.deviceId, BASE.submissionId);
   const other = buildIdempotencyKey('dev_01JABCDEF0123456789XYZABCE', BASE.submissionId);
-  assert.match(first, /^idem_v1_[A-Za-z0-9_-]{43}$/);
+  assert.match(first, /^ik_v1_[A-Za-z0-9_-]{43}$/);
   assert.equal(first, second);
   assert.notEqual(first, other);
 });
 
-test('rejects unknown top-level fields and private data', () => {
-  const input = { ...clone(BASE), note: '私人备注' };
-  expectCode('INVALID_SUBMISSION_FIELDS', () => normalizeSubmission(input));
+test('rejects unknown top-level and recursively forbidden fields', () => {
+  expectCode('FORBIDDEN_FIELD', () => normalizeSubmission({ ...clone(BASE), note: '私人备注' }));
+  const nested = clone(BASE);
+  nested.payload.usageCount = 9;
+  expectCode('FORBIDDEN_FIELD', () => normalizeSubmission(nested));
+  expectCode('INVALID_SUBMISSION_FIELDS', () => normalizeSubmission({ ...clone(BASE), harmlessExtra: true }));
 });
 
-test('rejects unknown payload fields', () => {
-  const input = clone(BASE);
-  input.payload.usageCount = 9;
-  expectCode('INVALID_EXACT_PRICE_FIELDS', () => normalizeSubmission(input));
+test('requires all frozen envelope versions, origin, hashes and client context', () => {
+  const missing = clone(BASE);
+  delete missing.payloadSchemaVersion;
+  expectCode('INVALID_SUBMISSION_FIELDS', () => normalizeSubmission(missing));
+  const badOrigin = { ...clone(BASE), origin: 'import' };
+  expectCode('INVALID_SUBMISSION_ORIGIN', () => normalizeSubmission(badOrigin));
+  const badContext = clone(BASE);
+  badContext.clientContext.queueSchemaVersion = 2;
+  expectCode('UNSUPPORTED_QUEUE_SCHEMA', () => normalizeSubmission(badContext));
 });
 
-test('rejects delete and non-price data during Stage4A', () => {
-  const deleted = { ...clone(BASE), operation: 'delete' };
-  expectCode('SENSITIVE_OPERATION_REQUIRES_REVIEW', () => normalizeSubmission(deleted));
-  const name = { ...clone(BASE), dataType: 'playable_name' };
-  expectCode('UNSUPPORTED_DATA_TYPE', () => normalizeSubmission(name));
+test('requires Crockford ULID device and submission identifiers', () => {
+  const badDevice = { ...clone(BASE), deviceId: 'dev_01JABCDEF0123456789XYZABCI' };
+  expectCode('INVALID_DEVICE_ID', () => normalizeSubmission(badDevice));
+  const badSubmission = { ...clone(BASE), submissionId: 'sub_short' };
+  expectCode('INVALID_SUBMISSION_ID', () => normalizeSubmission(badSubmission));
+});
+
+test('rejects delete, non-price data and non-null boss scope', () => {
+  expectCode('SENSITIVE_OPERATION_REQUIRES_REVIEW', () => normalizeSubmission({ ...clone(BASE), operation: 'delete' }));
+  expectCode('UNSUPPORTED_DATA_TYPE', () => normalizeSubmission({ ...clone(BASE), dataType: 'playable_name' }));
+  expectCode('INVALID_BOSS_SCOPE', () => normalizeSubmission({ ...clone(BASE), bossId: 'boss_01JABCDEF0123456789XYZABCD' }));
 });
 
 test('rejects invalid price precision and control characters', () => {
@@ -78,65 +105,60 @@ test('rejects invalid price precision and control characters', () => {
   expectCode('INVALID_SERVICE_NAME', () => normalizeSubmission(control));
 });
 
-test('enforces the 64KB request limit', () => {
-  assert.equal(MAX_SUBMISSION_BYTES, 64 * 1024);
+test('rejects client hash and idempotency mismatches after server recomputation', () => {
+  expectCode('BUSINESS_KEY_MISMATCH', () => normalizeSubmission({ ...clone(BASE), businessKey: 'bk_v1_0000000000000000000000000000000000000000000' }));
+  expectCode('CONTENT_HASH_MISMATCH', () => normalizeSubmission({ ...clone(BASE), contentHash: 'ch_v1_0000000000000000000000000000000000000000000' }));
+  expectCode('IDEMPOTENCY_KEY_MISMATCH', () => normalizeSubmission({ ...clone(BASE), idempotencyKey: 'ik_v1_0000000000000000000000000000000000000000000' }));
+});
+
+test('enforces the frozen 16KB request limit', () => {
+  assert.equal(MAX_SUBMISSION_BYTES, 16 * 1024);
   assert.ok(assertSubmissionRequestBytes(BASE) < MAX_SUBMISSION_BYTES);
   expectCode('SUBMISSION_TOO_LARGE', () => assertSubmissionRequestBytes('x'.repeat(MAX_SUBMISSION_BYTES + 1)));
 });
 
-test('new price waits for a second device and cannot mutate public data', () => {
-  const decision = evaluateExactPriceCandidate({ submission: BASE, matchingDeviceCount: 1 });
+test('new content waits for a second device and cannot mutate public data', () => {
+  const decision = evaluateExactPriceCandidate({ submission: BASE, matchingDistinctDeviceCount: 1 });
   assert.equal(decision.decision, 'waiting_confirmation');
   assert.equal(decision.publicMutationAllowed, false);
   assert.equal(decision.autoApprovalEnabled, false);
 });
 
-test('two matching devices become eligible but automatic approval remains disabled', () => {
-  const decision = evaluateExactPriceCandidate({ submission: BASE, matchingDeviceCount: 2 });
+test('two distinct devices become eligible but automatic approval remains disabled', () => {
+  const decision = evaluateExactPriceCandidate({ submission: BASE, matchingDistinctDeviceCount: 2 });
   assert.equal(decision.decision, 'eligible_auto_approval');
   assert.equal(decision.reason, 'two_devices_match');
   assert.equal(decision.publicMutationAllowed, false);
   assert.equal(decision.autoApprovalEnabled, false);
 });
 
-test('same public content is a no-op', () => {
-  const hashes = computeSubmissionHashes(BASE);
-  const decision = evaluateExactPriceCandidate({
-    submission: BASE,
-    existingRecord: { businessKey: hashes.businessKey, contentHash: hashes.contentHash, unitPrice: 110 },
-  });
-  assert.equal(decision.decision, 'duplicate_noop');
+test('trusted device is only an eligibility input and cannot publish in Stage4A', () => {
+  const decision = evaluateExactPriceCandidate({ submission: BASE, trustedDevice: true });
+  assert.equal(decision.decision, 'eligible_auto_approval');
+  assert.equal(decision.reason, 'trusted_device');
+  assert.equal(decision.publicMutationAllowed, false);
   assert.equal(decision.autoApprovalEnabled, false);
 });
 
-test('any existing price change requires review until a versioned policy exists', () => {
-  const hashes = computeSubmissionHashes(BASE);
-  for (const unitPrice of [105, 120]) {
-    const decision = evaluateExactPriceCandidate({
-      submission: { ...clone(BASE), payload: { ...BASE.payload, unitPrice } },
-      existingRecord: {
-        businessKey: hashes.businessKey,
-        contentHash: 'ch_v1_fmOBmfqgyeg_JeMum9_V3xFSi9hzH_KUTdd8wGvnEls',
-        unitPrice: 100,
-      },
-      matchingDeviceCount: 2,
-      trustedDevice: true,
-    });
-    assert.equal(decision.decision, 'pending_review');
-    assert.equal(decision.reason, 'existing_price_change_requires_policy');
-    assert.equal(decision.publicMutationAllowed, false);
-    assert.equal(decision.autoApprovalEnabled, false);
-    assert.equal(Object.hasOwn(decision, 'changeRatio'), false);
-  }
+test('same public content is a no-op', () => {
+  const decision = evaluateExactPriceCandidate({
+    submission: BASE,
+    existingRecord: { businessKey: BASE.businessKey, contentHash: BASE.contentHash },
+  });
+  assert.equal(decision.decision, 'duplicate_noop');
 });
 
-test('conflicting candidates require review', () => {
-  const conflict = evaluateExactPriceCandidate({
+test('any conflicting public value or candidate requires review without a hard ±10% rule', () => {
+  const publicConflict = evaluateExactPriceCandidate({
     submission: BASE,
-    conflictingCandidateCount: 1,
+    existingRecord: { businessKey: BASE.businessKey, contentHash: 'ch_v1_0000000000000000000000000000000000000000000' },
+    matchingDistinctDeviceCount: 2,
   });
-  assert.equal(conflict.decision, 'pending_review');
-  assert.equal(conflict.reason, 'conflict_detected');
-  assert.equal(conflict.publicMutationAllowed, false);
-  assert.equal(conflict.autoApprovalEnabled, false);
+  assert.equal(publicConflict.decision, 'pending_review');
+  assert.equal(publicConflict.reason, 'public_value_conflict');
+  assert.equal(Object.hasOwn(publicConflict, 'changeRatio'), false);
+
+  const candidateConflict = evaluateExactPriceCandidate({ submission: BASE, conflictingCandidateCount: 1 });
+  assert.equal(candidateConflict.decision, 'pending_review');
+  assert.equal(candidateConflict.reason, 'candidate_conflict');
 });
