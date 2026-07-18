@@ -234,7 +234,7 @@
   async function waitForClient(child, timeoutMs = 12000) {
     const started = Date.now();
     while (Date.now() - started < timeoutMs) {
-      const app = child.__stage4fApp;
+      const app = child.orderCalculator;
       if (app?.cloudCollabStores && app?.cloudCollabSubmissionDispatcher && child.CloudCollabSubmission && child.CloudCollabSnapshotSync) return app;
       await new Promise(resolve => setTimeout(resolve, 60));
     }
@@ -288,9 +288,6 @@
       html = html.replace(/<meta name="cloud-collab-api-base" content="[^"]*">/, `<meta name="cloud-collab-api-base" content="${window.location.origin}">`);
       if (!html.includes("const APP_VERSION = '8.2.28';")) throw new Error('当前构建产物不是8.2.28候选。');
       if (!html.includes('pendingCloudChanges')) throw new Error('当前构建产物缺少冻结的本地待上传队列。');
-      const bridge = '<script>globalThis.__stage4fApp = app;<\/script>';
-      if (!html.includes('</body>')) throw new Error('8.2.28页面结构无法建立验收桥。');
-      html = html.replace('</body>', `${bridge}</body>`);
       const frame = els.clientFrame;
       frame.src = 'about:blank';
       const child = frame.contentWindow;
