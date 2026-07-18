@@ -223,6 +223,7 @@ export function evaluateExactPriceCandidate({
       businessKey: computed.businessKey,
       contentHash: computed.contentHash,
       publicMutationAllowed: false,
+      autoApprovalEnabled: false,
     });
   }
 
@@ -233,22 +234,19 @@ export function evaluateExactPriceCandidate({
       businessKey: computed.businessKey,
       contentHash: computed.contentHash,
       publicMutationAllowed: false,
+      autoApprovalEnabled: false,
     });
   }
 
-  let changeRatio = null;
   if (existing) {
-    changeRatio = Math.abs(computed.submission.payload.unitPrice - existing.unitPrice) / existing.unitPrice;
-    if (changeRatio > 0.10 + 1e-12) {
-      return Object.freeze({
-        decision: 'pending_review',
-        reason: 'price_change_over_10_percent',
-        changeRatio,
-        businessKey: computed.businessKey,
-        contentHash: computed.contentHash,
-        publicMutationAllowed: false,
-      });
-    }
+    return Object.freeze({
+      decision: 'pending_review',
+      reason: 'existing_price_change_requires_policy',
+      businessKey: computed.businessKey,
+      contentHash: computed.contentHash,
+      publicMutationAllowed: false,
+      autoApprovalEnabled: false,
+    });
   }
 
   const independentlyConfirmed = matchingDeviceCount >= 2;
@@ -258,7 +256,6 @@ export function evaluateExactPriceCandidate({
     reason: eligibleForAutomaticApproval
       ? (trustedDevice ? 'trusted_device' : 'two_devices_match')
       : 'second_device_required',
-    changeRatio,
     businessKey: computed.businessKey,
     contentHash: computed.contentHash,
     publicMutationAllowed: false,
