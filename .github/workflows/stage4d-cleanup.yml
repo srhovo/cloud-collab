@@ -1,0 +1,45 @@
+name: stage4d-cleanup
+
+on:
+  push:
+    branches:
+      - agent/stage4d-auto-approval-foundation
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: ${{ !contains(github.event.head_commit.message, '[stage4d-cleanup]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/stage4d-auto-approval-foundation
+      - name: Remove temporary diagnostics and restore safe error text
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          engine_path = Path('src/server/auto_approval_engine_v1.js')
+          engine = engine_path.read_text(encoding='utf-8')
+          old = "throw new AutoApprovalError('APPROVAL_EVENT_MISMATCH', `批准索引与公共事件不一致:${canonicalize({ index, event })}`, 500, { approvalId: index.approvalId });"
+          new = "throw new AutoApprovalError('APPROVAL_EVENT_MISMATCH', '批准索引与公共事件不一致', 500, { approvalId: index.approvalId });"
+          if old not in engine:
+              raise SystemExit('diagnostic error target not found')
+          engine_path.write_text(engine.replace(old, new, 1), encoding='utf-8')
+
+          for relative in [
+              '.github/workflows/stage4d-stress.yml',
+              '.github/workflows/stage4d-cleanup.yml',
+          ]:
+              path = Path(relative)
+              if path.exists():
+                  path.unlink()
+          PY
+          git config user.name "stage4d-maintenance"
+          git config user.email "stage4d-maintenance@users.noreply.github.com"
+          git add -A
+          git commit -m "阶段4D：撤除临时压力与诊断工具 [stage4d-cleanup]"
+          git push origin HEAD:agent/stage4d-auto-approval-foundation
