@@ -3,21 +3,19 @@ import {
   PREVIEW_CLEANUP_CONFIRMATION,
   assertPreviewCleanupAccess,
   cleanupSyntheticPreviewObjects,
+  inspectSyntheticPreviewObjects,
   readPreviewCleanupConfig,
 } from './preview_cleanup_v1.js';
 
 const SERVICE_ID = 'cloud-collab-preview-cleanup';
-const API_VERSION = '2026-07-18-stage4c-cleanup';
-const MAX_BODY_BYTES = 1024;
+const API_VERSION = '2026-07-18-stage4c-cleanup-v2';
+const MAX_BODY_BYTES = 2048;
+const DIGEST_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
 function headers(extra = {}) {
   return {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Accept, Content-Type, X-Cloud-Collab-Preview-Key',
-    'Access-Control-Max-Age': '600',
     'Cache-Control': 'no-store',
-    'Cross-Origin-Resource-Policy': 'cross-origin',
+    'Cross-Origin-Resource-Policy': 'same-origin',
     'X-Content-Type-Options': 'nosniff',
     ...extra,
   };
@@ -66,41 +64,70 @@ async function readBody(request) {
     error.status = 400;
     throw error;
   }
-  const keys = value && typeof value === 'object' && !Array.isArray(value) ? Object.keys(value).sort() : [];
-  if (keys.join(',') !== 'confirmation,schemaVersion' || value.schemaVersion !== 1 || value.confirmation !== PREVIEW_CLEANUP_CONFIRMATION) {
+
+  if (!value || typeof value !== 'object' || Array.isArray(value) || value.schemaVersion !== 1 || value.confirmation !== PREVIEW_CLEANUP_CONFIRMATION) {
     const error = new Error('清理请求确认字段无效');
     error.code = 'INVALID_CLEANUP_REQUEST';
     error.status = 400;
     throw error;
   }
-  return value;
+
+  if (value.action === 'inspect') {
+    const keys = Object.keys(value).sort();
+    if (keys.join(',') !== 'action,confirmation,schemaVersion') {
+      const error = new Error('检查请求字段无效');
+      error.code = 'INVALID_CLEANUP_REQUEST';
+      error.status = 400;
+      throw error;
+    }
+    return Object.freeze({ action: 'inspect' });
+  }
+
+  if (value.action === 'execute') {
+    const keys = Object.keys(value).sort();
+    if (keys.join(',') !== 'action,confirmation,expectedKeySetDigest,schemaVersion' || !DIGEST_PATTERN.test(String(value.expectedKeySetDigest || ''))) {
+      const error = new Error('执行请求必须携带检查阶段返回的对象集合摘要');
+      error.code = 'INVALID_CLEANUP_REQUEST';
+      error.status = 400;
+      throw error;
+    }
+    return Object.freeze({ action: 'execute', expectedKeySetDigest: String(value.expectedKeySetDigest) });
+  }
+
+  const error = new Error('清理动作必须为inspect或execute');
+  error.code = 'INVALID_CLEANUP_ACTION';
+  error.status = 400;
+  throw error;
 }
 
 export async function handlePreviewCleanupRequest(context, dependencies = {}) {
   const method = String(context?.request?.method || 'GET').toUpperCase();
-  if (method === 'OPTIONS') return new Response(null, { status: 204, headers: headers() });
   if (method !== 'POST') return json({
     ok: false,
     serviceId: SERVICE_ID,
     apiVersion: API_VERSION,
     writeScope: 'fixture_cleanup_only',
     error: { code: 'METHOD_NOT_ALLOWED', message: `清理接口不支持 ${method} 方法` },
-  }, 405, { Allow: 'POST, OPTIONS' });
+  }, 405, { Allow: 'POST' });
 
   try {
     const env = context?.env || {};
     const config = readPreviewCleanupConfig(env);
     assertPreviewCleanupAccess(context.request, config);
-    await readBody(context.request);
+    const body = await readBody(context.request);
     const createStore = dependencies.createStore || createEdgeOneBlobStore;
+    const inspect = dependencies.inspect || inspectSyntheticPreviewObjects;
     const cleanup = dependencies.cleanup || cleanupSyntheticPreviewObjects;
     const store = createStore(env);
-    const result = await cleanup({ store });
+    const result = body.action === 'inspect'
+      ? await inspect({ store })
+      : await cleanup({ store, expectedKeySetDigest: body.expectedKeySetDigest });
     return json({
       ok: true,
       serviceId: SERVICE_ID,
       apiVersion: API_VERSION,
       writeScope: 'fixture_cleanup_only',
+      action: body.action,
       data: result,
     }, 200);
   } catch (error) {
