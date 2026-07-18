@@ -141,6 +141,7 @@ function parseScope(request) {
 }
 
 function parseNonNegativeInteger(raw, code, message, fallback = null) {
+  if ((raw === null || raw === '') && fallback === null) return null;
   const value = raw === null || raw === '' ? fallback : Number(raw);
   if (!Number.isInteger(value) || value < 0) {
     const error = new Error(message);
