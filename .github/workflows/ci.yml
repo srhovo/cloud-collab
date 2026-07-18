@@ -1,82 +1,29 @@
-name: stage4d-baseline-fix
+name: stage4c-client-ci
 
 on:
   push:
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  apply-baseline-fix:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/agent/stage4d-auto-approval-foundation'
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          ref: agent/stage4d-auto-approval-foundation
-          fetch-depth: 0
-      - name: Apply exact baseline-zero fix
-        shell: python
+          node-version: 22
+          cache: npm
+      - run: npm install --ignore-scripts
+      - run: npm run ci
+      - name: Install browser test runtime
         run: |
-          from pathlib import Path
-
-          path = Path('src/server/auto_approval_engine_v1.js')
-          text = path.read_text(encoding='utf-8')
-
-          old_block = """function normalizeBaseline(value = null) {
-            if (value === null || value === undefined) {
-              return Object.freeze({ approvedVersion: 0, contentHash: null, unitPrice: null });
-            }
-            assertExactKeys(value, ['approvedVersion', 'contentHash', 'unitPrice'], 'INVALID_BASELINE_RECORD', '公共基线摘要结构无效');
-            const approvedVersion = normalizePublicVersion(value.approvedVersion);
-            const contentHash = normalizeContentHash(value.contentHash);
-            const unitPrice = Number(value.unitPrice);
-            if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
-              throw new AutoApprovalError('INVALID_BASELINE_PRICE', '公共基线价格无效', 500);
-            }
-            return Object.freeze({ approvedVersion, contentHash, unitPrice });
-          }
-          """
-
-          new_block = """function normalizeBaseline(value = null) {
-            if (value === null || value === undefined) {
-              return Object.freeze({ approvedVersion: 0, contentHash: null, unitPrice: null });
-            }
-            assertExactKeys(value, ['approvedVersion', 'contentHash', 'unitPrice'], 'INVALID_BASELINE_RECORD', '公共基线摘要结构无效');
-            const approvedVersion = normalizePublicVersion(value.approvedVersion, { allowZero: true });
-            if (approvedVersion === 0) {
-              if (value.contentHash !== null || value.unitPrice !== null) {
-                throw new AutoApprovalError('INVALID_BASELINE_RECORD', '空公共基线必须使用null内容', 500);
-              }
-              return Object.freeze({ approvedVersion: 0, contentHash: null, unitPrice: null });
-            }
-            const contentHash = normalizeContentHash(value.contentHash);
-            const unitPrice = Number(value.unitPrice);
-            if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
-              throw new AutoApprovalError('INVALID_BASELINE_PRICE', '公共基线价格无效', 500);
-            }
-            return Object.freeze({ approvedVersion, contentHash, unitPrice });
-          }
-          """
-
-          old_line = "return normalizeBaseline(value.approvedVersion === 0 ? null : value);"
-          new_line = "return normalizeBaseline(value);"
-
-          if text.count(old_block) != 1:
-            raise SystemExit(f'normalizeBaseline block match count: {text.count(old_block)}')
-          if text.count(old_line) != 1:
-            raise SystemExit(f'assertBaselineObject line match count: {text.count(old_line)}')
-
-          text = text.replace(old_block, new_block, 1).replace(old_line, new_line, 1)
-          path.write_text(text, encoding='utf-8')
-      - name: Commit exact fix
-        shell: bash
-        run: |
-          git diff --check
-          git diff -- src/server/auto_approval_engine_v1.js
-          git config user.name "stage4d-fix-bot"
-          git config user.email "stage4d-fix-bot@users.noreply.github.com"
-          git add src/server/auto_approval_engine_v1.js
-          git commit -m "阶段4D：允许空公共基线版本0 [baseline-fix]"
-          git push origin HEAD:agent/stage4d-auto-approval-foundation
+          python3 -m pip install --disable-pip-version-check playwright
+          python3 -m playwright install --with-deps chromium
+          CHROMIUM_PATH="$(find "$HOME/.cache/ms-playwright" -type f -name chrome | head -n 1)"
+          test -n "$CHROMIUM_PATH"
+          sudo ln -sf "$CHROMIUM_PATH" /usr/bin/chromium
+      - run: python3 tests/core_compare.py
+      - run: python3 tests/browser_integration.py
