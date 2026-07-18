@@ -33,8 +33,24 @@ jobs:
         run: node --test --test-name-pattern="without replacing" tests/stage4e-preview-auto-approval-routing.test.mjs
       - name: Full build
         run: npm run build
-      - name: Full Node tests
-        run: npm test
+      - name: Capture full Node tests
+        id: full_node
+        shell: bash
+        run: |
+          set +e
+          npm test > stage4e-full-node.log 2>&1
+          code=$?
+          cat stage4e-full-node.log
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage4e-full-node-log
+          path: stage4e-full-node.log
+          if-no-files-found: error
+      - name: Enforce full Node result
+        run: test "${{ steps.full_node.outputs.exit_code }}" = "0"
       - name: Static validation
         run: npm run validate
 
