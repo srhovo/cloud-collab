@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+  <title>阶段4C测试数据清理</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f5f6f8; color: #1f2328; }
+    main { width: min(720px, calc(100% - 28px)); margin: 28px auto; }
+    .card { background: #fff; border: 1px solid #d8dee4; border-radius: 14px; padding: 22px; box-shadow: 0 8px 24px rgba(31,35,40,.08); }
+    h1 { margin: 0 0 8px; font-size: 24px; }
+    p { line-height: 1.65; }
+    .warning { border-left: 4px solid #bf8700; background: #fff8c5; padding: 12px 14px; border-radius: 8px; margin: 16px 0; }
+    label { display: block; font-weight: 700; margin: 18px 0 8px; }
+    input[type=password] { width: 100%; padding: 12px; border: 1px solid #8c959f; border-radius: 8px; font-size: 16px; }
+    button { border: 0; border-radius: 8px; padding: 12px 16px; font-size: 16px; font-weight: 700; cursor: pointer; }
+    button:disabled { cursor: not-allowed; opacity: .45; }
+    .primary { background: #0969da; color: #fff; }
+    .danger { background: #cf222e; color: #fff; }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+    .result { margin-top: 18px; border: 1px solid #d0d7de; border-radius: 10px; padding: 14px; background: #f6f8fa; }
+    .result strong { font-size: 24px; }
+    .status { min-height: 24px; margin-top: 14px; font-weight: 700; white-space: pre-wrap; }
+    .ok { color: #1a7f37; }
+    .error { color: #cf222e; }
+    .confirm { display: flex; align-items: flex-start; gap: 9px; margin-top: 16px; font-weight: 600; }
+    .confirm input { margin-top: 4px; }
+    .small { color: #57606a; font-size: 14px; }
+  </style>
+</head>
+<body>
+<main>
+  <section class="card">
+    <h1>阶段4C测试数据清理</h1>
+    <p>这个页面只处理 <strong>cloud-collab-preview-v1</strong> 中的合成测试对象，不处理正式用户数据。</p>
+    <div class="warning">先点击“检查数量”。只有检查成功后，删除按钮才会开启。</div>
+
+    <label for="cleanupKey">临时清理密码</label>
+    <input id="cleanupKey" type="password" autocomplete="new-password" spellcheck="false" placeholder="粘贴 CLOUD_PREVIEW_CLEANUP_KEY">
+
+    <div class="actions">
+      <button id="inspectBtn" class="primary" type="button">检查数量（不会删除）</button>
+    </div>
+
+    <div id="result" class="result" hidden>
+      <div>发现的测试对象数量：</div>
+      <strong id="objectCount">0</strong>
+      <div class="small" id="digestState">对象集合摘要尚未锁定。</div>
+      <label class="confirm"><input id="confirmBox" type="checkbox">我确认上面的数量符合预期，只删除这些合成测试对象。</label>
+      <div class="actions">
+        <button id="executeBtn" class="danger" type="button" disabled>删除这些测试对象</button>
+      </div>
+    </div>
+
+    <div id="status" class="status" aria-live="polite"></div>
+    <p class="small">密码只保存在当前页面内存中，不会写入网页存储；关闭页面后即消失。</p>
+  </section>
+</main>
+<script>
+(() => {
+  'use strict';
+  const keyInput = document.getElementById('cleanupKey');
+  const inspectBtn = document.getElementById('inspectBtn');
+  const executeBtn = document.getElementById('executeBtn');
+  const confirmBox = document.getElementById('confirmBox');
+  const resultBox = document.getElementById('result');
+  const objectCountEl = document.getElementById('objectCount');
+  const digestStateEl = document.getElementById('digestState');
+  const statusEl = document.getElementById('status');
+  let inspected = null;
+
+  function endpoint() {
+    const target = new URL('/one-shot/cleanup-preview', window.location.origin);
+    const current = new URL(window.location.href);
+    for (const name of ['eo_token', 'eo_time']) {
+      const value = current.searchParams.get(name);
+      if (value) target.searchParams.set(name, value);
+    }
+    return target.toString();
+  }
+
+  function setStatus(message, kind = '') {
+    statusEl.textContent = message;
+    statusEl.className = `status ${kind}`.trim();
+  }
+
+  function setBusy(busy) {
+    inspectBtn.disabled = busy;
+    keyInput.disabled = busy;
+    executeBtn.disabled = busy || !inspected || !confirmBox.checked;
+  }
+
+  async function request(action) {
+    const key = keyInput.value.trim();
+    if (key.length < 32) throw new Error('临时清理密码长度不足，请重新粘贴完整密码。');
+    const body = {
+      schemaVersion: 1,
+      action,
+      confirmation: 'DELETE_SYNTHETIC_PREVIEW_V1'
+    };
+    if (action === 'execute') body.expectedKeySetDigest = inspected.keySetDigest;
+    const response = await fetch(endpoint(), {
+      method: 'POST',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      redirect: 'error',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Cloud-Collab-Cleanup-Key': key
+      },
+      body: JSON.stringify(body)
+    });
+    const text = await response.text();
+    let payload;
+    try { payload = JSON.parse(text); }
+    catch (_) { throw new Error(`服务器返回了无法识别的结果（状态码 ${response.status}）。`); }
+    if (!response.ok || !payload?.ok) {
+      const code = payload?.error?.code || `HTTP_${response.status}`;
+      const message = payload?.error?.message || '请求失败';
+      throw new Error(`${code}：${message}`);
+    }
+    return payload.data;
+  }
+
+  inspectBtn.addEventListener('click', async () => {
+    inspected = null;
+    confirmBox.checked = false;
+    resultBox.hidden = true;
+    setBusy(true);
+    setStatus('正在检查，只读取数量，不会删除……');
+    try {
+      const data = await request('inspect');
+      inspected = data;
+      objectCountEl.textContent = String(data.objectCount);
+      digestStateEl.textContent = '对象集合摘要已锁定；如果集合发生变化，服务器会拒绝删除。';
+      resultBox.hidden = false;
+      if (data.objectCount === 0) {
+        setStatus('检查完成：没有需要删除的测试对象。', 'ok');
+      } else {
+        setStatus('检查完成。请核对数量，确认后才能删除。', 'ok');
+      }
+    } catch (error) {
+      setStatus(error?.message || '检查失败。', 'error');
+    } finally {
+      setBusy(false);
+    }
+  });
+
+  confirmBox.addEventListener('change', () => {
+    executeBtn.disabled = !inspected || !confirmBox.checked || inspected.objectCount === 0;
+  });
+
+  executeBtn.addEventListener('click', async () => {
+    if (!inspected || !confirmBox.checked || inspected.objectCount === 0) return;
+    const count = inspected.objectCount;
+    if (!window.confirm(`将删除 ${count} 个合成测试对象。删除后不可恢复，确定继续吗？`)) return;
+    setBusy(true);
+    setStatus('正在删除并复查剩余数量，请不要关闭页面……');
+    try {
+      const data = await request('execute');
+      if (data.completed !== true || data.remainingCount !== 0) throw new Error('服务器没有确认清理完成，请立即停止并保留工具。');
+      objectCountEl.textContent = '0';
+      confirmBox.checked = false;
+      confirmBox.disabled = true;
+      executeBtn.disabled = true;
+      inspectBtn.disabled = true;
+      keyInput.value = '';
+      keyInput.disabled = true;
+      setStatus(`清理完成：已删除 ${data.deletedCount} 个测试对象，剩余 0 个。`, 'ok');
+    } catch (error) {
+      setStatus(error?.message || '删除失败。请停止操作并保留工具。', 'error');
+      setBusy(false);
+    }
+  });
+})();
+</script>
+</body>
+</html>
