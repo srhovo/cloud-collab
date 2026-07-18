@@ -1,3 +1,4 @@
+import { getStore } from '@edgeone/pages-blob';
 import {
   DEVICE_REGISTRATION_LIMITS,
   DeviceRegistrationError,
@@ -7,6 +8,7 @@ import {
 
 const SERVICE_ID = 'cloud-collab-device-registration';
 const API_VERSION = '2026-07-18';
+const DEFAULT_STORE_NAME = 'cloud-collab-private';
 
 function corsHeaders(extra = {}) {
   return {
@@ -47,20 +49,47 @@ function enabledFlag(value) {
   return ['1', 'true', 'yes', 'on'].includes(String(value ?? '').trim().toLowerCase());
 }
 
-function resolveRuntime(context) {
+function runtimeConfig(context) {
   const env = context?.env || {};
   return {
     enabled: enabledFlag(env.CLOUD_COLLAB_DEVICE_REGISTRATION_ENABLED
       ?? globalThis.CLOUD_COLLAB_DEVICE_REGISTRATION_ENABLED),
-    kv: env.CLOUD_COLLAB_KV
-      ?? env.cloud_collab_kv
-      ?? globalThis.CLOUD_COLLAB_KV
-      ?? globalThis.cloud_collab_kv
-      ?? null,
     secret: env.CLOUD_COLLAB_DEVICE_TOKEN_SECRET
       ?? globalThis.CLOUD_COLLAB_DEVICE_TOKEN_SECRET
       ?? '',
+    storeName: String(env.CLOUD_COLLAB_DEVICE_STORE_NAME
+      ?? globalThis.CLOUD_COLLAB_DEVICE_STORE_NAME
+      ?? DEFAULT_STORE_NAME).trim(),
+    injectedStore: env.CLOUD_COLLAB_DEVICE_STORE
+      ?? env.CLOUD_COLLAB_KV
+      ?? null,
   };
+}
+
+function blobRegistry(store) {
+  return {
+    async get(key) {
+      return store.get(key, { type: 'text', consistency: 'strong' });
+    },
+    async put(key, value) {
+      return store.set(key, value, { onlyIfNew: true });
+    },
+  };
+}
+
+function resolveRegistry(config) {
+  if (config.injectedStore) {
+    if (typeof config.injectedStore.get !== 'function' || typeof config.injectedStore.put !== 'function') {
+      throw new DeviceRegistrationError('DEVICE_REGISTRY_NOT_CONFIGURED', '注入的设备注册存储无效');
+    }
+    return config.injectedStore;
+  }
+  if (!config.storeName) throw new DeviceRegistrationError('DEVICE_REGISTRY_NOT_CONFIGURED', '设备注册Blob命名空间无效');
+  try {
+    return blobRegistry(getStore({ name: config.storeName, consistency: 'strong' }));
+  } catch (_) {
+    throw new DeviceRegistrationError('DEVICE_REGISTRY_NOT_CONFIGURED', '设备注册Blob存储不可用');
+  }
 }
 
 function errorStatus(error) {
@@ -91,11 +120,12 @@ export default async function onRequest(context) {
   if (method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders() });
   if (method !== 'POST') return failure('METHOD_NOT_ALLOWED', `设备注册接口不支持 ${method} 方法`, 405);
 
-  const runtime = resolveRuntime(context);
-  if (!runtime.enabled) return failure('DEVICE_REGISTRATION_DISABLED', '设备注册功能尚未启用', 503);
-  if (!runtime.kv || typeof runtime.kv.get !== 'function' || typeof runtime.kv.put !== 'function') {
-    return failure('DEVICE_REGISTRY_NOT_CONFIGURED', '设备注册存储尚未配置', 503);
-  }
+  const config = runtimeConfig(context);
+  if (!config.enabled) return failure('DEVICE_REGISTRATION_DISABLED', '设备注册功能尚未启用', 503);
+
+  let registry;
+  try { registry = resolveRegistry(config); }
+  catch (error) { return failure(error.code, error.message, errorStatus(error), error.details); }
 
   const contentType = String(request.headers.get('content-type') || '').toLowerCase();
   if (!contentType.startsWith('application/json')) {
@@ -118,8 +148,8 @@ export default async function onRequest(context) {
 
     const result = await registerDevice({
       request: body,
-      kv: runtime.kv,
-      secret: runtime.secret,
+      kv: registry,
+      secret: config.secret,
     });
     return success({
       status: 'registered',
