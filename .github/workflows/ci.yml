@@ -1,4 +1,4 @@
-name: stage4d-browser-diagnostic
+name: stage4c-client-ci
 
 on:
   push:
@@ -8,7 +8,7 @@ permissions:
   contents: read
 
 jobs:
-  diagnose-browser:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,34 +26,4 @@ jobs:
           test -n "$CHROMIUM_PATH"
           sudo ln -sf "$CHROMIUM_PATH" /usr/bin/chromium
       - run: python3 tests/core_compare.py
-      - name: Capture two browser integration runs
-        id: browser
-        shell: bash
-        run: |
-          set +e
-          : > browser-integration.log
-          code=0
-          for run in 1 2; do
-            echo "===== browser run ${run}/2 =====" >> browser-integration.log
-            python3 tests/browser_integration.py >> browser-integration.log 2>&1
-            code=$?
-            echo "run_${run}_exit=${code}" >> browser-exit-codes.txt
-            if [ "$code" -ne 0 ]; then
-              break
-            fi
-          done
-          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
-          exit 0
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: stage4d-browser-diagnostic
-          path: |
-            browser-integration.log
-            browser-exit-codes.txt
-          if-no-files-found: error
-      - name: Enforce browser result
-        run: |
-          cat browser-exit-codes.txt
-          tail -n 240 browser-integration.log
-          test "${{ steps.browser.outputs.exit_code }}" = "0"
+      - run: python3 tests/browser_integration.py
