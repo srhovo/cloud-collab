@@ -10,7 +10,8 @@ import {
 
 export const DEVICE_REGISTRATION_SCHEMA_VERSION = 1;
 export const DEVICE_TOKEN_VERSION = 1;
-export const DEFAULT_DEVICE_TOKEN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+export const MAX_DEVICE_TOKEN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+export const DEFAULT_DEVICE_TOKEN_TTL_MS = MAX_DEVICE_TOKEN_TTL_MS;
 
 const CROCKFORD_ULID = '[0-9A-HJKMNP-TV-Z]{26}';
 const DEVICE_ID_PATTERN = new RegExp(`^dev_${CROCKFORD_ULID}$`);
@@ -109,7 +110,13 @@ export async function registerDevice({
 } = {}) {
   const registration = normalizeRegistration(input);
   if (!Number.isSafeInteger(now) || now <= 0) throw new DeviceRegistrationError('INVALID_SERVER_TIME', '服务器时间无效', 500);
-  if (!Number.isSafeInteger(tokenTtlMs) || tokenTtlMs < 60_000) throw new DeviceRegistrationError('INVALID_TOKEN_TTL', '设备令牌有效期无效', 500);
+  if (!Number.isSafeInteger(tokenTtlMs) || tokenTtlMs < 60_000 || tokenTtlMs > MAX_DEVICE_TOKEN_TTL_MS) {
+    throw new DeviceRegistrationError('INVALID_TOKEN_TTL', '设备令牌有效期必须位于1分钟至90天', 500);
+  }
+  const expiresAt = now + tokenTtlMs;
+  if (!Number.isSafeInteger(expiresAt) || expiresAt <= now) {
+    throw new DeviceRegistrationError('INVALID_TOKEN_EXPIRY', '设备令牌过期时间超出安全范围', 500);
+  }
 
   const profileKey = deviceProfileKey(registration.deviceId);
   if (await getJSONStrong(store, profileKey)) {
@@ -123,7 +130,6 @@ export async function registerDevice({
   if (!TOKEN_HASH_PATTERN.test(tokenHash)) throw new DeviceRegistrationError('TOKEN_HASH_FAILED', '设备令牌Hash生成失败', 500);
 
   const issuedAt = now;
-  const expiresAt = now + tokenTtlMs;
   const tokenIndexKey = deviceTokenIndexKey(tokenHash);
   const tokenIndex = Object.freeze({
     schemaVersion: 1,
@@ -178,6 +184,7 @@ export async function registerDevice({
 }
 
 export async function authenticateDevice({ store, authorization, now = Date.now() } = {}) {
+  if (!Number.isSafeInteger(now) || now <= 0) throw new DeviceRegistrationError('INVALID_SERVER_TIME', '服务器时间无效', 500);
   const deviceToken = parseBearerToken(authorization);
   const tokenHash = hashDeviceToken(deviceToken);
   const index = await getJSONStrong(store, deviceTokenIndexKey(tokenHash));
