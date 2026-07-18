@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sourcePath = path.join(root, 'src', '码单器8.2.26_公共协作本地候选版.html');
 const clientPath = path.join(root, 'src', 'cloud_collab_readonly_client.js');
+const snapshotSyncPath = path.join(root, 'src', 'cloud_collab_snapshot_sync.js');
 const distDir = path.join(root, 'dist');
 const outputPath = path.join(distDir, 'index.html');
 
@@ -26,16 +27,17 @@ function escapeHtmlAttribute(value) {
 
 let html = fs.readFileSync(sourcePath, 'utf8');
 const clientSource = fs.readFileSync(clientPath, 'utf8').trim();
+const snapshotSyncSource = fs.readFileSync(snapshotSyncPath, 'utf8').trim();
 const featureMethods = fs.readFileSync(path.join(root, 'src', 'cloud_collab_readonly_feature_methods.fragment.js'), 'utf8').trim();
 const configuredApiBase = escapeHtmlAttribute(process.env.CLOUD_COLLAB_API_BASE || '');
 
 html = replaceOnce(html,
   '<title>码单器8.2.26（公共协作本地候选）</title>',
-  '<title>码单器8.2.27（公共协作只读联调候选）</title>',
+  '<title>码单器8.2.27（公共协作只接收同步候选）</title>',
   'title');
 html = replaceOnce(html,
   '/* ===== 公共协作数据库（8.2.26 本地候选；不联网） ===== */',
-  '/* ===== 公共协作数据库（8.2.27 只读联调候选；服务器失败可降级） ===== */',
+  '/* ===== 公共协作数据库（8.2.27 只接收同步候选；三方合并与失败回滚） ===== */',
   'cloud CSS comment');
 html = replaceOnce(html,
   "<meta name=\"AIGC\" content='",
@@ -43,7 +45,7 @@ html = replaceOnce(html,
   'API base meta');
 html = replaceOnce(html,
   '<!-- 码单器 8.2.26 公共协作数据库本地候选版：不连接服务器，不影响正常码单 -->',
-  '<!-- 码单器 8.2.27 公共协作数据库只读联调候选版：异步只读检查，服务器失败不影响正常码单 -->',
+  '<!-- 码单器 8.2.27 公共协作数据库只接收同步候选版：公共快照三方合并，服务器失败不影响正常码单 -->',
   'body release comment');
 html = replaceOnce(html,
   "const APP_VERSION = '8.2.26';",
@@ -51,7 +53,7 @@ html = replaceOnce(html,
   'APP_VERSION');
 html = replaceOnce(html,
   '// Release note: 8.2.26 新增公共协作数据库本地候选层：独立身份/凭据/绑定/老板映射/待上传队列/同步状态Store，惰性创建身份，支持价格库本地/只接收/参与协作模式；本阶段不包含任何网络请求。',
-  '// Release note: 8.2.27 在8.2.26本地候选层上新增可降级的异步只读联调：health、protocol和public-version；不开放提交、审核或管理员写入。',
+  '// Release note: 8.2.27 完成只接收公共普通精确价格：版本检查、增量/快照拉取、三方比较、冲突隔离、事务回滚与五分钟轮询；不开放提交、审核或管理员写入。',
   'release note');
 
 html = replaceOnce(html,
@@ -62,14 +64,14 @@ html = replaceOnce(html,
 
  <section class="cloud-collab-section" aria-labelledby="cloudIdentityTitle">`,
 ` <div class="cloud-collab-banner">
- <div><strong>只读联调候选</strong><span>页面启动不等待服务器；只读取健康状态、协议版本和公共版本，失败时正常码单不受影响。</span></div>
+ <div><strong>只接收同步候选</strong><span>页面启动不等待服务器；绑定为“只接收”或“参与协作”时异步合并公共普通精确价格。</span></div>
  <span class="cloud-collab-badge" id="cloudServerBadge">只读 · 检查中</span>
  </div>
 
  <section class="cloud-collab-section" aria-labelledby="cloudServerTitle">
- <h4 id="cloudServerTitle">测试服务器</h4>
+ <h4 id="cloudServerTitle">公共只读同步</h4>
  <div class="cloud-collab-status" id="cloudServerSummary">尚未检查只读测试接口。</div>
- <p class="cloud-collab-note">只发送无凭据GET请求；不会上传身份、绑定、价格、老板、历史或任何本地数据。</p>
+ <p class="cloud-collab-note">只发送无凭据GET请求及公共groupId/libraryId；不会上传设备身份、令牌、价格、老板、历史或其他本地内容。</p>
  <div class="cloud-collab-actions">
  <button class="app-btn app-btn--secondary app-btn--sm" id="cloudServerCheckBtn" type="button">检查服务器</button>
  </div>
@@ -87,19 +89,19 @@ html = replaceOnce(html,
 ` <div class="cloud-collab-status" id="cloudBindingSummary">选择价格库后可建立本地绑定；保存绑定不会向服务器发送数据。</div>
  <div class="cloud-collab-actions">
  <button class="app-btn app-btn--primary app-btn--sm" id="cloudBindingSaveBtn" type="button">保存本地绑定</button>
- <button class="app-btn app-btn--secondary app-btn--sm" id="cloudPublicVersionCheckBtn" type="button">检查公共版本</button>
+ <button class="app-btn app-btn--secondary app-btn--sm" id="cloudPublicVersionCheckBtn" type="button">检查并接收更新</button>
  <button class="app-btn app-btn--danger app-btn--sm" id="cloudBindingRemoveBtn" type="button">解除绑定</button>
  </div>
- <div class="cloud-collab-status" id="cloudPublicVersionSummary">公共版本尚未检查。</div>`,
+ <div class="cloud-collab-status" id="cloudPublicVersionSummary">公共更新尚未检查。</div>`,
   'public version controls');
 html = replaceOnce(html,
   '<p class="cloud-collab-note">本阶段仅验证本地结构。不会自动监听 localStorage，也不会从导入、迁移、云端拉取或回滚流程生成提交。</p>',
-  '<p class="cloud-collab-note">本阶段只读联调。不会生成提交，不会拉取快照，不会监听 localStorage，也不会从导入、迁移、回滚或服务器响应创建待上传记录。</p>',
+  '<p class="cloud-collab-note">云端拉取只会更新绑定价格库和同步Hash，不会生成提交；导入、迁移、回滚和系统自动记忆仍不会进入待上传队列。</p>',
   'queue note');
 
 html = replaceOnce(html,
   '// ===== 公共协作数据库：本地Store实现结束 =====\n\n\n\nclass CloudCollabFeature {',
-  `// ===== 公共协作数据库：本地Store实现结束 =====\n\n\n// ===== 公共协作数据库：只读API客户端（阶段3A） =====\n${clientSource}\n// ===== 公共协作数据库：只读API客户端结束 =====\n\n\nclass CloudCollabFeature {`,
+  `// ===== 公共协作数据库：本地Store实现结束 =====\n\n\n// ===== 公共协作数据库：只读API客户端（阶段3B） =====\n${clientSource}\n// ===== 公共协作数据库：只读API客户端结束 =====\n\n// ===== 公共协作数据库：公共快照校验与三方合并（阶段3B） =====\n${snapshotSyncSource}\n// ===== 公共协作数据库：公共快照合并结束 =====\n\n\nclass CloudCollabFeature {`,
   'readonly client insertion');
 
 html = replaceOnce(html,
@@ -120,6 +122,8 @@ html = replaceOnce(html,
   this.lastServerError = null;
   this.lastPublicVersion = null;
   this._readonlyCheckScheduled = false;
+  this._receivePollTimer = null;
+  this._syncLocks = new Set();
  }`,
   'CloudCollabFeature constructor');
 
@@ -202,6 +206,11 @@ ${featureMethods}
   'readonly feature methods');
 
 html = replaceOnce(html,
+  "   this.setStatus(`本地绑定已保存：${this.getModeLabel(mode)}。当前不会连接服务器。`, 'success');",
+  "   this.setStatus(`本地绑定已保存：${this.getModeLabel(mode)}。${mode === 'local' ? '不会接收公共更新。' : '将异步检查公共更新。'}`, 'success');\n   if (mode !== 'local') setTimeout(() => this.syncBinding(this.stores.bindingStore.getByLocalLibraryId(localLibraryId), { interactive: false, force: false, reason: 'binding' }), 0);",
+  'binding receive trigger');
+
+html = replaceOnce(html,
 ` this.priceLibraryStore = new PriceLibraryStore(storage, this.priceMemoryStore);
  this.cloudCollabStores = CloudCollabLocalStores.createCloudCollabStores(storage);
  this.extractorService = new ExtractorService();`,
@@ -238,6 +247,7 @@ const manifest = {
   source: path.relative(root, sourcePath),
   output: path.relative(root, outputPath),
   apiBase: process.env.CLOUD_COLLAB_API_BASE || 'same-origin-or-disabled-for-file',
+  stage: '3B-public-snapshot-receive',
   sha256: digest,
   bytes: Buffer.byteLength(html),
   generatedAt: new Date().toISOString(),
