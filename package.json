@@ -1,6 +1,6 @@
 {
-  "name": "mdq-cloud-collab-preview-write-stage4b2",
-  "version": "0.7.0",
+  "name": "mdq-cloud-collab-stage4c-client",
+  "version": "0.8.0",
   "private": true,
   "type": "module",
   "engines": {
