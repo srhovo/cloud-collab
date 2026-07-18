@@ -1,4 +1,4 @@
-name: stage3b-receive-ci
+name: stage4c-client-ci
 
 on:
   push:
@@ -18,3 +18,11 @@ jobs:
           cache: npm
       - run: npm install --ignore-scripts
       - run: npm run ci
+      - name: Upload CI results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage4c-ci-results-${{ github.run_id }}
+          path: test-results/
+          if-no-files-found: warn
+          retention-days: 7
