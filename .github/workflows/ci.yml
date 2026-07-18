@@ -22,5 +22,8 @@ jobs:
         run: |
           python3 -m pip install --disable-pip-version-check playwright
           python3 -m playwright install --with-deps chromium
+          CHROMIUM_PATH="$(find "$HOME/.cache/ms-playwright" -type f -name chrome | head -n 1)"
+          test -n "$CHROMIUM_PATH"
+          sudo ln -sf "$CHROMIUM_PATH" /usr/bin/chromium
       - run: python3 tests/core_compare.py
       - run: python3 tests/browser_integration.py
