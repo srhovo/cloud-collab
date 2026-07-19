@@ -29,3 +29,5 @@ jobs:
       - run: python3 tests/browser_integration.py
       - name: Stage5A admin authentication browser regression
         run: python3 tests/stage5a_browser_admin_auth.py
+      - name: Stage5B admin read-only review browser regression
+        run: python3 tests/stage5b_browser_admin_reviews.py

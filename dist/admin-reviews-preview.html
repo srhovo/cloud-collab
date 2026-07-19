@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <title>阶段5B管理员只读审核预览</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;color-scheme:light;--blue:#0969da;--green:#1a7f37;--red:#cf222e;--amber:#9a6700;--border:#d0d7de;--muted:#57606a;--bg:#f6f8fa}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#1f2328}main{width:min(820px,calc(100% - 24px));margin:24px auto}.card{margin-bottom:14px;padding:18px;border:1px solid var(--border);border-radius:14px;background:#fff;box-shadow:0 8px 24px rgba(31,35,40,.07)}h1,h2,h3{margin:0 0 8px}h1{font-size:24px}h2{font-size:20px}h3{font-size:17px}p{line-height:1.6}.muted{color:var(--muted);font-size:14px}.banner{padding:12px 14px;border-left:4px solid var(--amber);border-radius:8px;background:#fff8c5}.toolbar{display:flex;gap:9px;flex-wrap:wrap;margin:14px 0}.toolbar button,.review button{min-height:42px;border:0;border-radius:8px;padding:9px 14px;background:var(--blue);color:#fff;font:750 15px system-ui;cursor:pointer}.toolbar button.secondary{background:#57606a}.toolbar button.danger{background:var(--red)}button:disabled{opacity:.45;cursor:not-allowed}.status{padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg);font-weight:700;white-space:pre-wrap}.ok{color:var(--green)}.error{color:var(--red)}.review{margin-top:10px;padding:14px;border:1px solid var(--border);border-radius:10px;background:#fff}.review-head{display:flex;gap:8px;justify-content:space-between;align-items:flex-start}.pill{display:inline-block;padding:3px 8px;border-radius:999px;background:#fff8c5;color:#7d4e00;font-size:12px;font-weight:750}.price{margin:9px 0;font-size:17px;font-weight:800}.meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px 12px;color:var(--muted);font-size:13px}.empty{padding:22px;text-align:center;color:var(--muted)}.detail-row{margin-top:10px;padding:12px;border-left:4px solid var(--blue);border-radius:8px;background:var(--bg)}.hidden{display:none!important}@media(max-width:600px){main{margin-top:12px}.card{padding:15px}.meta{grid-template-columns:1fr}.review-head{display:block}.review button{width:100%;margin-top:10px}}
+  </style>
+</head>
+<body>
+<main>
+  <section class="card">
+    <h1>阶段5B：管理员只读审核队列</h1>
+    <p class="muted">独立管理员预览入口 · 仅显示合成测试作用域的脱敏投影</p>
+    <p class="banner"><strong>本页没有任何写能力。</strong>批准、拒绝、修改后批准、可信设备、封禁、回滚、导出及公共数据修改全部关闭。</p>
+    <div class="toolbar">
+      <button id="loginBtn" type="button">前往安全登录</button>
+      <button id="refreshBtn" class="secondary" type="button">刷新只读队列</button>
+      <button id="logoutBtn" class="danger" type="button">退出并清除会话</button>
+    </div>
+    <div id="status" class="status" aria-live="polite">正在检查管理员会话……</div>
+    <p id="identity" class="muted">尚未验证管理员会话。</p>
+  </section>
+
+  <section id="queueCard" class="card hidden">
+    <h2>待审核项目 <span id="count" class="pill">0</span></h2>
+    <p id="scope" class="muted">尚未读取作用域。</p>
+    <div id="queue"></div>
+  </section>
+
+  <section id="detailCard" class="card hidden">
+    <h2>只读详情与候选对比</h2>
+    <p id="detailSummary" class="muted">尚未选择待审核项目。</p>
+    <div id="variants"></div>
+  </section>
+</main>
+<script>
+(() => {
+  'use strict';
+  const ids = ['loginBtn','refreshBtn','logoutBtn','status','identity','queueCard','count','scope','queue','detailCard','detailSummary','variants'];
+  const els = Object.fromEntries(ids.map(id => [id, document.getElementById(id)]));
+  let busy = false;
+
+  function setBusy(value) {
+    busy = value;
+    for (const button of [els.loginBtn, els.refreshBtn, els.logoutBtn]) button.disabled = value;
+    for (const button of els.queue.querySelectorAll('button')) button.disabled = value;
+  }
+
+  function setStatus(message, kind = '') {
+    els.status.textContent = message;
+    els.status.className = `status ${kind}`.trim();
+  }
+
+  function clearViews() {
+    els.queue.replaceChildren();
+    els.variants.replaceChildren();
+    els.queueCard.classList.add('hidden');
+    els.detailCard.classList.add('hidden');
+    els.count.textContent = '0';
+  }
+
+  function assertReadonlyCapabilities(data) {
+    const caps = data?.capabilities || {};
+    const closed = ['reviewMutation','deviceMutation','rollback','export','publicMutationAllowed']
+      .every(name => caps[name] === false);
+    if (caps.reviewQueueRead !== true || caps.reviewDetailRead !== true || !closed) {
+      throw new Error('服务器未保持阶段5B只读权限边界。');
+    }
+  }
+
+  async function api(path, init = {}) {
+    const response = await fetch(path, {
+      credentials: 'same-origin',
+      cache: 'no-store',
+      redirect: 'error',
+      referrerPolicy: 'no-referrer',
+      ...init,
+    });
+    if (response.status === 204) return null;
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || !payload?.ok) {
+      const error = new Error(payload?.error?.message || `管理员只读接口失败（HTTP ${response.status}）`);
+      error.code = payload?.error?.code || `HTTP_${response.status}`;
+      throw error;
+    }
+    return payload.data;
+  }
+
+  function reasonLabel(reason) {
+    return reason === 'candidate_conflict' ? '候选值冲突' : reason === 'price_change_exceeds_limit' ? '改价超过安全范围' : '需要人工审核';
+  }
+
+  function settleLabel(value) {
+    return value === 'round' ? '局' : value === 'hour' ? '小时' : value;
+  }
+
+  function addMeta(container, label, value) {
+    const span = document.createElement('span');
+    span.textContent = `${label}：${value}`;
+    container.append(span);
+  }
+
+  function reviewNode(item) {
+    const article = document.createElement('article');
+    article.className = 'review';
+    const head = document.createElement('div');
+    head.className = 'review-head';
+    const title = document.createElement('h3');
+    title.textContent = item.serviceName;
+    const pill = document.createElement('span');
+    pill.className = 'pill';
+    pill.textContent = reasonLabel(item.reason);
+    head.append(title, pill);
+    const price = document.createElement('div');
+    price.className = 'price';
+    const baseline = item.baseline.unitPrice === null ? '新增' : `${item.baseline.unitPrice}`;
+    price.textContent = `${baseline} → ${item.candidateUnitPrice} 元/${settleLabel(item.settleType)}`;
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    addMeta(meta, '设备确认', `${item.distinctDeviceCount} 台`);
+    addMeta(meta, '基线状态', item.baseline.stillCurrent ? '仍为当前版本' : '已发生后续变化');
+    addMeta(meta, '收到时间', new Date(item.receivedAt).toLocaleString());
+    addMeta(meta, '审核标记', `…${item.reviewId.slice(-8)}`);
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = '查看只读详情';
+    button.addEventListener('click', () => loadDetail(item.reviewId));
+    article.append(head, price, meta, button);
+    return article;
+  }
+
+  function renderQueue(data) {
+    assertReadonlyCapabilities(data);
+    if (data?.scope?.syntheticFixtureOnly !== true) throw new Error('审核数据源不是合成测试作用域。');
+    els.count.textContent = String(data.total);
+    els.scope.textContent = `合成作用域：${data.scope.groupId} / ${data.scope.libraryId}`;
+    els.queue.replaceChildren();
+    if (!Array.isArray(data.items) || data.items.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'empty';
+      empty.textContent = '当前没有待审核合成项目。';
+      els.queue.append(empty);
+    } else {
+      for (const item of data.items) els.queue.append(reviewNode(item));
+    }
+    els.queueCard.classList.remove('hidden');
+    els.detailCard.classList.add('hidden');
+  }
+
+  function renderDetail(data) {
+    assertReadonlyCapabilities(data);
+    const selected = data.review;
+    els.detailSummary.textContent = `${selected.serviceName} · ${reasonLabel(selected.reason)} · ${data.variantCount} 个候选值`;
+    els.variants.replaceChildren();
+    for (const item of data.variants) {
+      const row = document.createElement('div');
+      row.className = 'detail-row';
+      const oldValue = item.baseline.unitPrice === null ? '无公共基线' : `${item.baseline.unitPrice} 元/${settleLabel(item.settleType)}`;
+      const devices = item.deviceTags.join('、');
+      row.textContent = `候选 ${item.candidateUnitPrice} 元/${settleLabel(item.settleType)}；基线 ${oldValue}；确认设备 ${devices}；内容Hash …${item.contentHash.slice(-10)}`;
+      els.variants.append(row);
+    }
+    els.detailCard.classList.remove('hidden');
+    els.detailCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  async function loadQueue() {
+    if (busy) return;
+    setBusy(true);
+    setStatus('正在强一致读取脱敏审核队列……');
+    try {
+      const data = await api('/api/admin/reviews');
+      renderQueue(data);
+      setStatus(`只读队列已加载：${data.total} 项；所有写能力仍关闭。`, 'ok');
+    } catch (error) {
+      clearViews();
+      setStatus(error?.message || '只读审核队列加载失败。', 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function loadDetail(reviewId) {
+    if (busy) return;
+    setBusy(true);
+    setStatus('正在强一致读取只读详情……');
+    try {
+      const data = await api(`/api/admin/reviews/detail?id=${encodeURIComponent(reviewId)}`);
+      renderDetail(data);
+      setStatus('只读详情已加载；未执行任何审核或公共数据写入。', 'ok');
+    } catch (error) {
+      els.detailCard.classList.add('hidden');
+      setStatus(error?.message || '只读审核详情加载失败。', 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function initialize() {
+    setBusy(true);
+    try {
+      const session = await api('/api/admin/auth/session');
+      if (!session?.authenticated) throw new Error('管理员会话无效。');
+      els.identity.textContent = `${session.username} · 会话…${session.sessionIdSuffix} · 到期 ${new Date(session.expiresAt).toLocaleString()}`;
+      setBusy(false);
+      await loadQueue();
+    } catch (error) {
+      clearViews();
+      els.identity.textContent = '没有有效管理员会话；请先前往独立安全登录页。';
+      const expected = ['ADMIN_SESSION_MISSING','ADMIN_SESSION_INVALID','ADMIN_SESSION_EXPIRED','ADMIN_PREVIEW_DISABLED'].includes(error?.code);
+      setStatus(expected ? '请先完成管理员安全登录。' : (error?.message || '会话检查失败。'), expected ? '' : 'error');
+      setBusy(false);
+    }
+  }
+
+  els.loginBtn.addEventListener('click', () => { window.location.href = '/admin-preview.html'; });
+  els.refreshBtn.addEventListener('click', loadQueue);
+  els.logoutBtn.addEventListener('click', async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await api('/api/admin/auth/logout', { method: 'POST' });
+      clearViews();
+      els.identity.textContent = '管理员会话已清除。';
+      setStatus('已退出；只读审核内容已从页面清除。', 'ok');
+    } catch (error) {
+      setStatus(error?.message || '退出失败。', 'error');
+    } finally {
+      setBusy(false);
+    }
+  });
+
+  window.addEventListener('pagehide', clearViews);
+  initialize();
+})();
+</script>
+</body>
+</html>
