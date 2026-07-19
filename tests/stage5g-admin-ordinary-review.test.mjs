@@ -217,7 +217,7 @@ function sessionCookie() {
 }
 
 function request(path, { method = 'GET', cookie = sessionCookie(), headers = {} } = {}) {
-  return new Request(`http://edgeone-cloud-function.internal${path}`, {
+  return new Request(`${ENV.CLOUD_ADMIN_PUBLIC_ORIGIN}${path}`, {
     method,
     headers: {
       Origin: ENV.CLOUD_ADMIN_PUBLIC_ORIGIN,
