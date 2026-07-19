@@ -355,16 +355,16 @@ def run_admin_test(browser):
     approve_card = page.locator('.review').filter(has_text='阶段5BC-TEST-approve')
     approve_card.get_by_role('button', name='读取5B详情').click()
     expect(page.locator('#actionStatus')).to_contain_text('详情读取通过', timeout=10_000)
-    approve_card.get_by_role('button', name='批准并重放').click()
+    approve_card.get_by_role('button', name='批准并重放', exact=True).click()
     expect(page.locator('#actionStatus')).to_contain_text('未产生重复版本', timeout=10_000)
 
     reject_card = page.locator('.review').filter(has_text='阶段5BC-TEST-reject')
-    reject_card.get_by_role('button', name='拒绝并重放').click()
+    reject_card.get_by_role('button', name='拒绝并重放', exact=True).click()
     expect(page.locator('#actionStatus')).to_contain_text('公共版本 1 → 1', timeout=10_000)
 
     edit_card = page.locator('.review').filter(has_text='阶段5BC-TEST-edit')
     edit_card.get_by_label('阶段5BC-TEST-edit 编辑后单价').fill('305.5')
-    edit_card.get_by_role('button', name='编辑后批准并重放').click()
+    edit_card.get_by_role('button', name='编辑后批准并重放', exact=True).click()
     expect(page.locator('#actionStatus')).to_contain_text('公共版本 1 → 2', timeout=10_000)
     expect(page.locator('.review')).to_have_count(0)
 
