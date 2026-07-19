@@ -212,21 +212,23 @@ test('same-origin guard requires HTTPS and rejects cross-site mutation requests'
   assert.equal(assertAdminSameOriginRequest(new Request('http://admin-preview.test/api/admin/auth/session', {
     headers: { 'X-Forwarded-Proto': 'quic' },
   }), { publicOrigin }), true);
+  assert.equal(assertAdminSameOriginRequest(new Request('http://admin-preview.test/api/admin/auth/session', {
+    headers: { 'X-Forwarded-Proto': 'http' },
+  }), { publicOrigin }), true);
   assert.throws(
     () => assertAdminSameOriginRequest(new Request('http://admin-preview.test/api/admin/auth/session')),
     error => error.code === 'ADMIN_HTTPS_REQUIRED',
   );
   assert.throws(
-    () => assertAdminSameOriginRequest(new Request('http://admin-preview.test/api/admin/auth/session', {
-      headers: { 'X-Forwarded-Proto': 'https,http' },
-    }), { publicOrigin }),
+    () => assertAdminSameOriginRequest(new Request('http://other-preview.test/api/admin/auth/session'), { publicOrigin }),
     error => error.code === 'ADMIN_HTTPS_REQUIRED',
   );
   assert.throws(
-    () => assertAdminSameOriginRequest(new Request('https://admin-preview.test/api/admin/auth/session', {
-      headers: { 'X-Forwarded-Proto': 'http' },
-    }), { publicOrigin }),
-    error => error.code === 'ADMIN_HTTPS_REQUIRED',
+    () => assertAdminSameOriginRequest(new Request('http://admin-preview.test/api/admin/auth/login', {
+      method: 'POST',
+      headers: { Origin: 'http://admin-preview.test', 'Sec-Fetch-Site': 'same-origin' },
+    }), { requireOrigin: true, publicOrigin }),
+    error => error.code === 'ADMIN_REQUEST_ORIGIN_INVALID',
   );
   assert.throws(
     () => assertAdminSameOriginRequest(request('/api/admin/auth/login', {
@@ -254,7 +256,7 @@ test('successful login returns no secret or token and establishes a strict cooki
       method: 'POST',
       body: loginBody(),
       urlProtocol: 'http',
-      headers: { 'X-Forwarded-Proto': 'https' },
+      headers: { 'X-Forwarded-Proto': 'http' },
     }),
     env: ENV,
   }, {

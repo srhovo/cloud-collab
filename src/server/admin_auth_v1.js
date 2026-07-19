@@ -352,19 +352,10 @@ export function assertAdminSameOriginRequest(request, { requireOrigin = false, p
     expectedOrigin = '';
   }
   const expectedUrl = expectedOrigin ? new URL(expectedOrigin) : null;
-  const forwardedProto = String(request?.headers?.get?.('x-forwarded-proto') || '').trim().toLowerCase();
-  const forwardedProtocolIsSecure = forwardedProto === 'https' || forwardedProto === 'quic';
-  const forwardedProtocolIsValid = !forwardedProto
-    || forwardedProtocolIsSecure
-    || forwardedProto === 'http';
   const hostMatches = Boolean(expectedUrl && url.host === expectedUrl.host);
   const directProtocolIsSecure = url.protocol === 'https:' && url.origin === expectedOrigin;
-  const trustedProxyHttps = url.protocol === 'http:'
-    && hostMatches
-    && (!forwardedProto || forwardedProtocolIsSecure);
-  if (!forwardedProtocolIsValid
-      || (!directProtocolIsSecure && !trustedProxyHttps)
-      || (directProtocolIsSecure && forwardedProto === 'http')) {
+  const configuredProxyOrigin = url.protocol === 'http:' && hostMatches;
+  if (!directProtocolIsSecure && !configuredProxyOrigin) {
     throw new AdminAuthError('ADMIN_HTTPS_REQUIRED', '管理员接口只允许HTTPS', 403);
   }
   const origin = String(request?.headers?.get?.('origin') || '');

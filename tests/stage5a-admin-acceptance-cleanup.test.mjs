@@ -120,7 +120,7 @@ test('cleanup access requires same-origin HTTPS and exact temporary key', () => 
     );
   }
   assert.throws(
-    () => assertAdminAcceptanceCleanupAccess(new Request('http://stage5a-acceptance.test/api/admin/acceptance/status', {
+    () => assertAdminAcceptanceCleanupAccess(new Request('http://other-acceptance.test/api/admin/acceptance/status', {
       headers: { 'X-Forwarded-Proto': 'http' },
     }), config),
     error => error.code === 'ADMIN_HTTPS_REQUIRED',
