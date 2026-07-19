@@ -371,8 +371,8 @@ function requestTokenFor(requestId) {
   return `rbtok_v1_${sha256Base64Url(requestId)}`;
 }
 
-function requestHashFor(command) {
-  return `rbrh_v1_${sha256Base64Url(canonicalize(command))}`;
+function requestHashFor(command, actorTag) {
+  return `rbrh_v1_${sha256Base64Url(canonicalize({ ...command, actorTag }))}`;
 }
 
 function rollbackIdFor(requestHash) {
@@ -446,7 +446,7 @@ function buildReplaySubmission(target) {
   }
 }
 
-function buildDecision({ config, identity, command, requestHash, rollbackId, target, now }) {
+function buildDecision({ config, identity, command, requestHash, rollbackId, target, createdAt }) {
   const replay = buildReplaySubmission(target);
   return Object.freeze({
     schemaVersion: ADMIN_ROLLBACK_SCHEMA_VERSION,
@@ -454,7 +454,7 @@ function buildDecision({ config, identity, command, requestHash, rollbackId, tar
     requestHash,
     rollbackRef: command.rollbackRef,
     actorTag: actorTagFor(identity),
-    createdAt: now,
+    createdAt,
     groupId: config.groupId,
     libraryId: config.libraryId,
     businessKey: target.current.normalized.businessKey,
@@ -557,13 +557,7 @@ function assertDecision(value, config, expected = {}) {
       })) {
     throw new AdminRollbackError('ADMIN_ROLLBACK_DECISION_INVALID', '回滚目标与补偿提交不一致', 503);
   }
-  return Object.freeze({
-    ...value,
-    source,
-    restore,
-    targetSubmission,
-    evidence,
-  });
+  return Object.freeze({ ...value, source, restore, targetSubmission, evidence });
 }
 
 function assertRequestIndex(value, expectedToken = null) {
@@ -578,7 +572,7 @@ function assertRequestIndex(value, expectedToken = null) {
     throw new AdminRollbackError('ADMIN_ROLLBACK_REQUEST_INDEX_INVALID', '回滚请求索引内容无效', 503);
   }
   assertSafeTime(value.createdAt);
-  return value;
+  return Object.freeze({ ...value });
 }
 
 function assertCompletion(value, decision) {
@@ -599,7 +593,7 @@ function assertCompletion(value, decision) {
     throw new AdminRollbackError('ADMIN_ROLLBACK_COMPLETION_INVALID', '回滚完成记录内容无效', 503);
   }
   assertSafeTime(value.completedAt);
-  return value;
+  return Object.freeze({ ...value });
 }
 
 function projectCompletion(decision, completion, duplicate) {
@@ -620,7 +614,7 @@ function projectCompletion(decision, completion, duplicate) {
   });
 }
 
-async function executeDecision({ store, decision }) {
+async function executeDecision({ store, config, decision }) {
   let published;
   try {
     published = await publishAdminReviewApproval({
@@ -637,25 +631,26 @@ async function executeDecision({ store, decision }) {
     });
   } catch (error) {
     if (error?.code === 'BASELINE_TRANSITION_CONFLICT') {
-      throw new AdminRollbackError(
-        'ADMIN_ROLLBACK_TRANSITION_CONFLICT',
-        '当前公共基线已被另一项批准或回滚占用',
-        409,
-        null,
-        error,
-      );
+      throw new AdminRollbackError('ADMIN_ROLLBACK_TRANSITION_CONFLICT', '当前公共基线已被另一项批准或回滚占用', 409, null, error);
     }
     if (error?.code === 'STALE_PUBLIC_BASELINE') {
       throw new AdminRollbackError('ADMIN_ROLLBACK_TARGET_STALE', '回滚目标已不是当前公共值', 409, null, error);
     }
     throw error;
   }
+
   if (published.event.businessKey !== decision.businessKey
       || published.event.contentHash !== decision.restore.contentHash
       || published.event.payload.unitPrice !== decision.restore.unitPrice
       || published.event.baseline.approvedVersion !== decision.source.version
       || published.event.baseline.contentHash !== decision.source.contentHash) {
     throw new AdminRollbackError('ADMIN_ROLLBACK_EVENT_LINK_INVALID', '回滚补偿事件与决策不一致', 503);
+  }
+  const record = published.snapshot.records.find(item => item.businessKey === decision.businessKey);
+  if (!record || record.approvedVersion !== published.event.version
+      || record.contentHash !== decision.restore.contentHash
+      || record.payload.unitPrice !== decision.restore.unitPrice) {
+    throw new AdminRollbackError('ADMIN_ROLLBACK_SNAPSHOT_MISMATCH', '回滚后快照未恢复到上一批准值', 503);
   }
 
   const auditId = auditIdFor(decision.rollbackId);
@@ -677,13 +672,7 @@ async function executeDecision({ store, decision }) {
     eventVersion: published.event.version,
     approvalId: published.approvalId,
   });
-  await putImmutableExact(
-    store,
-    auditKey(auditId, decision.createdAt),
-    audit,
-    'ADMIN_ROLLBACK_AUDIT_CONFLICT',
-    '管理员回滚审计记录冲突',
-  );
+  await putImmutableExact(store, auditKey(auditId, decision.createdAt), audit, 'ADMIN_ROLLBACK_AUDIT_CONFLICT', '管理员回滚审计记录冲突');
 
   const completion = Object.freeze({
     schemaVersion: ADMIN_ROLLBACK_SCHEMA_VERSION,
@@ -698,42 +687,46 @@ async function executeDecision({ store, decision }) {
     approvalId: published.approvalId,
     publicMutationApplied: true,
   });
-  await putImmutableExact(
-    store,
-    completionKey({ libraryId: decision.libraryId }, decision.rollbackId),
-    completion,
-    'ADMIN_ROLLBACK_COMPLETION_CONFLICT',
-    '管理员回滚完成记录冲突',
-  );
+  await putImmutableExact(store, completionKey(config, decision.rollbackId), completion, 'ADMIN_ROLLBACK_COMPLETION_CONFLICT', '管理员回滚完成记录冲突');
   return assertCompletion(completion, decision);
 }
 
-export async function executeAdminRollback({
-  store,
-  config,
-  identity,
-  command,
-  now = Date.now(),
-} = {}) {
+export async function executeAdminRollback({ store, config, identity, command, now = Date.now() } = {}) {
   assertSafeTime(now);
   if (!config?.previewEnabled) {
     throw new AdminRollbackError('ADMIN_ROLLBACK_PREVIEW_DISABLED', '管理员回滚预览未开启', 503);
   }
+
   const input = normalizeCommand(command?.input || command);
+  const actorTag = actorTagFor(identity);
   const requestToken = requestTokenFor(input.requestId);
-  const requestHash = requestHashFor(input);
+  const requestHash = requestHashFor(input, actorTag);
   const rollbackId = rollbackIdFor(requestHash);
   const requestKey = requestIndexKey(config, requestToken);
-  const storedDecisionKey = decisionKey(config, rollbackId);
+  const proposedRequest = Object.freeze({
+    schemaVersion: ADMIN_ROLLBACK_SCHEMA_VERSION,
+    requestToken,
+    requestHash,
+    rollbackId,
+    createdAt: now,
+  });
 
+  let requestIndex;
   const existingRequest = await getJSONStrong(store, requestKey);
   if (existingRequest) {
-    const requestIndex = assertRequestIndex(existingRequest, requestToken);
+    requestIndex = assertRequestIndex(existingRequest, requestToken);
+    if (requestIndex.requestHash !== requestHash || requestIndex.rollbackId !== rollbackId) {
+      throw new AdminRollbackError('ADMIN_ROLLBACK_REQUEST_CONFLICT', '同一回滚请求ID对应了不同正文', 409);
+    }
+  } else {
+    const claimed = await putImmutableExact(store, requestKey, proposedRequest, 'ADMIN_ROLLBACK_REQUEST_CONFLICT', '同一回滚请求ID对应了不同正文');
+    requestIndex = assertRequestIndex(claimed.value, requestToken);
     if (requestIndex.requestHash !== requestHash || requestIndex.rollbackId !== rollbackId) {
       throw new AdminRollbackError('ADMIN_ROLLBACK_REQUEST_CONFLICT', '同一回滚请求ID对应了不同正文', 409);
     }
   }
 
+  const storedDecisionKey = decisionKey(config, rollbackId);
   let decision = await getJSONStrong(store, storedDecisionKey);
   if (decision) {
     decision = assertDecision(decision, config, { rollbackId, requestHash });
@@ -746,38 +739,17 @@ export async function executeAdminRollback({
       requestHash,
       rollbackId,
       target,
-      now,
+      createdAt: requestIndex.createdAt,
     }), config, { rollbackId, requestHash });
-    const written = await putImmutableExact(
-      store,
-      storedDecisionKey,
-      decision,
-      'ADMIN_ROLLBACK_DECISION_CONFLICT',
-      '管理员回滚决策冲突',
-    );
+    const written = await putImmutableExact(store, storedDecisionKey, decision, 'ADMIN_ROLLBACK_DECISION_CONFLICT', '管理员回滚决策冲突');
     decision = assertDecision(written.value, config, { rollbackId, requestHash });
   }
-
-  const requestIndex = Object.freeze({
-    schemaVersion: ADMIN_ROLLBACK_SCHEMA_VERSION,
-    requestToken,
-    requestHash,
-    rollbackId,
-    createdAt: decision.createdAt,
-  });
-  await putImmutableExact(
-    store,
-    requestKey,
-    requestIndex,
-    'ADMIN_ROLLBACK_REQUEST_CONFLICT',
-    '同一回滚请求ID对应了不同正文',
-  );
 
   const existingCompletion = await getJSONStrong(store, completionKey(config, rollbackId));
   if (existingCompletion) {
     return projectCompletion(decision, assertCompletion(existingCompletion, decision), true);
   }
-  const completion = await executeDecision({ store, decision });
+  const completion = await executeDecision({ store, config, decision });
   return projectCompletion(decision, completion, false);
 }
 
