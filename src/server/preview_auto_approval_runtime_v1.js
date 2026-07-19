@@ -60,7 +60,7 @@ export function readPreviewAutoApprovalConfig(env = {}) {
     schemaVersion: PREVIEW_AUTO_APPROVAL_CONFIG_VERSION,
     ...writeConfig,
     previewAutoApprovalEnabled: true,
-    ordinaryTypesEnabled,
+    ...(ordinaryTypesEnabled ? { ordinaryTypesEnabled: true } : {}),
   });
 }
 
@@ -156,7 +156,6 @@ export async function acceptAndReviewPreviewSubmission({
     schemaVersion: PREVIEW_AUTO_APPROVAL_CONFIG_VERSION,
     submissionId: submission.submissionId,
     idempotencyKey: submission.idempotencyKey,
-    dataType: submission.dataType,
     duplicate: Boolean(acceptance?.duplicate),
     status: reviewed.status,
     decision: reviewed.decision,
@@ -172,7 +171,10 @@ export async function acceptAndReviewPreviewSubmission({
     previewMutationApplied: Boolean(reviewed.publicMutationApplied),
     previewDuplicateApproval: Boolean(reviewed.duplicateApproval),
     previewAutoApprovalEnabled: true,
-    previewOrdinaryTypesEnabled: ordinaryTypesEnabled,
+    ...(ordinaryTypesEnabled ? {
+      dataType: submission.dataType,
+      previewOrdinaryTypesEnabled: true,
+    } : {}),
     publicMutationAllowed: false,
     autoApprovalEnabled: false,
   });
