@@ -52,7 +52,8 @@ check('Stage5DEF seed uses proven public publisher and fixed 100 to 120 values',
 check('Stage5DEF acceptance routes require same-project origin and independent key', http.includes('assertStage5defAcceptanceAccess')
   && core.includes('assertAdminSameOriginRequest')
   && core.includes('x-cloud-stage5def-acceptance-key'));
-check('Stage5DEF route bodies use fixed confirmations and exact schemas', http.includes('SEED_STAGE5DEF_SYNTHETIC_V1')
+check('Stage5DEF route bodies use fixed confirmations and exact schemas', core.includes("STAGE5DEF_SEED_CONFIRMATION = 'SEED_STAGE5DEF_SYNTHETIC_V1'")
+  && http.includes('STAGE5DEF_SEED_CONFIRMATION')
   && http.includes("Object.keys(body).sort().join(',') !== 'confirmation,schemaVersion'"));
 check('Stage5DEF cleanup requires every capability closed', [
   'CLOUD_STAGE5DEF_ACCEPTANCE_ENABLED',
@@ -72,7 +73,8 @@ check('Stage5DEF cleanup fails closed on unknown objects', cleanup.includes('STA
 check('Stage5DEF cleanup HTTP requires origin, key and fixed confirmation', cleanupHttp.includes('assertStage5defCleanupAccess')
   && cleanup.includes('assertAdminSameOriginRequest')
   && cleanup.includes('x-cloud-stage5def-cleanup-key')
-  && cleanupHttp.includes('DELETE_STAGE5DEF_SYNTHETIC_PREVIEW_V1'));
+  && cleanup.includes("STAGE5DEF_CLEANUP_CONFIRMATION = 'DELETE_STAGE5DEF_SYNTHETIC_PREVIEW_V1'")
+  && cleanupHttp.includes('STAGE5DEF_CLEANUP_CONFIRMATION'));
 check('Stage5DEF pages forward EdgeOne preview query parameters', [adminPage, cleanupPage].every(page => page.includes("['eo_token','eo_time']")));
 check('Stage5DEF pages persist no credential or acceptance state', [adminPage, cleanupPage].every(page => !/(?:localStorage|sessionStorage)\.(?:setItem|getItem|removeItem)/.test(page)));
 check('Stage5DEF administrator page has exact unique primary controls', [
