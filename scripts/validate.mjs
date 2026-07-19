@@ -60,6 +60,9 @@ const adminMutationPage = read('dist/admin-review-actions-preview.html');
 const deviceGovernance = read('src/server/device_governance_v1.js');
 const deviceGovernanceHttp = read('src/server/device_governance_http_v1.js');
 const deviceGovernancePage = read('dist/admin-device-governance-preview.html');
+const adminRollback = read('src/server/admin_rollback_v1.js');
+const adminRollbackHttp = read('src/server/admin_rollback_http_v1.js');
+const adminRollbackPage = read('dist/admin-rollback-preview.html');
 
 check('receive and submission clients are both embedded', output.includes('只读API客户端（阶段3B）') && output.includes('隔离候选提交客户端（阶段4C）'));
 check('submission client uses only existing preview routes', submissionClient.includes("'/api/device/register'") && submissionClient.includes("'/api/submissions/create'") && !submissionClient.includes('/api/admin'));
@@ -94,6 +97,17 @@ check('Stage5D page persists no credentials or governance state', !/(?:localStor
 check('Stage5D admin controls have exact unique accessible labels', ['设为可信','撤销可信','封禁设备','解除封禁'].every(label => (deviceGovernancePage.match(new RegExp(`>${label}<`, 'g')) || []).length === 1));
 check('Stage5D routes and page stay outside ordinary user build', !output.includes('admin-device-governance-preview') && !output.includes('/api/admin/devices') && !submissionClient.includes('/api/admin'));
 check('CI includes Stage5D browser governance regression', workflow.includes('tests/stage5d_browser_device_governance.py'));
+
+check('Stage5E rollback gate defaults closed and scope stays fixture-only', envExample.includes('CLOUD_ADMIN_ROLLBACK_PREVIEW_ENABLED=0') && envExample.includes('CLOUD_ADMIN_ROLLBACK_BLOB_STORE_NAME=cloud-collab-preview-v1') && envExample.includes('CLOUD_ADMIN_ROLLBACK_ALLOWED_GROUP_ID=group_fixture') && envExample.includes('CLOUD_ADMIN_ROLLBACK_ALLOWED_LIBRARY_ID=lib_receive_fixture'));
+check('Stage5E uses irreversible refs and immutable request, decision, transition and audit records', adminRollback.includes('rbref_v1_') && adminRollback.includes('/requests/') && adminRollback.includes('/rollbacks/') && adminRollback.includes('transitionIndexKey') && adminRollback.includes('rollbackAuditKey'));
+check('Stage5E appends a compensating event without deleting history', adminRollback.includes('reserveRollbackEvent') && adminRollback.includes('putJSONOnlyIfNew') && adminRollback.includes('payload: previous.payload') && adminRollback.includes('approvedVersion: current.version') && !adminRollback.includes('deleteBlob'));
+check('Stage5E rebuilds and verifies the latest public snapshot', adminRollback.includes('buildPublicSnapshot') && adminRollback.includes('ADMIN_ROLLBACK_SNAPSHOT_MISMATCH'));
+check('Stage5E writes require authenticated same-origin POST with public origin forwarding', adminRollbackHttp.includes('requireOrigin: true') && adminRollbackHttp.includes('publicOrigin: authConfig.publicOrigin') && adminRollbackHttp.includes('verifyAdminSessionToken'));
+check('Stage5E projection forbids public storage and request identity', adminRollback.includes("'businessKey', 'contentHash'") && adminRollback.includes("'eventKey', 'snapshotKey'") && adminRollback.includes("'approvalId', 'requestHash', 'requestId'"));
+check('Stage5E page persists no credentials or rollback state', !/(?:localStorage|sessionStorage)\.(?:setItem|getItem|removeItem)/.test(adminRollbackPage) && !/CLOUD_ADMIN_(?:PASSWORD|SESSION_SECRET|RATE_LIMIT_SALT|ROLLBACK_REF_SALT)/.test(adminRollbackPage));
+check('Stage5E rollback control has an exact unique accessible label', (adminRollbackPage.match(/>回滚到上一批准值</g) || []).length === 1);
+check('Stage5E routes and page stay outside ordinary user build', !output.includes('admin-rollback-preview') && !output.includes('/api/admin/rollbacks') && !submissionClient.includes('/api/admin'));
+check('CI includes Stage5E browser rollback regression', workflow.includes('tests/stage5e_browser_admin_rollback.py'));
 
 const backupBlock = output.match(/getModuleConfigs\(\) \{\s*return \[([\s\S]*?)\];\s*\}/)?.[1] || '';
 check('cloud keys remain excluded from standard backup', cloudKeys.every(key => !backupBlock.includes(key)));
