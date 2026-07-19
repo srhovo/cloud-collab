@@ -11,6 +11,7 @@ import {
   acceptPreviewSubmission,
   readPreviewWriteConfig,
 } from './preview_write_runtime_v1.js';
+import { readEffectiveDeviceGovernance } from './device_governance_v1.js';
 import { normalizeSubmission } from './submission_policy_v1.js';
 
 export const PREVIEW_AUTO_APPROVAL_CONFIG_VERSION = 1;
@@ -77,6 +78,11 @@ function normalizeCandidateSubmission(rawSubmission) {
   }
 }
 
+export async function governanceTrustedDeviceResolver(store, deviceId) {
+  const state = await readEffectiveDeviceGovernance({ store, deviceId });
+  return state.trusted === true && state.blocked === false;
+}
+
 export async function acceptAndReviewPreviewSubmission({
   store,
   authorization,
@@ -86,7 +92,7 @@ export async function acceptAndReviewPreviewSubmission({
   authenticate,
   accept = acceptPreviewSubmission,
   review = reviewExactPriceCandidate,
-  trustedDeviceResolver,
+  trustedDeviceResolver = governanceTrustedDeviceResolver,
 } = {}) {
   const config = readPreviewAutoApprovalConfig(env);
   const submission = normalizeCandidateSubmission(rawSubmission);
@@ -116,7 +122,7 @@ export async function acceptAndReviewPreviewSubmission({
     store,
     candidate,
     now,
-    ...(trustedDeviceResolver ? { trustedDeviceResolver } : {}),
+    trustedDeviceResolver,
   });
 
   return Object.freeze({

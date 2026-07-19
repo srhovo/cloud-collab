@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <title>阶段5D管理员设备治理预览</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;color-scheme:light;--blue:#0969da;--green:#1a7f37;--red:#cf222e;--amber:#9a6700;--border:#d0d7de;--muted:#57606a;--bg:#f6f8fa}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#1f2328}main{width:min(820px,calc(100% - 24px));margin:18px auto 50px}.card{margin-bottom:14px;padding:18px;border:1px solid var(--border);border-radius:14px;background:#fff;box-shadow:0 8px 24px rgba(31,35,40,.06)}h1,h2{margin:0 0 10px}h1{font-size:24px}h2{font-size:20px}.banner{padding:11px 13px;border-left:4px solid var(--amber);border-radius:8px;background:#fff8c5;line-height:1.55}label{display:block;margin:12px 0 6px;font-weight:750}input,select{width:100%;min-height:44px;border:1px solid #8c959f;border-radius:8px;padding:9px;font:16px system-ui}.actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:13px}button{min-height:42px;border:0;border-radius:8px;padding:9px 14px;background:var(--blue);color:#fff;font:750 15px system-ui;cursor:pointer}button.secondary{background:#656d76}button.good{background:var(--green)}button.warn{background:var(--amber)}button.danger{background:var(--red)}button:disabled{opacity:.45}.status{margin-top:13px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg);font-weight:700;white-space:pre-wrap}.ok{color:var(--green)}.error{color:var(--red)}.muted{color:var(--muted);font-size:13px}.devices{display:grid;gap:10px}.device{padding:13px;border:1px solid var(--border);border-radius:10px;background:#fff}.device header{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.badge{display:inline-block;margin-left:6px;padding:2px 7px;border-radius:999px;background:#ddf4ff;font-size:12px;font-weight:750}.badge.blocked{background:#ffebe9;color:var(--red)}.badge.trusted{background:#dafbe1;color:var(--green)}dl{display:grid;grid-template-columns:150px 1fr;gap:6px 10px;margin:12px 0}dt{color:var(--muted)}dd{margin:0;overflow-wrap:anywhere}.event{padding:9px 0;border-top:1px solid var(--border)}.hidden{display:none!important}@media(max-width:560px){.actions button{width:100%}dl{grid-template-columns:1fr;gap:2px}.device header{display:block}}
+  </style>
+</head>
+<body>
+<main>
+  <section class="card">
+    <h1>阶段5D：管理员设备治理预览</h1>
+    <p class="banner"><strong>仅用于合成预览设备。</strong>封禁会立即让设备认证失败并撤销可信；解除封禁不会恢复可信。页面不保存用户名、密码、设备引用或治理请求。</p>
+    <label for="username">管理员用户名</label>
+    <input id="username" autocomplete="username" spellcheck="false">
+    <label for="password">管理员密码</label>
+    <input id="password" type="password" autocomplete="current-password">
+    <div class="actions">
+      <button id="loginBtn" type="button">安全登录</button>
+      <button id="sessionBtn" class="secondary" type="button">检查/恢复会话</button>
+      <button id="logoutBtn" class="danger" type="button">退出并清除会话</button>
+    </div>
+    <div id="authStatus" class="status" aria-live="polite">尚未检查管理员会话。</div>
+  </section>
+
+  <section class="card">
+    <h2>脱敏设备列表</h2>
+    <div class="actions"><button id="refreshBtn" type="button">刷新设备列表</button></div>
+    <div id="listStatus" class="status" aria-live="polite">尚未读取。</div>
+    <div id="devices" class="devices"></div>
+  </section>
+
+  <section id="detailCard" class="card hidden">
+    <h2>设备详情与治理</h2>
+    <div id="detail"></div>
+    <label for="blockReason">封禁原因</label>
+    <select id="blockReason">
+      <option value="manual_safety">人工安全处理</option>
+      <option value="abuse">滥用</option>
+      <option value="credential_compromise">凭据疑似泄露</option>
+      <option value="rate_abuse">异常频率</option>
+    </select>
+    <div class="actions">
+      <button id="trustBtn" class="good" type="button">设为可信</button>
+      <button id="revokeBtn" class="warn" type="button">撤销可信</button>
+      <button id="blockBtn" class="danger" type="button">封禁设备</button>
+      <button id="unblockBtn" class="secondary" type="button">解除封禁</button>
+    </div>
+    <div id="mutationStatus" class="status" aria-live="polite">请选择设备后操作。</div>
+  </section>
+</main>
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const state = { selectedRef: '', busy: false };
+  const els = Object.fromEntries(['username','password','loginBtn','sessionBtn','logoutBtn','authStatus','refreshBtn','listStatus','devices','detailCard','detail','blockReason','trustBtn','revokeBtn','blockBtn','unblockBtn','mutationStatus'].map(id => [id, $(id)]));
+
+  function setStatus(el, message, kind = '') {
+    el.textContent = message;
+    el.className = `status ${kind}`.trim();
+  }
+
+  function apiUrl(path) {
+    const url = new URL(path, window.location.origin);
+    const current = new URL(window.location.href);
+    for (const name of ['eo_token','eo_time']) {
+      const value = current.searchParams.get(name);
+      if (value) url.searchParams.set(name, value);
+    }
+    return url;
+  }
+
+  async function request(path, options = {}) {
+    let response;
+    try {
+      response = await fetch(apiUrl(path), {
+        credentials: 'same-origin',
+        cache: 'no-store',
+        redirect: 'error',
+        referrerPolicy: 'no-referrer',
+        ...options,
+      });
+    } catch (_) {
+      const error = new Error('无法连接管理员设备治理接口。');
+      error.code = 'DEVICE_GOVERNANCE_NETWORK_ERROR';
+      throw error;
+    }
+    if (response.status === 204) return null;
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || !payload?.ok) {
+      const error = new Error(payload?.error?.message || `请求失败（HTTP ${response.status}）`);
+      error.code = payload?.error?.code || `HTTP_${response.status}`;
+      throw error;
+    }
+    return payload;
+  }
+
+  function errorText(error) {
+    return `错误码：${String(error?.code || 'DEVICE_GOVERNANCE_REQUEST_FAILED')}\n${String(error?.message || '请求失败')}`;
+  }
+
+  function randomRequestId() {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    const base64 = btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+    return `dgrq_v1_${base64}`;
+  }
+
+  function formatTime(value) {
+    if (!Number.isFinite(Number(value))) return '—';
+    return new Date(Number(value)).toLocaleString();
+  }
+
+  async function login() {
+    const username = String(els.username.value || '').trim();
+    const password = String(els.password.value || '');
+    els.password.value = '';
+    setStatus(els.authStatus, '正在安全登录……');
+    try {
+      const payload = await request('/api/admin/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ schemaVersion: 1, username, password }),
+      });
+      setStatus(els.authStatus, `管理员会话有效：${payload.data.username}，到期 ${formatTime(payload.data.expiresAt)}。`, 'ok');
+      await refresh();
+    } catch (error) {
+      setStatus(els.authStatus, errorText(error), 'error');
+    }
+  }
+
+  async function checkSession() {
+    setStatus(els.authStatus, '正在检查会话……');
+    try {
+      const payload = await request('/api/admin/auth/session');
+      setStatus(els.authStatus, `管理员会话有效：${payload.data.username}，到期 ${formatTime(payload.data.expiresAt)}。`, 'ok');
+    } catch (error) {
+      setStatus(els.authStatus, errorText(error), 'error');
+    }
+  }
+
+  async function logout() {
+    try {
+      await request('/api/admin/auth/logout', { method: 'POST' });
+      state.selectedRef = '';
+      els.devices.replaceChildren();
+      els.detailCard.classList.add('hidden');
+      setStatus(els.authStatus, '已退出并清除管理员会话。', 'ok');
+      setStatus(els.listStatus, '尚未读取。');
+    } catch (error) {
+      setStatus(els.authStatus, errorText(error), 'error');
+    }
+  }
+
+  function badges(device) {
+    const items = [];
+    if (device.trusted) items.push('<span class="badge trusted">可信</span>');
+    if (device.blocked) items.push('<span class="badge blocked">已封禁</span>');
+    if (!device.trusted && !device.blocked) items.push('<span class="badge">普通</span>');
+    return items.join('');
+  }
+
+  async function openDetail(deviceRef) {
+    state.selectedRef = deviceRef;
+    setStatus(els.mutationStatus, '正在读取设备详情……');
+    els.detailCard.classList.remove('hidden');
+    try {
+      const payload = await request(`/api/admin/devices/detail?id=${encodeURIComponent(deviceRef)}`);
+      renderDetail(payload.data.result);
+      setStatus(els.mutationStatus, '设备详情已强一致读取。', 'ok');
+    } catch (error) {
+      setStatus(els.mutationStatus, errorText(error), 'error');
+    }
+  }
+
+  function renderList(items) {
+    els.devices.replaceChildren();
+    for (const device of items) {
+      const article = document.createElement('article');
+      article.className = 'device';
+      article.innerHTML = `<header><div><strong>${escapeHtml(device.displayName)}</strong>${badges(device)}</div><button type="button">查看设备详情</button></header><p class="muted">引用尾标：${escapeHtml(device.deviceRef.slice(-8))} · 版本 ${device.governanceVersion} · App ${escapeHtml(device.lastAppVersion)}</p>`;
+      article.querySelector('button').addEventListener('click', () => openDetail(device.deviceRef));
+      els.devices.append(article);
+    }
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  }
+
+  function renderDetail(result) {
+    const device = result.device;
+    const events = result.events.map(event => `<div class="event"><strong>${escapeHtml(event.action)}</strong> · ${escapeHtml(event.reasonCode)} · v${event.version}<br><span class="muted">${formatTime(event.createdAt)} · ${escapeHtml(event.actorTag)}</span></div>`).join('') || '<p class="muted">暂无治理事件。</p>';
+    els.detail.innerHTML = `<dl><dt>设备</dt><dd>${escapeHtml(device.displayName)} ${badges(device)}</dd><dt>不可逆引用</dt><dd>${escapeHtml(device.deviceRef)}</dd><dt>注册时间</dt><dd>${formatTime(device.createdAt)}</dd><dt>令牌到期</dt><dd>${formatTime(device.expiresAt)}</dd><dt>最后版本</dt><dd>${escapeHtml(device.lastAppVersion)}</dd><dt>治理版本</dt><dd>${device.governanceVersion}</dd></dl><h3>不可变治理记录</h3>${events}`;
+    els.trustBtn.disabled = device.trusted || device.blocked;
+    els.revokeBtn.disabled = !device.trusted;
+    els.blockBtn.disabled = device.blocked;
+    els.unblockBtn.disabled = !device.blocked;
+  }
+
+  async function refresh() {
+    setStatus(els.listStatus, '正在强一致读取脱敏设备列表……');
+    try {
+      const payload = await request('/api/admin/devices');
+      const result = payload.data.result;
+      renderList(result.devices);
+      setStatus(els.listStatus, `读取成功：${result.count}台设备。`, 'ok');
+      if (state.selectedRef) await openDetail(state.selectedRef);
+    } catch (error) {
+      setStatus(els.listStatus, errorText(error), 'error');
+    }
+  }
+
+  async function mutate(action, reasonCode, label) {
+    if (!state.selectedRef || state.busy) return;
+    if (!window.confirm(`确认${label}？`)) return;
+    state.busy = true;
+    for (const button of [els.trustBtn,els.revokeBtn,els.blockBtn,els.unblockBtn]) button.disabled = true;
+    setStatus(els.mutationStatus, `正在${label}……`);
+    try {
+      const payload = await request(`/api/admin/devices/${action}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          schemaVersion: 1,
+          deviceRef: state.selectedRef,
+          requestId: randomRequestId(),
+          reasonCode,
+        }),
+      });
+      const result = payload.data.result;
+      await refresh();
+      setStatus(els.mutationStatus, `${label}完成：可信=${result.trusted}，封禁=${result.blocked}，治理版本=${result.governanceVersion}。`, 'ok');
+    } catch (error) {
+      const message = errorText(error);
+      await openDetail(state.selectedRef);
+      setStatus(els.mutationStatus, message, 'error');
+    } finally {
+      state.busy = false;
+    }
+  }
+
+  els.loginBtn.addEventListener('click', login);
+  els.sessionBtn.addEventListener('click', checkSession);
+  els.logoutBtn.addEventListener('click', logout);
+  els.refreshBtn.addEventListener('click', refresh);
+  els.trustBtn.addEventListener('click', () => mutate('trust', 'verified_operator', '设为可信'));
+  els.revokeBtn.addEventListener('click', () => mutate('revoke-trust', 'trust_withdrawn', '撤销可信'));
+  els.blockBtn.addEventListener('click', () => mutate('block', els.blockReason.value, '封禁设备'));
+  els.unblockBtn.addEventListener('click', () => mutate('unblock', 'manual_review_cleared', '解除封禁'));
+  window.addEventListener('pagehide', () => { els.password.value = ''; state.selectedRef = ''; });
+})();
+</script>
+</body>
+</html>
