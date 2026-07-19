@@ -9,6 +9,7 @@ from playwright.sync_api import expect, sync_playwright
 ROOT = Path(__file__).resolve().parents[1]
 PAGE_HTML = (ROOT / 'dist' / 'admin-rollback-preview.html').read_text(encoding='utf-8')
 ROLLBACK_REF = f"rbref_v1_{'A' * 43}"
+CONFIRMATION = 'ROLLBACK_TO_PREVIOUS_APPROVED_VALUE'
 requests = []
 state = {'executed': False}
 
@@ -110,16 +111,18 @@ def route_handler(route, request):
         assert request.method == 'POST'
         assert request.headers.get('origin') == 'https://stage5e-admin.test'
         assert request.headers.get('content-type', '').startswith('application/json')
+        assert set(body.keys()) == {'schemaVersion', 'rollbackRef', 'requestId', 'confirmation'}
         assert body['schemaVersion'] == 1
         assert body['rollbackRef'] == ROLLBACK_REF
         assert body['requestId'].startswith('rbrq_v1_')
-        assert body['reasonCode'] == 'restore_previous_approved_value'
+        assert body['confirmation'] == CONFIRMATION
         state['executed'] = True
         fulfill_json(route, envelope({
             'viewer': viewer(),
             'result': {
                 'schemaVersion': 1,
                 'rollbackRef': ROLLBACK_REF,
+                'status': 'rolled_back',
                 'serviceName': '鹅鸭杀',
                 'settleType': 'round',
                 'restoredUnitPrice': 100,
@@ -128,6 +131,7 @@ def route_handler(route, request):
                 'replacedVersion': 2,
                 'eventVersion': 3,
                 'publicVersion': 3,
+                'publicMutationApplied': True,
                 'duplicate': False,
             },
             'capabilities': CAPABILITIES,
@@ -186,6 +190,8 @@ with sync_playwright() as playwright:
     mutation_requests = [item for item in requests if item['path'] == '/api/admin/rollbacks/execute']
     assert len(mutation_requests) == 1
     assert mutation_requests[0]['method'] == 'POST'
+    assert mutation_requests[0]['body']['confirmation'] == CONFIRMATION
+    assert 'reasonCode' not in mutation_requests[0]['body']
     assert not console_errors, console_errors
     context.close()
     browser.close()
@@ -194,6 +200,7 @@ print(json.dumps({
     'stage': '5E',
     'authenticatedSessionUsed': True,
     'redactedCandidateListPassed': True,
+    'fixedConfirmationPassed': True,
     'rollbackMutationPassed': True,
     'finalStatusNotOverwritten': True,
     'exactAccessibleNamePassed': True,
