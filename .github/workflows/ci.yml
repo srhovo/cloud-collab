@@ -51,6 +51,16 @@ jobs:
       - name: Stage5F administrator export browser regression
         run: python3 tests/stage5f_browser_admin_export.py
       - name: Stage5DEF joint administrator acceptance browser regression
-        run: python3 tests/stage5def_browser_joint_acceptance.py
+        run: |
+          set -o pipefail
+          python3 tests/stage5def_browser_joint_acceptance.py 2>&1 | tee stage5def-joint-browser.log
+      - name: Preserve Stage5DEF browser diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage5def-joint-browser-diagnostic
+          path: stage5def-joint-browser.log
+          if-no-files-found: ignore
+          retention-days: 1
       - name: Stage5DEF dual-Blob cleanup browser regression
         run: python3 tests/stage5def_browser_cleanup.py
