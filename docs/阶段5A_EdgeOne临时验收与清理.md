@@ -7,7 +7,7 @@
 - 本分支与PR始终保持草稿并标记`DO NOT MERGE`，验收结束后关闭，不得进入阶段5A基础PR或`main`。
 - 阶段4F分支、页面、密钥、盐值、部署和Blob均不复用。
 
-临时项目必须配置 `CLOUD_ADMIN_PUBLIC_ORIGIN` 为当前管理员预览部署的公开HTTPS来源，例如 `https://example.edgeone.cool`。只填协议和域名，不得包含页面路径、查询参数或预览token；登录部署与后续清理部署使用同一来源。
+临时项目必须配置 `CLOUD_ADMIN_PUBLIC_ORIGIN` 为任一当前管理员预览部署的公开HTTPS来源。只填协议和域名，不得包含页面路径、查询参数或预览token。EdgeOne为同一项目重新部署时可以轮换域名末尾的12位部署标识；代码只允许该标识变化，项目前缀与`.edgeone.cool`后缀必须完全一致，因此后续部署复用同一配置值。
 
 ## 临时清理门禁
 

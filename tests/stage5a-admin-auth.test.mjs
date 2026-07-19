@@ -238,6 +238,41 @@ test('same-origin guard requires HTTPS and rejects cross-site mutation requests'
   );
 });
 
+test('EdgeOne rotating deployment hosts remain locked to one project prefix', () => {
+  const publicOrigin = 'https://cloud-collab-stage5a-acceptance-temp-dpuu5szgt09q.edgeone.cool';
+  const currentOrigin = 'https://cloud-collab-stage5a-acceptance-temp-dprvtgvseh0h.edgeone.cool';
+  assert.equal(assertAdminSameOriginRequest(new Request(
+    'http://cloud-collab-stage5a-acceptance-temp-dprvtgvseh0h.edgeone.cool/api/admin/auth/session',
+  ), { publicOrigin }), true);
+  assert.equal(assertAdminSameOriginRequest(new Request(
+    'http://cloud-collab-stage5a-acceptance-temp-dprvtgvseh0h.edgeone.cool/api/admin/auth/login',
+    {
+      method: 'POST',
+      headers: { Origin: currentOrigin, 'Sec-Fetch-Site': 'same-origin' },
+    },
+  ), { requireOrigin: true, publicOrigin }), true);
+  for (const url of [
+    'http://other-stage5a-temp-dprvtgvseh0h.edgeone.cool/api/admin/auth/session',
+    'http://cloud-collab-stage5a-acceptance-temp-short.edgeone.cool/api/admin/auth/session',
+    'http://cloud-collab-stage5a-acceptance-temp-dprvtgvseh0h.edgeone.cool.attacker.test/api/admin/auth/session',
+  ]) {
+    assert.throws(
+      () => assertAdminSameOriginRequest(new Request(url), { publicOrigin }),
+      error => error.code === 'ADMIN_HTTPS_REQUIRED',
+    );
+  }
+  assert.throws(
+    () => assertAdminSameOriginRequest(new Request(
+      'http://cloud-collab-stage5a-acceptance-temp-dprvtgvseh0h.edgeone.cool/api/admin/auth/login',
+      {
+        method: 'POST',
+        headers: { Origin: publicOrigin, 'Sec-Fetch-Site': 'same-origin' },
+      },
+    ), { requireOrigin: true, publicOrigin }),
+    error => error.code === 'ADMIN_REQUEST_ORIGIN_INVALID',
+  );
+});
+
 test('disabled login fails before body parsing and Blob initialization', async () => {
   let stores = 0;
   const response = await handleAdminLoginRequest({

@@ -338,6 +338,14 @@ export async function consumeAdminLoginRate({ store, username, clientAddress, sa
   }
 }
 
+function edgeOneDeploymentProjectKey(url) {
+  if (!url || url.port) return '';
+  const match = String(url.hostname || '').toLowerCase().match(
+    /^([a-z0-9](?:[a-z0-9-]*[a-z0-9])?)-[a-z0-9]{12}\.edgeone\.cool$/,
+  );
+  return match?.[1] || '';
+}
+
 export function assertAdminSameOriginRequest(request, { requireOrigin = false, publicOrigin = '' } = {}) {
   let url;
   try {
@@ -345,15 +353,22 @@ export function assertAdminSameOriginRequest(request, { requireOrigin = false, p
   } catch (_) {
     throw new AdminAuthError('ADMIN_REQUEST_ORIGIN_INVALID', '管理员请求地址无效', 403);
   }
-  let expectedOrigin;
+  let configuredUrl;
   try {
-    expectedOrigin = publicOrigin ? new URL(publicOrigin).origin : (url.protocol === 'https:' ? url.origin : '');
+    configuredUrl = publicOrigin ? new URL(publicOrigin) : (url.protocol === 'https:' ? url : null);
   } catch (_) {
-    expectedOrigin = '';
+    configuredUrl = null;
   }
-  const expectedUrl = expectedOrigin ? new URL(expectedOrigin) : null;
-  const hostMatches = Boolean(expectedUrl && url.host === expectedUrl.host);
-  const directProtocolIsSecure = url.protocol === 'https:' && url.origin === expectedOrigin;
+  const configuredProjectKey = edgeOneDeploymentProjectKey(configuredUrl);
+  const requestProjectKey = edgeOneDeploymentProjectKey(url);
+  const rotatingEdgeOneHostMatches = Boolean(
+    configuredProjectKey && requestProjectKey && configuredProjectKey === requestProjectKey,
+  );
+  const hostMatches = Boolean(configuredUrl && (
+    url.host === configuredUrl.host || rotatingEdgeOneHostMatches
+  ));
+  const expectedOrigin = hostMatches ? `https://${url.host}` : '';
+  const directProtocolIsSecure = url.protocol === 'https:' && hostMatches;
   const configuredProxyOrigin = url.protocol === 'http:' && hostMatches;
   if (!directProtocolIsSecure && !configuredProxyOrigin) {
     throw new AdminAuthError('ADMIN_HTTPS_REQUIRED', '管理员接口只允许HTTPS', 403);
