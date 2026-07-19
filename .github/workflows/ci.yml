@@ -27,3 +27,5 @@ jobs:
           sudo ln -sf "$CHROMIUM_PATH" /usr/bin/chromium
       - run: python3 tests/core_compare.py
       - run: python3 tests/browser_integration.py
+      - name: Stage5A admin authentication browser regression
+        run: python3 tests/stage5a_browser_admin_auth.py
