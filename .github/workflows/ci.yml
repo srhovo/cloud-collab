@@ -27,6 +27,8 @@ jobs:
         run: node scripts/validate-stage5f.mjs
       - name: Run Stage5DEF joint acceptance static gates
         run: node scripts/validate-stage5def.mjs
+      - name: Verify aggregate npm CI contract
+        run: npm run ci
       - name: Install browser test runtime
         run: |
           python3 -m pip install --disable-pip-version-check playwright
