@@ -83,14 +83,19 @@ export function readStage4fPreviewCleanupConfig(env = {}) {
     throw new Stage4fPreviewCleanupError('STAGE4F_CLEANUP_CONFIRMATION_MISSING', '清理确认门禁未正确配置', 503);
   }
 
-  const cleanupAccessKey = String(env.CLOUD_STAGE4F_CLEANUP_KEY || '');
+  const configuredCleanupKey = String(env.CLOUD_STAGE4F_CLEANUP_KEY || '');
+  const previewWriteKey = String(env.CLOUD_WRITE_PREVIEW_KEY || '');
+  const configuredLength = secretByteLength(configuredCleanupKey);
+  const usePreviewKeyCompatibilitySlot = configuredLength < 32 || configuredLength > 256;
+  // EdgeOne may omit a newly-added cleanup variable from preview functions. Once
+  // both write gates are off, the old preview-key slot can hold a fresh cleanup-only key.
+  const cleanupAccessKey = usePreviewKeyCompatibilitySlot ? previewWriteKey : configuredCleanupKey;
   if (secretByteLength(cleanupAccessKey) < 32 || secretByteLength(cleanupAccessKey) > 256) {
     throw new Stage4fPreviewCleanupError('STAGE4F_CLEANUP_KEY_NOT_CONFIGURED', '阶段4F一次性清理独立密钥尚未正确配置', 503);
   }
 
-  const previewWriteKey = String(env.CLOUD_WRITE_PREVIEW_KEY || '');
   const rateLimitSalt = String(env.CLOUD_RATE_LIMIT_SALT || '');
-  if ((previewWriteKey && safeSecretEqual(cleanupAccessKey, previewWriteKey))
+  if ((!usePreviewKeyCompatibilitySlot && previewWriteKey && safeSecretEqual(cleanupAccessKey, previewWriteKey))
       || (rateLimitSalt && safeSecretEqual(cleanupAccessKey, rateLimitSalt))) {
     throw new Stage4fPreviewCleanupError('STAGE4F_CLEANUP_KEY_REUSED', '清理密钥不得复用预览访问密钥或限流盐值', 503);
   }
