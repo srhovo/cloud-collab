@@ -82,7 +82,17 @@ test('stage4F cleanup config fails closed and requires both preview switches off
   assert.throws(() => readStage4fPreviewCleanupConfig({ ...ENV, CLOUD_WRITE_ALLOWED_GROUP_ID: 'group_other' }), error => error.code === 'STAGE4F_CLEANUP_SCOPE_MISMATCH');
   assert.throws(() => readStage4fPreviewCleanupConfig({ ...ENV, CLOUD_STAGE4F_CLEANUP_KEY: PREVIEW_KEY }), error => error.code === 'STAGE4F_CLEANUP_KEY_REUSED');
   assert.throws(() => readStage4fPreviewCleanupConfig({ ...ENV, CLOUD_STAGE4F_CLEANUP_KEY: RATE_SALT }), error => error.code === 'STAGE4F_CLEANUP_KEY_REUSED');
+  assert.throws(
+    () => readStage4fPreviewCleanupConfig({ ...ENV, CLOUD_STAGE4F_CLEANUP_KEY: '', CLOUD_WRITE_PREVIEW_KEY: RATE_SALT }),
+    error => error.code === 'STAGE4F_CLEANUP_KEY_REUSED',
+  );
   assert.equal(readStage4fPreviewCleanupConfig(ENV).namespace, STAGE4F_CLEANUP_NAMESPACE);
+  const compatibilityConfig = readStage4fPreviewCleanupConfig({
+    ...ENV,
+    CLOUD_STAGE4F_CLEANUP_KEY: '',
+    CLOUD_WRITE_PREVIEW_KEY: CLEANUP_KEY,
+  });
+  assert.equal(compatibilityConfig.cleanupAccessKey, CLEANUP_KEY);
 });
 
 test('cleanup header is independent from preview access and checked before storage', async () => {
