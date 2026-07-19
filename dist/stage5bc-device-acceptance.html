@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <title>阶段5B/5C双设备联合验收</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;color-scheme:light;--blue:#0969da;--green:#1a7f37;--red:#cf222e;--amber:#9a6700;--border:#d0d7de;--muted:#57606a;--bg:#f6f8fa}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#1f2328}main{width:min(820px,calc(100% - 24px));margin:18px auto}.card{margin-bottom:14px;padding:17px;border:1px solid var(--border);border-radius:14px;background:#fff;box-shadow:0 8px 24px rgba(31,35,40,.07)}h1,h2{margin:0 0 8px}h1{font-size:24px}h2{font-size:19px}p{line-height:1.55}.banner{padding:11px 13px;border-left:4px solid var(--amber);border-radius:8px;background:#fff8c5}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}label{display:block;margin:10px 0 5px;font-weight:750}input,select{width:100%;min-height:44px;border:1px solid #8c959f;border-radius:8px;padding:9px;font:16px system-ui}.actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:13px}button{min-height:43px;border:0;border-radius:8px;padding:9px 14px;background:var(--blue);color:#fff;font:750 15px system-ui;cursor:pointer}button.secondary{background:#57606a}button.danger{background:var(--red)}button:disabled{opacity:.45;cursor:not-allowed}.status{margin-top:12px;padding:11px;border:1px solid var(--border);border-radius:9px;background:var(--bg);font-weight:700;white-space:pre-wrap;overflow-wrap:anywhere}.ok{color:var(--green)}.error{color:var(--red)}.warn{color:var(--amber)}.metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.metric{padding:10px;border:1px solid var(--border);border-radius:9px;background:var(--bg)}.metric strong{display:block;margin-top:4px;font-size:17px;overflow-wrap:anywhere}.muted{color:var(--muted);font-size:13px}.hidden{display:none!important}@media(max-width:620px){.grid,.metrics{grid-template-columns:1fr}.actions button{width:100%}}
+  </style>
+</head>
+<body>
+<main>
+  <section class="card">
+    <h1>阶段5B/5C：双设备联合验收</h1>
+    <p class="muted">一次性临时页 · 只允许 group_fixture / lib_receive_fixture · 不进入正式用户页面</p>
+    <p class="banner"><strong>两台真实设备使用相同批次码、不同角色。</strong>预览密钥只保存在当前页面内存；设备令牌只保存在本标签页的SessionStorage，销毁前必须点击清除。</p>
+    <div class="grid">
+      <div><label for="role">本设备角色</label><select id="role"><option value="A">设备A</option><option value="B">设备B</option></select></div>
+      <div><label for="batch">共享批次码</label><input id="batch" maxlength="18" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="例如 BC0719"></div>
+    </div>
+    <label for="previewKey">临时预览访问密钥</label>
+    <input id="previewKey" type="password" maxlength="256" autocomplete="off" spellcheck="false">
+    <div class="actions">
+      <button id="startBtn" type="button">建立本设备验收会话</button>
+      <button id="clearBtn" class="danger" type="button">清除本机设备数据</button>
+    </div>
+    <div id="sessionStatus" class="status" aria-live="polite">尚未建立验收会话。</div>
+  </section>
+
+  <section id="scenarioCard" class="card hidden">
+    <h2>按顺序制造三组待审核冲突</h2>
+    <p class="muted">每组都先由设备A提交，再由设备B提交。两次提交至少间隔6秒，避免触发合成限流。</p>
+    <div class="actions">
+      <button data-case="approve" type="button">1. 批准组</button>
+      <button data-case="reject" type="button">2. 拒绝组</button>
+      <button data-case="edit" type="button">3. 编辑后批准组</button>
+    </div>
+    <div id="submitStatus" class="status">尚未提交。</div>
+  </section>
+
+  <section id="readCard" class="card hidden">
+    <h2>动态公共读取与跨设备对比</h2>
+    <div class="actions"><button id="readBtn" type="button">读取版本、快照与增量</button></div>
+    <div class="metrics">
+      <div class="metric"><span class="muted">公共版本</span><strong id="version">—</strong></div>
+      <div class="metric"><span class="muted">一致性</span><strong id="consistency">—</strong></div>
+      <div class="metric"><span class="muted">设备对比指纹</span><strong id="fingerprint">—</strong></div>
+    </div>
+    <div id="readStatus" class="status">管理员动作完成后，两台设备分别读取并对比指纹。</div>
+  </section>
+</main>
+<script>
+(() => {
+  'use strict';
+  const GROUP_ID = 'group_fixture';
+  const LIBRARY_ID = 'lib_receive_fixture';
+  const STORAGE_KEY = 'stage5bcAcceptanceDeviceV1';
+  const PREVIEW_HEADER = 'x-cloud-collab-preview-key';
+  const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+  const prices = Object.freeze({
+    approve: Object.freeze({ A: 100, B: 101 }),
+    reject: Object.freeze({ A: 200, B: 201 }),
+    edit: Object.freeze({ A: 300, B: 301 }),
+  });
+  const labels = Object.freeze({ approve: '批准组', reject: '拒绝组', edit: '编辑后批准组' });
+  const els = Object.fromEntries(['role','batch','previewKey','startBtn','clearBtn','sessionStatus','scenarioCard','submitStatus','readCard','readBtn','version','consistency','fingerprint','readStatus'].map(id => [id, document.getElementById(id)]));
+  const state = { activeKey: '', device: null, busy: false, lastSubmitAt: 0 };
+
+  function setStatus(element, message, kind = '') {
+    element.textContent = message;
+    element.className = `status ${kind}`.trim();
+  }
+
+  function setBusy(value) {
+    state.busy = value;
+    for (const button of document.querySelectorAll('button')) button.disabled = value;
+  }
+
+  function batchValue() {
+    const value = String(els.batch.value || '').trim().toUpperCase();
+    if (!/^[A-Z0-9][A-Z0-9-]{3,17}$/.test(value)) throw new Error('批次码需为4至18位英文字母、数字或短横线。');
+    return value;
+  }
+
+  function randomPublicId(prefix) {
+    const bytes = crypto.getRandomValues(new Uint8Array(26));
+    return `${prefix}${[...bytes].map(value => CROCKFORD[value % CROCKFORD.length]).join('')}`;
+  }
+
+  function canonicalize(value) {
+    if (value === null || typeof value === 'string' || typeof value === 'boolean' || typeof value === 'number') return JSON.stringify(value);
+    if (Array.isArray(value)) return `[${value.map(canonicalize).join(',')}]`;
+    return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonicalize(value[key])}`).join(',')}}`;
+  }
+
+  async function digestBase64Url(value) {
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+    const binary = String.fromCharCode(...new Uint8Array(digest));
+    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+  }
+
+  function apiUrl(path, params = {}) {
+    const url = new URL(path, window.location.origin);
+    const current = new URL(window.location.href);
+    for (const name of ['eo_token', 'eo_time']) {
+      const value = current.searchParams.get(name);
+      if (value) url.searchParams.set(name, value);
+    }
+    for (const [name, value] of Object.entries(params)) url.searchParams.set(name, String(value));
+    return url;
+  }
+
+  async function api(path, { method = 'GET', body = null, token = null, params = {} } = {}) {
+    if (!state.activeKey) throw new Error('当前页面没有临时预览密钥。');
+    const headers = { [PREVIEW_HEADER]: state.activeKey };
+    if (body !== null) headers['Content-Type'] = 'application/json';
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const response = await fetch(apiUrl(path, params), {
+      method,
+      headers,
+      body: body === null ? undefined : JSON.stringify(body),
+      credentials: 'same-origin',
+      cache: 'no-store',
+      redirect: 'error',
+      referrerPolicy: 'no-referrer',
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || !payload?.ok) {
+      const error = new Error(payload?.error?.message || `联合验收接口失败（HTTP ${response.status}）`);
+      error.code = payload?.error?.code || `HTTP_${response.status}`;
+      error.retryAfter = Number(response.headers.get('Retry-After') || 0);
+      throw error;
+    }
+    return payload.data;
+  }
+
+  function restoreDevice(role, batch) {
+    try {
+      const value = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || 'null');
+      if (value?.schemaVersion === 1 && value.role === role && value.batch === batch
+          && /^dev_[0-9A-HJKMNP-TV-Z]{26}$/.test(value.deviceId)
+          && /^dt_v1_[A-Za-z0-9_-]{43}$/.test(value.deviceToken)) return value;
+    } catch (_) {}
+    return null;
+  }
+
+  async function register(role, batch) {
+    const deviceId = randomPublicId('dev_');
+    const data = await api('/api/stage5bc/acceptance/device-register', {
+      method: 'POST',
+      body: {
+        schemaVersion: 1,
+        deviceId,
+        nickname: `阶段5BC设备${role}`,
+        clientContext: { appVersion: '8.2.28' },
+      },
+    });
+    const device = Object.freeze({ schemaVersion: 1, role, batch, deviceId: data.deviceId, deviceToken: data.deviceToken });
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(device));
+    return device;
+  }
+
+  async function start() {
+    if (state.busy) return;
+    let key = String(els.previewKey.value || '');
+    const keyBytes = new TextEncoder().encode(key).byteLength;
+    if (keyBytes < 32 || keyBytes > 256) return setStatus(els.sessionStatus, '临时预览密钥必须为32至256字节。', 'error');
+    let batch;
+    try { batch = batchValue(); } catch (error) { return setStatus(els.sessionStatus, error.message, 'error'); }
+    const role = els.role.value === 'B' ? 'B' : 'A';
+    state.activeKey = key;
+    key = '';
+    els.previewKey.value = '';
+    setBusy(true);
+    setStatus(els.sessionStatus, '正在恢复或注册本设备……');
+    try {
+      state.device = restoreDevice(role, batch) || await register(role, batch);
+      els.role.disabled = true;
+      els.batch.disabled = true;
+      els.scenarioCard.classList.remove('hidden');
+      els.readCard.classList.remove('hidden');
+      setStatus(els.sessionStatus, `设备${role}已就绪（标识…${state.device.deviceId.slice(-4)}）；预览密钥输入框已清空。`, 'ok');
+    } catch (error) {
+      state.activeKey = '';
+      setStatus(els.sessionStatus, error?.message || '设备会话建立失败。', 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function buildSubmission(caseName) {
+    const role = state.device.role;
+    const batch = state.device.batch;
+    const submissionId = randomPublicId('sub_');
+    const payload = {
+      serviceName: `阶段5BC-${batch}-${caseName}`,
+      settleType: 'round',
+      unitPrice: prices[caseName][role],
+    };
+    const identity = {
+      groupId: GROUP_ID,
+      libraryId: LIBRARY_ID,
+      normalizedServiceName: payload.serviceName.toLowerCase(),
+      settleType: payload.settleType,
+      ruleType: 'exact',
+      variant: 'standard',
+    };
+    const content = {
+      schemaVersion: 1,
+      payloadSchemaVersion: 1,
+      groupId: GROUP_ID,
+      libraryId: LIBRARY_ID,
+      bossId: null,
+      dataType: 'exact_price',
+      operation: 'upsert',
+      payload,
+    };
+    const idempotency = { schemaVersion: 1, deviceId: state.device.deviceId, submissionId };
+    return {
+      schemaVersion: 1,
+      payloadSchemaVersion: 1,
+      submissionId,
+      deviceId: state.device.deviceId,
+      groupId: GROUP_ID,
+      libraryId: LIBRARY_ID,
+      bossId: null,
+      dataType: 'exact_price',
+      operation: 'upsert',
+      origin: 'user',
+      clientCreatedAt: Date.now(),
+      businessKey: `bk_v1_${await digestBase64Url(canonicalize(identity))}`,
+      contentHash: `ch_v1_${await digestBase64Url(canonicalize(content))}`,
+      idempotencyKey: `ik_v1_${await digestBase64Url(canonicalize(idempotency))}`,
+      payload,
+      clientContext: { appVersion: '8.2.28', projectionSpecVersion: 1, queueSchemaVersion: 1 },
+    };
+  }
+
+  async function submit(caseName) {
+    if (!state.device || state.busy) return;
+    const elapsed = Date.now() - state.lastSubmitAt;
+    if (elapsed < 6000) return setStatus(els.submitStatus, `请再等待 ${Math.ceil((6000 - elapsed) / 1000)} 秒，避免触发合成限流。`, 'warn');
+    setBusy(true);
+    setStatus(els.submitStatus, `设备${state.device.role}正在提交${labels[caseName]}……`);
+    try {
+      const body = await buildSubmission(caseName);
+      const data = await api('/api/stage5bc/acceptance/submissions-create', {
+        method: 'POST',
+        body,
+        token: state.device.deviceToken,
+      });
+      state.lastSubmitAt = Date.now();
+      const expected = state.device.role === 'A' ? 'waiting_confirmation' : 'pending_review';
+      const safe = data.publicMutationAllowed === false && data.autoApprovalEnabled === false;
+      const kind = data.status === expected && safe ? 'ok' : 'warn';
+      setStatus(els.submitStatus, `${labels[caseName]}：设备${state.device.role}提交结果 ${data.status}；reason=${data.reason || '—'}；公共版本 ${data.previewPublicVersion}；正式能力保持关闭。`, kind);
+    } catch (error) {
+      const retry = error?.retryAfter ? `；请等待${error.retryAfter}秒后重试` : '';
+      setStatus(els.submitStatus, `${error?.message || '提交失败'}${retry}。`, 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function shortFingerprint(value) {
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+    return [...new Uint8Array(digest)].slice(0, 8).map(byte => byte.toString(16).padStart(2, '0')).join('');
+  }
+
+  async function readPublic() {
+    if (state.busy || !state.activeKey) return;
+    setBusy(true);
+    setStatus(els.readStatus, '正在强一致读取动态版本、快照与从0开始的增量……');
+    try {
+      const params = { groupId: GROUP_ID, libraryId: LIBRARY_ID };
+      const [version, snapshotEnvelope, changes] = await Promise.all([
+        api('/api/stage5bc/acceptance/public-version', { params }),
+        api('/api/stage5bc/acceptance/public-snapshot', { params }),
+        api('/api/stage5bc/acceptance/public-changes', { params: { ...params, sinceVersion: 0, limit: 100 } }),
+      ]);
+      const publicVersion = Number(version.publicVersion || 0);
+      const snapshot = snapshotEnvelope.snapshot;
+      const records = Array.isArray(snapshot?.records) ? snapshot.records : [];
+      const changeList = Array.isArray(changes.changes) ? changes.changes : [];
+      const latest = changeList.length ? Number(changeList[changeList.length - 1].version) : 0;
+      const ordered = changeList.every((item, index) => Number(item.version) === index + 1);
+      const consistent = publicVersion === Number(snapshotEnvelope.publicVersion || 0)
+        && publicVersion === Number(changes.publicVersion || 0)
+        && publicVersion === latest
+        && publicVersion === Number(changes.nextVersion || 0)
+        && ordered
+        && (publicVersion === 0 || Number(snapshot?.publicVersion || -1) === publicVersion);
+      const fingerprint = await shortFingerprint(JSON.stringify({
+        publicVersion,
+        records: records.map(item => [item.businessKey, item.contentHash, item.approvedVersion]).sort(),
+        changes: changeList.map(item => [item.version, item.businessKey, item.contentHash]),
+      }));
+      els.version.textContent = String(publicVersion);
+      els.consistency.textContent = consistent ? '通过' : '失败';
+      els.fingerprint.textContent = fingerprint;
+      setStatus(els.readStatus, consistent
+        ? `一致性通过；记录${records.length}条、增量${changeList.length}条。请与另一台设备核对同一指纹。`
+        : '版本、快照或增量不一致；请停止验收。', consistent ? 'ok' : 'error');
+    } catch (error) {
+      setStatus(els.readStatus, error?.message || '动态公共读取失败。', 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function clearDevice() {
+    sessionStorage.removeItem(STORAGE_KEY);
+    state.activeKey = '';
+    state.device = null;
+    state.lastSubmitAt = 0;
+    els.previewKey.value = '';
+    els.role.disabled = false;
+    els.batch.disabled = false;
+    els.scenarioCard.classList.add('hidden');
+    els.readCard.classList.add('hidden');
+    setStatus(els.sessionStatus, '本标签页的设备令牌、身份和临时预览密钥已清除。', 'ok');
+  }
+
+  els.startBtn.addEventListener('click', start);
+  els.clearBtn.addEventListener('click', clearDevice);
+  for (const button of document.querySelectorAll('[data-case]')) button.addEventListener('click', () => submit(button.dataset.case));
+  els.readBtn.addEventListener('click', readPublic);
+  window.addEventListener('pagehide', () => { els.previewKey.value = ''; state.activeKey = ''; });
+})();
+</script>
+</body>
+</html>

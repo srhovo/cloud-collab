@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <title>阶段5B/5C联合验收清理</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;color-scheme:light;--blue:#0969da;--green:#1a7f37;--red:#cf222e;--amber:#9a6700;--border:#d0d7de;--muted:#57606a;--bg:#f6f8fa}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#1f2328}main{width:min(720px,calc(100% - 24px));margin:22px auto}.card{padding:18px;border:1px solid var(--border);border-radius:14px;background:#fff;box-shadow:0 8px 24px rgba(31,35,40,.07)}h1{margin:0 0 8px;font-size:24px}p{line-height:1.58}.banner{padding:11px 13px;border-left:4px solid var(--red);border-radius:8px;background:#ffebe9}label{display:block;margin:14px 0 6px;font-weight:750}input{width:100%;min-height:45px;border:1px solid #8c959f;border-radius:8px;padding:9px;font:16px system-ui}.actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:14px}button{min-height:44px;border:0;border-radius:8px;padding:10px 15px;background:var(--blue);color:#fff;font:750 15px system-ui;cursor:pointer}button.danger{background:var(--red)}button:disabled{opacity:.45}.status{margin-top:13px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg);font-weight:700;white-space:pre-wrap}.ok{color:var(--green)}.error{color:var(--red)}.warn{color:var(--amber)}.metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:13px}.metric{padding:10px;border:1px solid var(--border);border-radius:9px;background:var(--bg)}.metric strong{display:block;margin-top:4px;font-size:18px}.muted{color:var(--muted);font-size:13px}@media(max-width:560px){.actions button{width:100%}.metrics{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<main><section class="card">
+  <h1>阶段5B/5C：双Blob强一致清理</h1>
+  <p class="banner"><strong>只在所有验收、公共写入和管理员开关均已关闭后使用。</strong>清理器会先验证两套命名空间全部对象都符合严格合成Key白名单，再允许删除。</p>
+  <label for="cleanupKey">一次性独立清理密钥</label>
+  <input id="cleanupKey" type="password" maxlength="256" autocomplete="off" spellcheck="false">
+  <div class="actions">
+    <button id="inspectBtn" type="button">1. 强一致检查两套Blob</button>
+    <button id="executeBtn" class="danger" type="button" disabled>2. 按检查摘要执行删除</button>
+    <button id="verifyBtn" type="button">3. 二次强一致复查</button>
+  </div>
+  <div class="metrics">
+    <div class="metric"><span class="muted">公共合成Blob</span><strong id="publicCount">—</strong></div>
+    <div class="metric"><span class="muted">管理员合成Blob</span><strong id="adminCount">—</strong></div>
+    <div class="metric"><span class="muted">合计</span><strong id="totalCount">—</strong></div>
+  </div>
+  <div id="status" class="status" aria-live="polite">尚未检查。清理密钥不会写入浏览器存储。</div>
+  <p class="muted">成功标准：删除返回remainingObjectCount=0，随后再次检查公共与管理员对象数仍均为0。最后关闭清理开关并销毁密钥、盐值、设备数据、部署和EdgeOne项目。</p>
+</section></main>
+<script>
+(() => {
+  'use strict';
+  const CONFIRMATION = 'DELETE_STAGE5BC_SYNTHETIC_PREVIEW_V1';
+  const els = Object.fromEntries(['cleanupKey','inspectBtn','executeBtn','verifyBtn','publicCount','adminCount','totalCount','status'].map(id => [id, document.getElementById(id)]));
+  const state = { key: '', publicDigest: '', adminDigest: '', busy: false };
+
+  function setStatus(message, kind = '') {
+    els.status.textContent = message;
+    els.status.className = `status ${kind}`.trim();
+  }
+
+  function setBusy(value) {
+    state.busy = value;
+    els.inspectBtn.disabled = value;
+    els.verifyBtn.disabled = value;
+    els.executeBtn.disabled = value || !state.publicDigest || !state.adminDigest;
+    els.cleanupKey.disabled = value;
+  }
+
+  function apiUrl() {
+    const url = new URL('/api/stage5bc/cleanup', window.location.origin);
+    const current = new URL(window.location.href);
+    for (const name of ['eo_token', 'eo_time']) {
+      const value = current.searchParams.get(name);
+      if (value) url.searchParams.set(name, value);
+    }
+    return url;
+  }
+
+  function loadKey() {
+    if (state.key) return state.key;
+    let key = String(els.cleanupKey.value || '');
+    const bytes = new TextEncoder().encode(key).byteLength;
+    if (bytes < 32 || bytes > 256) throw new Error('一次性清理密钥必须为32至256字节。');
+    state.key = key;
+    key = '';
+    els.cleanupKey.value = '';
+    return state.key;
+  }
+
+  async function api(body) {
+    const key = loadKey();
+    const response = await fetch(apiUrl(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-cloud-stage5bc-cleanup-key': key },
+      body: JSON.stringify(body),
+      credentials: 'same-origin',
+      cache: 'no-store',
+      redirect: 'error',
+      referrerPolicy: 'no-referrer',
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || !payload?.ok) {
+      const error = new Error(payload?.error?.message || `清理接口失败（HTTP ${response.status}）`);
+      error.code = payload?.error?.code || `HTTP_${response.status}`;
+      throw error;
+    }
+    if (payload.data?.acceptanceEnabled !== false || payload.data?.publicMutationAllowed !== false
+        || payload.data?.reviewMutationAllowed !== false || payload.data?.cleanupOnly !== true) {
+      throw new Error('清理响应未保持全部业务能力关闭。');
+    }
+    return payload.data;
+  }
+
+  function render(data) {
+    const publicCount = Number(data.publicObjectCount ?? data.publicRemainingCount ?? 0);
+    const adminCount = Number(data.adminObjectCount ?? data.adminRemainingCount ?? 0);
+    els.publicCount.textContent = String(publicCount);
+    els.adminCount.textContent = String(adminCount);
+    els.totalCount.textContent = String(Number(data.totalObjectCount ?? data.remainingObjectCount ?? publicCount + adminCount));
+  }
+
+  async function inspect({ verify = false } = {}) {
+    if (state.busy) return;
+    setBusy(true);
+    setStatus(verify ? '正在执行二次强一致复查……' : '正在强一致列举并验证两套Blob白名单……');
+    try {
+      const data = await api({ schemaVersion: 1, action: 'inspect', confirmation: CONFIRMATION });
+      render(data);
+      state.publicDigest = data.publicKeySetDigest;
+      state.adminDigest = data.adminKeySetDigest;
+      const clean = data.publicObjectCount === 0 && data.adminObjectCount === 0 && data.totalObjectCount === 0;
+      setStatus(clean
+        ? (verify ? '二次强一致复查通过：公共合成0、管理员合成0。' : '两套合成Blob当前均为0。')
+        : `检查通过：公共合成${data.publicObjectCount}个、管理员合成${data.adminObjectCount}个；可按摘要执行删除。`, clean ? 'ok' : 'warn');
+    } catch (error) {
+      state.publicDigest = '';
+      state.adminDigest = '';
+      setStatus(error?.message || '强一致检查失败。', 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function execute() {
+    if (state.busy || !state.publicDigest || !state.adminDigest) return;
+    if (!window.confirm('确认删除两套命名空间中已通过白名单校验的全部阶段5B/5C合成对象？')) return;
+    setBusy(true);
+    setStatus('正在按两套检查摘要删除并强一致复查……');
+    try {
+      const data = await api({
+        schemaVersion: 1,
+        action: 'execute',
+        confirmation: CONFIRMATION,
+        expectedPublicKeySetDigest: state.publicDigest,
+        expectedAdminKeySetDigest: state.adminDigest,
+      });
+      render(data);
+      state.publicDigest = '';
+      state.adminDigest = '';
+      if (data.completed !== true || data.remainingObjectCount !== 0
+          || data.publicRemainingCount !== 0 || data.adminRemainingCount !== 0) {
+        throw new Error('清理响应未达到两套Blob剩余0。');
+      }
+      setStatus(`删除完成：共删除${data.deletedObjectCount}个（公共${data.publicDeletedCount}、管理员${data.adminDeletedCount}），强一致剩余0。请点击二次复查。`, 'ok');
+    } catch (error) {
+      state.publicDigest = '';
+      state.adminDigest = '';
+      setStatus(`${error?.message || '删除失败'}；必须重新检查后再继续。`, 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  els.inspectBtn.addEventListener('click', () => inspect());
+  els.verifyBtn.addEventListener('click', () => inspect({ verify: true }));
+  els.executeBtn.addEventListener('click', execute);
+  window.addEventListener('pagehide', () => { state.key = ''; els.cleanupKey.value = ''; });
+})();
+</script>
+</body>
+</html>

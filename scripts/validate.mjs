@@ -56,6 +56,11 @@ const workflow = read('.github/workflows/ci.yml');
 const adminMutation = read('src/server/admin_review_mutation_v1.js');
 const adminMutationHttp = read('src/server/admin_review_mutation_http_v1.js');
 const adminMutationPage = read('dist/admin-review-actions-preview.html');
+const stage5bcAcceptance = read('src/server/stage5bc_acceptance_http_v1.js');
+const stage5bcCleanup = read('src/server/stage5bc_cleanup_v1.js');
+const stage5bcDevicePage = read('dist/stage5bc-device-acceptance.html');
+const stage5bcAdminPage = read('dist/stage5bc-admin-acceptance.html');
+const stage5bcCleanupPage = read('dist/stage5bc-cleanup.html');
 
 check('receive and submission clients are both embedded', output.includes('只读API客户端（阶段3B）') && output.includes('隔离候选提交客户端（阶段4C）'));
 check('submission client uses only existing preview routes', submissionClient.includes("'/api/device/register'") && submissionClient.includes("'/api/submissions/create'") && !submissionClient.includes('/api/admin'));
@@ -78,6 +83,13 @@ check('Stage5C admin writes require same-origin authenticated POST', adminMutati
 check('Stage5C mutation page stores no secret or browser state', !/(?:localStorage|sessionStorage)\.(?:setItem|getItem|removeItem)/.test(adminMutationPage) && !/CLOUD_ADMIN_(?:PASSWORD|SESSION_SECRET|RATE_LIMIT_SALT)/.test(adminMutationPage));
 check('Stage5C routes stay outside ordinary user build', !output.includes('admin-review-actions-preview') && !output.includes('/api/admin/reviews/approve') && !submissionClient.includes('/api/admin'));
 check('CI includes Stage5C browser mutation regression', workflow.includes('tests/stage5c_browser_admin_review_mutations.py'));
+check('Stage5BC one-time acceptance and cleanup gates default closed', envExample.includes('CLOUD_STAGE5BC_ACCEPTANCE_ENABLED=0') && envExample.includes('CLOUD_STAGE5BC_CLEANUP_ENABLED=0'));
+check('Stage5BC keeps standard public preview routes closed while temporary wrappers clone fixture-only flags', stage5bcAcceptance.includes('STAGE5BC_FORMAL_PREVIEW_ROUTES_MUST_STAY_CLOSED') && stage5bcAcceptance.includes("CLOUD_WRITE_PREVIEW_ENABLED: '1'") && stage5bcAcceptance.includes("CLOUD_AUTO_APPROVAL_PREVIEW_ENABLED: '1'") && stage5bcAcceptance.includes("STAGE5BC_ACCEPTANCE_GROUP_ID = 'group_fixture'") && stage5bcAcceptance.includes("STAGE5BC_ACCEPTANCE_LIBRARY_ID = 'lib_receive_fixture'"));
+check('Stage5BC cleanup hard-locks both synthetic stores and every gate closed', stage5bcCleanup.includes("STAGE5BC_PUBLIC_STORE = 'cloud-collab-preview-v1'") && stage5bcCleanup.includes("STAGE5BC_ADMIN_STORE = 'cloud-collab-admin-preview-v1'") && stage5bcCleanup.includes('CLOUD_ADMIN_REVIEW_MUTATION_PREVIEW_ENABLED') && stage5bcCleanup.includes('CLOUD_STAGE5BC_ACCEPTANCE_ENABLED'));
+check('Stage5BC cleanup recognizes immutable decision audit and resolution families', ['resolved/rv_v1_', 'decisions/rv_v1_', 'completions/rv_v1_', 'approval-cycles/bk_v1_', 'audit/[0-9]{4}'].every(token => stage5bcCleanup.includes(token)));
+check('Stage5BC temporary pages never persist preview admin or cleanup secrets', !stage5bcDevicePage.includes("sessionStorage.setItem('preview") && !stage5bcAdminPage.includes('localStorage.setItem') && !stage5bcAdminPage.includes('sessionStorage.setItem') && !stage5bcCleanupPage.includes('localStorage.setItem') && !stage5bcCleanupPage.includes('sessionStorage.setItem') && !/CLOUD_(?:WRITE_PREVIEW_KEY|ADMIN_PASSWORD|ADMIN_SESSION_SECRET|STAGE5BC_CLEANUP_KEY)/.test([stage5bcDevicePage, stage5bcAdminPage, stage5bcCleanupPage].join('\n')));
+check('Stage5BC routes and pages stay outside ordinary user build', !output.includes('stage5bc') && !submissionClient.includes('stage5bc') && !output.includes('/api/admin'));
+check('CI includes Stage5BC combined browser regression', workflow.includes('tests/stage5bc_browser_acceptance.py'));
 
 const backupBlock = output.match(/getModuleConfigs\(\) \{\s*return \[([\s\S]*?)\];\s*\}/)?.[1] || '';
 check('cloud keys remain excluded from standard backup', cloudKeys.every(key => !backupBlock.includes(key)));

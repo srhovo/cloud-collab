@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <title>阶段5B/5C管理员联合验收</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;color-scheme:light;--blue:#0969da;--green:#1a7f37;--red:#cf222e;--amber:#9a6700;--border:#d0d7de;--muted:#57606a;--bg:#f6f8fa}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#1f2328}main{width:min(920px,calc(100% - 24px));margin:18px auto}.card{margin-bottom:14px;padding:17px;border:1px solid var(--border);border-radius:14px;background:#fff;box-shadow:0 8px 24px rgba(31,35,40,.07)}h1,h2,h3{margin:0 0 8px}h1{font-size:24px}h2{font-size:20px}h3{font-size:17px}p{line-height:1.55}.banner{padding:11px 13px;border-left:4px solid var(--red);border-radius:8px;background:#ffebe9}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}label{display:block;margin:10px 0 5px;font-weight:750}input,select{width:100%;min-height:43px;border:1px solid #8c959f;border-radius:8px;padding:9px;font:15px system-ui}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}button{min-height:42px;border:0;border-radius:8px;padding:9px 13px;background:var(--blue);color:#fff;font:750 14px system-ui;cursor:pointer}button.secondary{background:#57606a}button.danger{background:var(--red)}button:disabled{opacity:.45;cursor:not-allowed}.status{margin-top:12px;padding:11px;border:1px solid var(--border);border-radius:9px;background:var(--bg);font-weight:700;white-space:pre-wrap;overflow-wrap:anywhere}.ok{color:var(--green)}.error{color:var(--red)}.warn{color:var(--amber)}.muted{color:var(--muted);font-size:13px}.review{margin-top:11px;padding:13px;border:1px solid var(--border);border-radius:10px}.review-head{display:flex;justify-content:space-between;gap:8px}.pill{padding:3px 8px;border-radius:999px;background:#fff8c5;color:#7d4e00;font-size:12px;font-weight:750}.meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px 10px;margin-top:8px;color:var(--muted);font-size:13px}.review .edit{max-width:180px}.metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.metric{padding:10px;border:1px solid var(--border);border-radius:9px;background:var(--bg)}.metric strong{display:block;margin-top:4px;overflow-wrap:anywhere}.detail{margin-top:8px;padding:10px;border-left:4px solid var(--blue);background:var(--bg);white-space:pre-wrap}.hidden{display:none!important}@media(max-width:650px){.grid,.meta,.metrics{grid-template-columns:1fr}.actions button{width:100%}.review-head{display:block}}
+  </style>
+</head>
+<body>
+<main>
+  <section class="card">
+    <h1>阶段5B/5C：管理员联合验收</h1>
+    <p class="muted">同一临时部署完成登录、只读队列、三种审核动作与同请求重放；只允许合成测试库。</p>
+    <p class="banner"><strong>本页会修改隔离公共版本。</strong>每个审核动作会自动重放完全相同的请求，并验证只产生一个公共版本。密码和预览密钥均不写入浏览器存储。</p>
+    <div class="grid">
+      <div><label for="username">管理员用户名</label><input id="username" maxlength="128" autocomplete="username" autocapitalize="none" spellcheck="false"></div>
+      <div><label for="password">管理员密码</label><input id="password" type="password" maxlength="256" autocomplete="current-password"></div>
+    </div>
+    <label for="previewKey">临时预览访问密钥（用于公共版本校验）</label>
+    <input id="previewKey" type="password" maxlength="256" autocomplete="off" spellcheck="false">
+    <div class="actions">
+      <button id="loginBtn" type="button">同源安全登录</button>
+      <button id="sessionBtn" class="secondary" type="button">检查/恢复会话</button>
+      <button id="keyBtn" class="secondary" type="button">载入预览密钥到内存</button>
+      <button id="logoutBtn" class="danger" type="button">退出并清除会话</button>
+    </div>
+    <div id="authStatus" class="status" aria-live="polite">正在检查管理员会话……</div>
+    <p id="identity" class="muted">尚未验证会话。</p>
+  </section>
+
+  <section id="queueCard" class="card hidden">
+    <h2>阶段5B强一致只读队列 <span id="count" class="pill">0</span></h2>
+    <div class="actions"><button id="queueBtn" type="button">刷新队列</button></div>
+    <div id="queue"></div>
+    <div id="actionStatus" class="status">请选择一项操作；每次都要求浏览器二次确认。</div>
+  </section>
+
+  <section id="publicCard" class="card hidden">
+    <h2>公共版本、快照与增量</h2>
+    <div class="actions"><button id="publicBtn" type="button">强一致读取并计算指纹</button></div>
+    <div class="metrics">
+      <div class="metric"><span class="muted">公共版本</span><strong id="version">—</strong></div>
+      <div class="metric"><span class="muted">一致性</span><strong id="consistency">—</strong></div>
+      <div class="metric"><span class="muted">指纹</span><strong id="fingerprint">—</strong></div>
+    </div>
+    <div id="publicStatus" class="status">载入预览密钥后可读取。</div>
+  </section>
+</main>
+<script>
+(() => {
+  'use strict';
+  const GROUP_ID = 'group_fixture';
+  const LIBRARY_ID = 'lib_receive_fixture';
+  const PREVIEW_HEADER = 'x-cloud-collab-preview-key';
+  const els = Object.fromEntries(['username','password','previewKey','loginBtn','sessionBtn','keyBtn','logoutBtn','authStatus','identity','queueCard','count','queueBtn','queue','actionStatus','publicCard','publicBtn','version','consistency','fingerprint','publicStatus'].map(id => [id, document.getElementById(id)]));
+  const state = { busy: false, authenticated: false, previewKey: '' };
+
+  function setStatus(element, message, kind = '') {
+    element.textContent = message;
+    element.className = `status ${kind}`.trim();
+  }
+
+  function setBusy(value) {
+    state.busy = value;
+    for (const button of document.querySelectorAll('button')) button.disabled = value;
+    for (const input of document.querySelectorAll('input,select')) input.disabled = value;
+  }
+
+  function adminUrl(path, params = {}) {
+    const url = new URL(path, window.location.origin);
+    for (const [name, value] of Object.entries(params)) url.searchParams.set(name, String(value));
+    return url;
+  }
+
+  function publicUrl(path, params = {}) {
+    const url = adminUrl(path, params);
+    const current = new URL(window.location.href);
+    for (const name of ['eo_token', 'eo_time']) {
+      const value = current.searchParams.get(name);
+      if (value) url.searchParams.set(name, value);
+    }
+    return url;
+  }
+
+  async function jsonApi(url, { method = 'GET', body = null, headers = {} } = {}) {
+    const response = await fetch(url, {
+      method,
+      headers: { ...(body === null ? {} : { 'Content-Type': 'application/json' }), ...headers },
+      body: body === null ? undefined : JSON.stringify(body),
+      credentials: 'same-origin',
+      cache: 'no-store',
+      redirect: 'error',
+      referrerPolicy: 'no-referrer',
+    });
+    if (response.status === 204) return null;
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || !payload?.ok) {
+      const error = new Error(payload?.error?.message || `管理员联合验收接口失败（HTTP ${response.status}）`);
+      error.code = payload?.error?.code || `HTTP_${response.status}`;
+      throw error;
+    }
+    return payload.data;
+  }
+
+  function adminApi(path, options = {}) {
+    return jsonApi(adminUrl(path, options.params || {}), options);
+  }
+
+  function publicApi(path, { params = {} } = {}) {
+    if (!state.previewKey) throw new Error('请先把临时预览密钥载入当前页面内存。');
+    return jsonApi(publicUrl(path, params), { headers: { [PREVIEW_HEADER]: state.previewKey } });
+  }
+
+  function assertAuth(data) {
+    const caps = data?.capabilities || {};
+    const closed = ['reviewQueueRead','reviewMutation','deviceMutation','rollback','export','publicMutationAllowed']
+      .every(name => caps[name] === false);
+    if (!data?.authenticated || !closed) throw new Error('管理员会话未保持身份底座的全关闭能力投影。');
+    state.authenticated = true;
+    els.identity.textContent = `${data.username} · 会话…${data.sessionIdSuffix} · 到期 ${new Date(data.expiresAt).toLocaleString()}`;
+    els.queueCard.classList.remove('hidden');
+  }
+
+  function assertRead(data) {
+    const caps = data?.capabilities || {};
+    if (caps.reviewQueueRead !== true || caps.reviewDetailRead !== true
+        || caps.reviewMutation !== false || caps.publicMutationAllowed !== false
+        || data?.scope?.syntheticFixtureOnly !== true) {
+      throw new Error('阶段5B只读队列能力边界异常。');
+    }
+  }
+
+  function assertMutation(data) {
+    const caps = data?.capabilities || {};
+    if (caps.reviewMutation !== true || caps.reviewApprove !== true || caps.reviewReject !== true
+        || caps.reviewEditAndApprove !== true || caps.publicMutationAllowed !== true
+        || caps.syntheticFixtureOnly !== true || caps.deviceMutation !== false
+        || caps.rollback !== false || caps.export !== false) {
+      throw new Error('阶段5C审核写入能力边界异常。');
+    }
+  }
+
+  async function checkSession({ quiet = false } = {}) {
+    if (state.busy) return;
+    setBusy(true);
+    if (!quiet) setStatus(els.authStatus, '正在检查HttpOnly会话……');
+    try {
+      const data = await adminApi('/api/admin/auth/session');
+      assertAuth(data);
+      setStatus(els.authStatus, '管理员会话有效；刷新恢复通过。', 'ok');
+      setBusy(false);
+      await loadQueue();
+      return;
+    } catch (error) {
+      state.authenticated = false;
+      els.queueCard.classList.add('hidden');
+      els.identity.textContent = '没有有效管理员会话。';
+      const expected = ['ADMIN_SESSION_MISSING','ADMIN_SESSION_INVALID','ADMIN_SESSION_EXPIRED','ADMIN_PREVIEW_DISABLED'].includes(error?.code);
+      setStatus(els.authStatus, expected ? '当前没有有效管理员会话。' : (error?.message || '会话检查失败。'), expected ? '' : 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function login() {
+    if (state.busy) return;
+    const username = String(els.username.value || '').trim();
+    let password = String(els.password.value || '');
+    if (!username || !password) return setStatus(els.authStatus, '请输入管理员用户名和密码。', 'error');
+    let body = { schemaVersion: 1, username, password };
+    password = '';
+    els.password.value = '';
+    setBusy(true);
+    setStatus(els.authStatus, '正在同源登录；密码输入框已清空……');
+    try {
+      const data = await adminApi('/api/admin/auth/login', { method: 'POST', body });
+      body = null;
+      assertAuth(data);
+      setStatus(els.authStatus, '登录成功；15分钟HttpOnly会话已建立。', 'ok');
+      setBusy(false);
+      await loadQueue();
+      return;
+    } catch (error) {
+      body = null;
+      setStatus(els.authStatus, error?.message || '登录失败。', 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function loadPreviewKey() {
+    let key = String(els.previewKey.value || '');
+    const bytes = new TextEncoder().encode(key).byteLength;
+    if (bytes < 32 || bytes > 256) return setStatus(els.publicStatus, '临时预览密钥必须为32至256字节。', 'error');
+    state.previewKey = key;
+    key = '';
+    els.previewKey.value = '';
+    els.publicCard.classList.remove('hidden');
+    setStatus(els.publicStatus, '临时预览密钥已载入页面内存；输入框已清空且未写入浏览器存储。', 'ok');
+  }
+
+  function addMeta(container, label, value) {
+    const span = document.createElement('span');
+    span.textContent = `${label}：${value}`;
+    container.append(span);
+  }
+
+  async function loadDetail(reviewId, target) {
+    if (state.busy) return;
+    setBusy(true);
+    setStatus(els.actionStatus, '正在强一致读取阶段5B候选详情……');
+    try {
+      const data = await adminApi('/api/admin/reviews/detail', { params: { id: reviewId } });
+      assertRead(data);
+      const lines = data.variants.map(item => `候选 ${item.candidateUnitPrice}；设备证据 ${item.deviceTags.join('、')}；内容…${item.contentHash.slice(-8)}`);
+      target.textContent = lines.join('\n');
+      target.classList.remove('hidden');
+      setStatus(els.actionStatus, `阶段5B详情读取通过：${data.variantCount}个候选值；未执行写入。`, 'ok');
+    } catch (error) {
+      setStatus(els.actionStatus, error?.message || '只读详情加载失败。', 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function sameCompletion(left, right) {
+    return ['reviewId','decisionId','auditId','action','status','targetContentHash','publicVersion','eventVersion','approvalId','publicMutationApplied','resolvedReviewCount']
+      .every(name => JSON.stringify(left?.[name]) === JSON.stringify(right?.[name]));
+  }
+
+  async function readVersion() {
+    const data = await publicApi('/api/stage5bc/acceptance/public-version', { params: { groupId: GROUP_ID, libraryId: LIBRARY_ID } });
+    return Number(data.publicVersion || 0);
+  }
+
+  async function mutateTwice(path, body, label, action) {
+    if (state.busy) return;
+    if (!state.previewKey) return setStatus(els.actionStatus, '请先载入预览密钥，以便核验公共版本只变化一次。', 'error');
+    setBusy(true);
+    setStatus(els.actionStatus, `正在执行${label}并重放同一请求……`);
+    try {
+      const before = await readVersion();
+      const first = await adminApi(path, { method: 'POST', body });
+      const second = await adminApi(path, { method: 'POST', body });
+      assertMutation(first);
+      assertMutation(second);
+      const firstResult = first.result;
+      const secondResult = second.result;
+      const after = await readVersion();
+      if (firstResult.duplicate !== false || secondResult.duplicate !== true || !sameCompletion(firstResult, secondResult)) {
+        throw new Error('同请求恢复结果不一致或未标记幂等重放。');
+      }
+      if (action === 'reject') {
+        if (after !== before || firstResult.publicMutationApplied !== false || firstResult.publicVersion !== before) {
+          throw new Error('拒绝动作错误修改了公共版本。');
+        }
+      } else if (after !== before + 1 || firstResult.publicVersion !== after || firstResult.publicMutationApplied !== true) {
+        throw new Error('批准动作没有精确产生一个公共版本。');
+      }
+      setStatus(els.actionStatus, `${label}通过：首次请求与同请求恢复共享同一决策/审计；公共版本 ${before} → ${after}，未产生重复版本。`, 'ok');
+      setBusy(false);
+      await loadQueue({ preserveStatus: true });
+      return;
+    } catch (error) {
+      setStatus(els.actionStatus, error?.message || `${label}失败。`, 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function reviewNode(item) {
+    const article = document.createElement('article');
+    article.className = 'review';
+    const head = document.createElement('div');
+    head.className = 'review-head';
+    const title = document.createElement('h3');
+    title.textContent = item.serviceName;
+    const pill = document.createElement('span');
+    pill.className = 'pill';
+    pill.textContent = item.reason === 'candidate_conflict' ? '候选冲突' : '超限改价';
+    head.append(title, pill);
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    addMeta(meta, '候选单价', item.candidateUnitPrice);
+    addMeta(meta, '设备证据', `${item.distinctDeviceCount}台`);
+    addMeta(meta, '基线', item.baseline.unitPrice === null ? '新增' : item.baseline.unitPrice);
+    addMeta(meta, '审核标记', `…${item.reviewId.slice(-8)}`);
+    const edit = document.createElement('input');
+    edit.className = 'edit';
+    edit.type = 'number';
+    edit.min = '0.001';
+    edit.max = '1000000';
+    edit.step = '0.001';
+    edit.value = String(Number(item.candidateUnitPrice) + 0.5);
+    edit.setAttribute('aria-label', `${item.serviceName} 编辑后单价`);
+    const actions = document.createElement('div');
+    actions.className = 'actions';
+    const detail = document.createElement('button');
+    detail.type = 'button';
+    detail.className = 'secondary';
+    detail.textContent = '读取5B详情';
+    const detailBox = document.createElement('div');
+    detailBox.className = 'detail hidden';
+    detail.addEventListener('click', () => loadDetail(item.reviewId, detailBox));
+    const approve = document.createElement('button');
+    approve.type = 'button';
+    approve.textContent = '批准并重放';
+    approve.addEventListener('click', () => {
+      if (!window.confirm(`确认批准 ${item.serviceName} 的候选 ${item.candidateUnitPrice}？`)) return;
+      mutateTwice('/api/admin/reviews/approve', { reviewId: item.reviewId, confirmation: 'APPROVE' }, '批准', 'approve');
+    });
+    const reject = document.createElement('button');
+    reject.type = 'button';
+    reject.className = 'danger';
+    reject.textContent = '拒绝并重放';
+    reject.addEventListener('click', () => {
+      if (!window.confirm(`确认拒绝 ${item.serviceName} 的此候选？`)) return;
+      mutateTwice('/api/admin/reviews/reject', { reviewId: item.reviewId, confirmation: 'REJECT', reasonCode: 'conflicting_candidates' }, '拒绝', 'reject');
+    });
+    const editApprove = document.createElement('button');
+    editApprove.type = 'button';
+    editApprove.className = 'secondary';
+    editApprove.textContent = '编辑后批准并重放';
+    editApprove.addEventListener('click', () => {
+      const unitPrice = Number(edit.value);
+      if (!Number.isFinite(unitPrice) || unitPrice <= 0) return setStatus(els.actionStatus, '请输入有效编辑价格。', 'error');
+      if (!window.confirm(`确认把 ${item.serviceName} 编辑为 ${unitPrice} 并批准？`)) return;
+      mutateTwice('/api/admin/reviews/edit-and-approve', { reviewId: item.reviewId, confirmation: 'EDIT_AND_APPROVE', unitPrice }, '编辑后批准', 'edit_and_approve');
+    });
+    actions.append(detail, approve, reject, editApprove);
+    article.append(head, meta, edit, actions, detailBox);
+    return article;
+  }
+
+  async function loadQueue({ preserveStatus = false } = {}) {
+    if (state.busy || !state.authenticated) return;
+    setBusy(true);
+    if (!preserveStatus) setStatus(els.actionStatus, '正在强一致读取阶段5B待审核队列……');
+    try {
+      const data = await adminApi('/api/admin/reviews');
+      assertRead(data);
+      els.count.textContent = String(data.total);
+      els.queue.replaceChildren();
+      if (!data.items.length) {
+        const empty = document.createElement('p');
+        empty.className = 'muted';
+        empty.textContent = '当前没有待审核合成项目。';
+        els.queue.append(empty);
+      } else {
+        for (const item of data.items) els.queue.append(reviewNode(item));
+      }
+      if (!preserveStatus) setStatus(els.actionStatus, `阶段5B只读队列加载通过：${data.total}项。`, 'ok');
+    } catch (error) {
+      setStatus(els.actionStatus, error?.message || '待审核队列加载失败。', 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function fingerprint(value) {
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+    return [...new Uint8Array(digest)].slice(0, 8).map(byte => byte.toString(16).padStart(2, '0')).join('');
+  }
+
+  async function readPublicState() {
+    if (state.busy) return;
+    setBusy(true);
+    setStatus(els.publicStatus, '正在强一致读取版本、快照与增量……');
+    try {
+      const scope = { groupId: GROUP_ID, libraryId: LIBRARY_ID };
+      const [version, snapshotEnvelope, changes] = await Promise.all([
+        publicApi('/api/stage5bc/acceptance/public-version', { params: scope }),
+        publicApi('/api/stage5bc/acceptance/public-snapshot', { params: scope }),
+        publicApi('/api/stage5bc/acceptance/public-changes', { params: { ...scope, sinceVersion: 0, limit: 100 } }),
+      ]);
+      const publicVersion = Number(version.publicVersion || 0);
+      const snapshot = snapshotEnvelope.snapshot;
+      const records = Array.isArray(snapshot?.records) ? snapshot.records : [];
+      const list = Array.isArray(changes.changes) ? changes.changes : [];
+      const latest = list.length ? Number(list[list.length - 1].version) : 0;
+      const consistent = publicVersion === Number(snapshotEnvelope.publicVersion || 0)
+        && publicVersion === Number(changes.publicVersion || 0)
+        && publicVersion === Number(changes.nextVersion || 0)
+        && publicVersion === latest
+        && list.every((item, index) => Number(item.version) === index + 1)
+        && (publicVersion === 0 || Number(snapshot?.publicVersion || -1) === publicVersion);
+      const value = await fingerprint(JSON.stringify({
+        publicVersion,
+        records: records.map(item => [item.businessKey, item.contentHash, item.approvedVersion]).sort(),
+        changes: list.map(item => [item.version, item.businessKey, item.contentHash]),
+      }));
+      els.version.textContent = String(publicVersion);
+      els.consistency.textContent = consistent ? '通过' : '失败';
+      els.fingerprint.textContent = value;
+      setStatus(els.publicStatus, consistent ? `动态读取一致；请与两台设备对比指纹 ${value}。` : '动态读取不一致；请停止验收。', consistent ? 'ok' : 'error');
+    } catch (error) {
+      setStatus(els.publicStatus, error?.message || '公共状态读取失败。', 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function logout() {
+    if (state.busy) return;
+    setBusy(true);
+    try {
+      await adminApi('/api/admin/auth/logout', { method: 'POST' });
+      state.authenticated = false;
+      state.previewKey = '';
+      els.password.value = '';
+      els.previewKey.value = '';
+      els.queueCard.classList.add('hidden');
+      els.publicCard.classList.add('hidden');
+      els.identity.textContent = '没有有效管理员会话。';
+      setStatus(els.authStatus, '已退出；会话Cookie和页面内预览密钥均已清除。', 'ok');
+    } catch (error) {
+      setStatus(els.authStatus, error?.message || '退出失败。', 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  els.loginBtn.addEventListener('click', login);
+  els.sessionBtn.addEventListener('click', () => checkSession());
+  els.keyBtn.addEventListener('click', loadPreviewKey);
+  els.logoutBtn.addEventListener('click', logout);
+  els.queueBtn.addEventListener('click', () => loadQueue());
+  els.publicBtn.addEventListener('click', readPublicState);
+  window.addEventListener('pagehide', () => { els.password.value = ''; els.previewKey.value = ''; state.previewKey = ''; });
+  checkSession({ quiet: true });
+})();
+</script>
+</body>
+</html>
