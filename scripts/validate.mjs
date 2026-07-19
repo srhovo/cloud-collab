@@ -60,6 +60,10 @@ const adminMutationPage = read('dist/admin-review-actions-preview.html');
 const deviceGovernance = read('src/server/device_governance_v1.js');
 const deviceGovernanceHttp = read('src/server/device_governance_http_v1.js');
 const deviceGovernancePage = read('dist/admin-device-governance-preview.html');
+const adminRollback = read('src/server/admin_rollback_v1.js');
+const adminRollbackHttp = read('src/server/admin_rollback_http_v1.js');
+const adminRollbackPage = read('dist/admin-rollback-preview.html');
+const adminRollbackDoc = read('docs/阶段5E_管理员公共数据回滚范围冻结.md');
 
 check('receive and submission clients are both embedded', output.includes('只读API客户端（阶段3B）') && output.includes('隔离候选提交客户端（阶段4C）'));
 check('submission client uses only existing preview routes', submissionClient.includes("'/api/device/register'") && submissionClient.includes("'/api/submissions/create'") && !submissionClient.includes('/api/admin'));
@@ -77,7 +81,7 @@ check('formal public mutation and auto approval remain disabled', acceptance.inc
 check('one-time cleanup route is absent from final branch', !exists('cloud-functions/api/system/cleanup-preview-fixtures-once.js') && !exists('src/server/preview_fixture_cleanup_once_v1.js') && !output.includes('cleanup-preview-fixtures'));
 check('CI runs unit, static, core and browser checks', workflow.includes('npm run ci') && workflow.includes('tests/core_compare.py') && workflow.includes('tests/browser_integration.py'));
 check('Stage5C mutation gate defaults closed', envExample.includes('CLOUD_ADMIN_REVIEW_MUTATION_PREVIEW_ENABLED=0'));
-check('Stage5C mutation scope remains synthetic-only', adminMutation.includes("ADMIN_REVIEW_ALLOWED_GROUP_ID") && adminMutation.includes("ADMIN_REVIEW_ALLOWED_LIBRARY_ID") && adminMutation.includes("ADMIN_REVIEW_PREVIEW_STORE_NAME"));
+check('Stage5C mutation scope remains synthetic-only', adminMutation.includes('ADMIN_REVIEW_ALLOWED_GROUP_ID') && adminMutation.includes('ADMIN_REVIEW_ALLOWED_LIBRARY_ID') && adminMutation.includes('ADMIN_REVIEW_PREVIEW_STORE_NAME'));
 check('Stage5C admin writes require same-origin authenticated POST', adminMutationHttp.includes('requireOrigin: true') && adminMutationHttp.includes("method !== 'POST'") && adminMutationHttp.includes('verifyAdminSessionToken'));
 check('Stage5C mutation page stores no secret or browser state', !/(?:localStorage|sessionStorage)\.(?:setItem|getItem|removeItem)/.test(adminMutationPage) && !/CLOUD_ADMIN_(?:PASSWORD|SESSION_SECRET|RATE_LIMIT_SALT)/.test(adminMutationPage));
 check('Stage5C routes stay outside ordinary user build', !output.includes('admin-review-actions-preview') && !output.includes('/api/admin/reviews/approve') && !submissionClient.includes('/api/admin'));
@@ -94,6 +98,19 @@ check('Stage5D page persists no credentials or governance state', !/(?:localStor
 check('Stage5D admin controls have exact unique accessible labels', ['设为可信','撤销可信','封禁设备','解除封禁'].every(label => (deviceGovernancePage.match(new RegExp(`>${label}<`, 'g')) || []).length === 1));
 check('Stage5D routes and page stay outside ordinary user build', !output.includes('admin-device-governance-preview') && !output.includes('/api/admin/devices') && !submissionClient.includes('/api/admin'));
 check('CI includes Stage5D browser governance regression', workflow.includes('tests/stage5d_browser_device_governance.py'));
+
+check('Stage5E rollback gate defaults closed and scope stays fixture-only', envExample.includes('CLOUD_ADMIN_ROLLBACK_PREVIEW_ENABLED=0') && envExample.includes('CLOUD_ADMIN_ROLLBACK_BLOB_STORE_NAME=cloud-collab-preview-v1') && envExample.includes('CLOUD_ADMIN_ROLLBACK_ALLOWED_GROUP_ID=group_fixture') && envExample.includes('CLOUD_ADMIN_ROLLBACK_ALLOWED_LIBRARY_ID=lib_receive_fixture'));
+check('Stage5E uses irreversible refs and immutable request, decision, completion and audit records', adminRollback.includes('rbref_v1_') && adminRollback.includes('rollbacks/${config.libraryId}/requests/') && adminRollback.includes('rollbacks/${config.libraryId}/decisions/') && adminRollback.includes('rollbacks/${config.libraryId}/completions/') && adminRollback.includes('auditKey'));
+check('Stage5E reuses the proven public transition and snapshot publisher without deleting history', adminRollback.includes('publishAdminReviewApproval') && adminRollback.includes("approvalMode: 'admin_edit_and_approved'") && adminRollback.includes('putImmutableExact') && !adminRollback.includes('deleteBlob'));
+check('Stage5E requires a fixed explicit confirmation phrase', adminRollback.includes("ADMIN_ROLLBACK_CONFIRMATION = 'ROLLBACK_TO_PREVIOUS_APPROVED_VALUE'") && adminRollbackPage.includes("confirmation: 'ROLLBACK_TO_PREVIOUS_APPROVED_VALUE'") && !adminRollbackPage.includes('reasonCode:'));
+check('Stage5E distinguishes no-previous, stale and transition conflict outcomes', ['ADMIN_ROLLBACK_NO_PREVIOUS_VALUE','ADMIN_ROLLBACK_TARGET_STALE','ADMIN_ROLLBACK_TRANSITION_CONFLICT'].every(code => adminRollback.includes(code)));
+check('Stage5E keeps public event schema compatible and records admin rollback in private immutable audit', adminRollback.includes("action: 'admin_rollback'") && adminRollbackDoc.includes('公共补偿事件继续使用既有schemaVersion 1') && adminRollbackDoc.includes('服务端私有不可变回滚决策与审计'));
+check('Stage5E writes require authenticated same-origin POST with public origin forwarding', adminRollbackHttp.includes('requireOrigin: true') && adminRollbackHttp.includes('publicOrigin: authConfig.publicOrigin') && adminRollbackHttp.includes('verifyAdminSessionToken'));
+check('Stage5E projection forbids public storage and request identity', ['businessKey','contentHash','eventKey','snapshotKey','approvalId','requestHash','requestId'].every(key => adminRollback.includes(`'${key}'`)));
+check('Stage5E page persists no credentials or rollback state', !/(?:localStorage|sessionStorage)\.(?:setItem|getItem|removeItem)/.test(adminRollbackPage) && !/CLOUD_ADMIN_(?:PASSWORD|SESSION_SECRET|RATE_LIMIT_SALT|ROLLBACK_REF_SALT)/.test(adminRollbackPage));
+check('Stage5E rollback control has an exact unique accessible label', (adminRollbackPage.match(/>回滚到上一批准值</g) || []).length === 1);
+check('Stage5E routes and page stay outside ordinary user build', !output.includes('admin-rollback-preview') && !output.includes('/api/admin/rollbacks') && !submissionClient.includes('/api/admin'));
+check('CI includes Stage5E browser rollback regression', workflow.includes('tests/stage5e_browser_admin_rollback.py'));
 
 const backupBlock = output.match(/getModuleConfigs\(\) \{\s*return \[([\s\S]*?)\];\s*\}/)?.[1] || '';
 check('cloud keys remain excluded from standard backup', cloudKeys.every(key => !backupBlock.includes(key)));
