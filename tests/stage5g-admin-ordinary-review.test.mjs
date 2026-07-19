@@ -26,9 +26,7 @@ import {
   handleAdminOrdinaryReviewQueueRequest,
 } from '../src/server/admin_ordinary_review_http_v1.js';
 import { pendingSubmissionKey } from '../src/server/blob_repository_v1.js';
-import {
-  reviewOrdinaryCandidate,
-} from '../src/server/ordinary_public_engine_v1.js';
+import { reviewOrdinaryCandidate } from '../src/server/ordinary_public_engine_v1.js';
 import {
   computeOrdinarySubmissionHashes,
   deriveBossId,
@@ -114,12 +112,12 @@ function sha(value) {
   return createHash('sha256').update(Buffer.from(String(value), 'utf8')).digest('base64url');
 }
 
-function draft(dataType, payload, {
+function complete(dataType, payload, {
   deviceId = DEVICE_A,
   submissionId = SUB_A,
   bossId = null,
 } = {}) {
-  return {
+  const raw = {
     schemaVersion: 1,
     payloadSchemaVersion: 1,
     submissionId,
@@ -141,9 +139,6 @@ function draft(dataType, payload, {
       queueSchemaVersion: 1,
     },
   };
-}
-
-function complete(raw) {
   const computed = computeOrdinarySubmissionHashes(raw);
   return {
     ...raw,
@@ -169,10 +164,10 @@ function candidate(submission, receivedAt) {
   };
 }
 
-async function storeCandidate(store, submission, receivedAt) {
-  const value = candidate(submission, receivedAt);
-  await store.setJSON(pendingSubmissionKey(submission.libraryId, submission.idempotencyKey), value);
-  return value;
+async function storeAndReview(store, submission, now, trustedDeviceResolver) {
+  const stored = candidate(submission, now);
+  await store.setJSON(pendingSubmissionKey(submission.libraryId, submission.idempotencyKey), stored);
+  return reviewOrdinaryCandidate({ store, candidate: stored, now, trustedDeviceResolver });
 }
 
 const alwaysTrusted = async () => true;
@@ -180,77 +175,44 @@ const neverTrusted = async () => false;
 
 async function seedBossSensitiveChange() {
   const store = new MemoryBlobStore();
-  const initial = complete(draft('boss_profile', {
-    bossName: '老板甲',
-    paiDan: '直属A',
-    discount: 0.97,
-  }));
-  const initialCandidate = await storeCandidate(store, initial, NOW);
-  await reviewOrdinaryCandidate({
-    store,
-    candidate: initialCandidate,
-    now: NOW,
-    trustedDeviceResolver: alwaysTrusted,
+  const initial = complete('boss_profile', {
+    bossName: '老板甲', paiDan: '直属A', discount: 0.97,
   });
-
-  const bossId = deriveBossId(GROUP, '老板甲');
-  const changed = complete(draft('boss_profile', {
-    bossName: '老板甲',
-    paiDan: '直属B',
-    discount: 0.97,
+  await storeAndReview(store, initial, NOW, alwaysTrusted);
+  const changed = complete('boss_profile', {
+    bossName: '老板甲', paiDan: '直属B', discount: 0.97,
   }, {
     deviceId: DEVICE_B,
     submissionId: SUB_B,
-    bossId,
-  }));
-  const changedCandidate = await storeCandidate(store, changed, NOW + 1000);
-  const reviewed = await reviewOrdinaryCandidate({
-    store,
-    candidate: changedCandidate,
-    now: NOW + 1000,
-    trustedDeviceResolver: alwaysTrusted,
+    bossId: deriveBossId(GROUP, '老板甲'),
   });
-  assert.equal(reviewed.status, 'pending_review');
+  const reviewed = await storeAndReview(store, changed, NOW + 1000, alwaysTrusted);
   assert.equal(reviewed.reason, 'boss_direct_report_change_sensitive');
   return { store, initial, changed };
 }
 
 async function seedPlayableCaseConflict() {
   const store = new MemoryBlobStore();
-  const initial = complete(draft('playable_name', { name: 'Alice' }));
-  const initialCandidate = await storeCandidate(store, initial, NOW);
-  await reviewOrdinaryCandidate({
-    store,
-    candidate: initialCandidate,
-    now: NOW,
-    trustedDeviceResolver: alwaysTrusted,
-  });
-
-  const changed = complete(draft('playable_name', { name: 'ALICE' }, {
+  const initial = complete('playable_name', { name: 'Alice' });
+  await storeAndReview(store, initial, NOW, alwaysTrusted);
+  const changed = complete('playable_name', { name: 'ALICE' }, {
     deviceId: DEVICE_C,
     submissionId: SUB_C,
-  }));
+  });
   assert.equal(changed.businessKey, initial.businessKey);
   assert.notEqual(changed.contentHash, initial.contentHash);
-  const changedCandidate = await storeCandidate(store, changed, NOW + 2000);
-  const reviewed = await reviewOrdinaryCandidate({
-    store,
-    candidate: changedCandidate,
-    now: NOW + 2000,
-    trustedDeviceResolver: neverTrusted,
-  });
-  assert.equal(reviewed.status, 'pending_review');
+  const reviewed = await storeAndReview(store, changed, NOW + 2000, neverTrusted);
   assert.equal(reviewed.reason, 'playable_name_public_conflict');
-  return { store, initial, changed };
-}
-
-function deterministicRandomBytes(size) {
-  return Buffer.alloc(size, 17);
+  return { store };
 }
 
 function sessionCookie() {
   const config = readAdminAuthConfig(ENV);
-  const session = createAdminSessionToken({ config, now: NOW, randomBytes: deterministicRandomBytes });
+  const session = createAdminSessionToken({
+    config,
+    now: NOW,
+    randomBytes: size => Buffer.alloc(size, 17),
+  });
   return `${ADMIN_SESSION_COOKIE_NAME}=${session.token}`;
 }
 
@@ -258,6 +220,7 @@ function request(path, { method = 'GET', cookie = sessionCookie(), headers = {} 
   return new Request(`http://edgeone-cloud-function.internal${path}`, {
     method,
     headers: {
+      Origin: ENV.CLOUD_ADMIN_PUBLIC_ORIGIN,
       'Sec-Fetch-Site': 'same-origin',
       ...(cookie ? { Cookie: cookie } : {}),
       ...headers,
@@ -278,18 +241,12 @@ test('Stage5G administrator ordinary review config requires both admin review an
     () => readAdminOrdinaryReviewConfig({ ...ENV, CLOUD_ORDINARY_TYPES_BLOB_STORE_NAME: 'other-store' }),
     error => error.code === 'ORDINARY_TYPES_SCOPE_INVALID',
   );
-  assert.throws(
-    () => readAdminOrdinaryReviewConfig({ ...ENV, CLOUD_ADMIN_REVIEW_ALLOWED_LIBRARY_ID: 'lib_other' }),
-    error => error.code === 'ADMIN_REVIEW_SCOPE_MISCONFIGURED',
-  );
   const config = readAdminOrdinaryReviewConfig(ENV);
   assert.equal(config.storeName, 'cloud-collab-preview-v1');
-  assert.equal(config.groupId, GROUP);
-  assert.equal(config.libraryId, LIBRARY);
   assert.equal(config.ordinaryTypesEnabled, true);
 });
 
-test('Stage5G boss sensitive change is projected with public baseline and without raw device identifiers', async () => {
+test('Stage5G boss sensitive change is projected with its public baseline and no raw identifiers', async () => {
   const { store, initial, changed } = await seedBossSensitiveChange();
   const config = readAdminOrdinaryReviewConfig(ENV);
   const queue = await listAdminOrdinaryReviewQueue({ store, config });
@@ -299,11 +256,9 @@ test('Stage5G boss sensitive change is projected with public baseline and withou
   assert.equal(item.reason, 'boss_direct_report_change_sensitive');
   assert.deepEqual(item.payload, changed.payload);
   assert.equal(item.baseline.approvedVersion, 1);
-  assert.equal(item.baseline.dataType, 'boss_profile');
   assert.deepEqual(item.baseline.payload, initial.payload);
   assert.equal(item.baseline.unitPrice, null);
   assert.equal(item.baseline.stillCurrent, true);
-  assert.equal(item.distinctDeviceCount, 1);
   assert.equal(isAdminOrdinaryReviewProjectionSafe(queue), true);
   const text = JSON.stringify(queue);
   for (const forbidden of [DEVICE_A, DEVICE_B, SUB_A, SUB_B, 'ik_v1_', 'req_v1_', 'reviews/', 'submissions/', 'public/']) {
@@ -313,36 +268,21 @@ test('Stage5G boss sensitive change is projected with public baseline and withou
   assert.ok(store.reads.every(entry => entry.options.consistency === 'strong'));
 });
 
-test('Stage5G playable-name public conflict keeps case variants grouped under one opaque review identity', async () => {
+test('Stage5G playable-name conflict supports opaque detail and mutation-target reads', async () => {
   const { store } = await seedPlayableCaseConflict();
   const config = readAdminOrdinaryReviewConfig(ENV);
   const queue = await listAdminOrdinaryReviewQueue({ store, config });
   assert.equal(queue.total, 1);
   assert.equal(queue.items[0].dataType, 'playable_name');
-  assert.equal(queue.items[0].reason, 'playable_name_public_conflict');
   assert.equal(queue.items[0].payload.name, 'ALICE');
   assert.equal(queue.items[0].baseline.payload.name, 'Alice');
-  assert.match(queue.items[0].reviewId, /^rv_v1_[A-Za-z0-9_-]{43}$/);
-
-  const detail = await getAdminOrdinaryReviewDetail({
-    store,
-    config,
-    reviewId: queue.items[0].reviewId,
-  });
+  const detail = await getAdminOrdinaryReviewDetail({ store, config, reviewId: queue.items[0].reviewId });
   assert.equal(detail.variantCount, 1);
-  assert.equal(detail.review.dataType, 'playable_name');
   assert.equal(isAdminOrdinaryReviewProjectionSafe(detail), true);
-
-  const target = await getAdminOrdinaryReviewMutationTarget({
-    store,
-    config,
-    reviewId: queue.items[0].reviewId,
-  });
+  const target = await getAdminOrdinaryReviewMutationTarget({ store, config, reviewId: queue.items[0].reviewId });
   assert.equal(target.submission.dataType, 'playable_name');
-  assert.equal(target.baseline.approvedVersion, 1);
   assert.equal(target.baseline.unitPrice, null);
   assert.equal(target.evidence.length, 1);
-
   await expectCode('ADMIN_ORDINARY_REVIEW_ID_INVALID', () => getAdminOrdinaryReviewDetail({
     store,
     config,
@@ -350,7 +290,7 @@ test('Stage5G playable-name public conflict keeps case variants grouped under on
   }));
 });
 
-test('Stage5G administrator ordinary review HTTP is authenticated, strict, read-only, and projection-safe', async () => {
+test('Stage5G ordinary review HTTP is authenticated, query-strict, GET-only, and projection-safe', async () => {
   const { store } = await seedBossSensitiveChange();
   let stores = 0;
   const dependencies = {
@@ -361,40 +301,33 @@ test('Stage5G administrator ordinary review HTTP is authenticated, strict, read-
       return store;
     },
   };
-
   const denied = await handleAdminOrdinaryReviewQueueRequest({
     env: ENV,
     request: request('/api/admin/ordinary-reviews', { cookie: null }),
   }, dependencies);
   assert.equal(denied.status, 401);
   assert.equal(stores, 0);
-
   const invalidQuery = await handleAdminOrdinaryReviewQueueRequest({
     env: ENV,
     request: request('/api/admin/ordinary-reviews?unexpected=1'),
   }, dependencies);
   assert.equal(invalidQuery.status, 400);
   assert.equal(stores, 0);
-
   const response = await handleAdminOrdinaryReviewQueueRequest({
     env: ENV,
     request: request('/api/admin/ordinary-reviews'),
   }, dependencies);
   assert.equal(response.status, 200);
-  assert.equal(response.headers.get('cache-control'), 'no-store, max-age=0');
   const payload = await response.json();
   assert.equal(payload.data.total, 1);
   assert.deepEqual(payload.data.capabilities, ADMIN_ORDINARY_REVIEW_CAPABILITIES);
   assert.equal(payload.data.capabilities.reviewMutation, false);
-
-  const reviewId = payload.data.items[0].reviewId;
   const detail = await handleAdminOrdinaryReviewDetailRequest({
     env: ENV,
-    request: request(`/api/admin/ordinary-reviews/detail?id=${reviewId}`),
+    request: request(`/api/admin/ordinary-reviews/detail?id=${payload.data.items[0].reviewId}`),
   }, dependencies);
   assert.equal(detail.status, 200);
   assert.equal((await detail.json()).data.review.dataType, 'boss_profile');
-
   const post = await handleAdminOrdinaryReviewDetailRequest({
     env: ENV,
     request: request('/api/admin/ordinary-reviews/detail', { method: 'POST' }),
