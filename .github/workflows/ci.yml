@@ -35,3 +35,5 @@ jobs:
         run: python3 tests/stage5c_browser_admin_review_mutations.py
       - name: Stage5D admin device governance browser regression
         run: python3 tests/stage5d_browser_device_governance.py
+      - name: Stage5E admin rollback browser regression
+        run: python3 tests/stage5e_browser_admin_rollback.py
