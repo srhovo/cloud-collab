@@ -22,6 +22,7 @@ const ENV = Object.freeze({
   CLOUD_WRITE_ALLOWED_LIBRARY_ID: 'lib_receive_fixture',
   CLOUD_BLOB_STORE_NAME: 'cloud-collab-preview-v1',
   CLOUD_ADMIN_PREVIEW_ENABLED: '1',
+  CLOUD_ADMIN_PUBLIC_ORIGIN: 'https://cloud-collab-stage5bc-test-dpxqrhy0935t.edgeone.cool',
   CLOUD_ADMIN_USERNAME: 'stage5bc-admin@example.test',
   CLOUD_ADMIN_PASSWORD: 'stage5bc-admin-password-12345',
   CLOUD_ADMIN_SESSION_SECRET: 'stage5bc-admin-session-secret-0123456',

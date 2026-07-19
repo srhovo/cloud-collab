@@ -34,9 +34,12 @@ CLOUD_AUTO_APPROVAL_PREVIEW_ENABLED=0
 
 ```text
 CLOUD_ADMIN_PREVIEW_ENABLED=1
+CLOUD_ADMIN_PUBLIC_ORIGIN=https://<当前同项目的任一HTTPS预览域名>
 CLOUD_ADMIN_REVIEW_PREVIEW_ENABLED=1
 CLOUD_ADMIN_REVIEW_MUTATION_PREVIEW_ENABLED=1
 ```
+
+`CLOUD_ADMIN_PUBLIC_ORIGIN`只填写协议和域名，不含路径、查询参数或预览token。EdgeOne同一项目重新部署时可以轮换末尾12位部署标识；管理员写请求仍必须来自同一项目的当前HTTPS页面，内部Cloud Function的HTTP协议和随机Host不作为公开来源证明。
 
 联合验收门禁会同时校验：
 
