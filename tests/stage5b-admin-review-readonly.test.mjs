@@ -42,7 +42,7 @@ const SUB_B = 'sub_01JABCDEF0123456789XYZABCE';
 
 const ENV = Object.freeze({
   CLOUD_ADMIN_PREVIEW_ENABLED: '1',
-  CLOUD_ADMIN_PUBLIC_ORIGIN: 'https://stage5b-admin.test',
+  CLOUD_ADMIN_PUBLIC_ORIGIN: 'https://cloud-collab-stage5b-test-dpxqrhy0935t.edgeone.cool',
   CLOUD_ADMIN_USERNAME: USERNAME,
   CLOUD_ADMIN_PASSWORD: PASSWORD,
   CLOUD_ADMIN_SESSION_SECRET: SESSION_SECRET,
@@ -168,7 +168,7 @@ function sessionCookie() {
 }
 
 function request(path, { method = 'GET', cookie = sessionCookie(), headers = {} } = {}) {
-  return new Request(`https://stage5b-admin.test${path}`, {
+  return new Request(`http://edgeone-cloud-function.internal${path}`, {
     method,
     headers: {
       'Sec-Fetch-Site': 'same-origin',
