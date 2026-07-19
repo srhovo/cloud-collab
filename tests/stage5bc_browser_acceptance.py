@@ -199,7 +199,20 @@ def run_admin_test(browser):
     page = context.new_page()
     page.on('dialog', lambda dialog: dialog.accept())
     console_errors = []
-    page.on('console', lambda message: console_errors.append(message.text) if message.type == 'error' else None)
+    expected_unauthorized_console = []
+
+    def capture_console(message):
+        if message.type != 'error':
+            return
+        if (
+            message.text.startswith('Failed to load resource:')
+            and '401 (Unauthorized)' in message.text
+        ):
+            expected_unauthorized_console.append(message.text)
+            return
+        console_errors.append(message.text)
+
+    page.on('console', capture_console)
 
     def auth_data():
         return {
@@ -380,6 +393,7 @@ def run_admin_test(browser):
 
     page.get_by_role('button', name='退出并清除会话').click()
     expect(page.locator('#authStatus')).to_contain_text('已退出', timeout=10_000)
+    assert len(expected_unauthorized_console) == 1, expected_unauthorized_console
     assert not console_errors, console_errors
     context.close()
 
