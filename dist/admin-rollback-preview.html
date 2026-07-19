@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <title>阶段5E管理员回滚预览</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;color-scheme:light;--blue:#0969da;--green:#1a7f37;--red:#cf222e;--amber:#9a6700;--border:#d0d7de;--muted:#57606a;--bg:#f6f8fa}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#1f2328}main{width:min(840px,calc(100% - 24px));margin:18px auto 50px}.card{margin-bottom:14px;padding:18px;border:1px solid var(--border);border-radius:14px;background:#fff;box-shadow:0 8px 24px rgba(31,35,40,.06)}h1,h2{margin:0 0 10px}h1{font-size:24px}h2{font-size:20px}.banner{padding:11px 13px;border-left:4px solid var(--amber);border-radius:8px;background:#fff8c5;line-height:1.55}label{display:block;margin:12px 0 6px;font-weight:750}input{width:100%;min-height:44px;border:1px solid #8c959f;border-radius:8px;padding:9px;font:16px system-ui}.actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:13px}button{min-height:42px;border:0;border-radius:8px;padding:9px 14px;background:var(--blue);color:#fff;font:750 15px system-ui;cursor:pointer}button.secondary{background:#656d76}button.danger{background:var(--red)}button:disabled{opacity:.45}.status{margin-top:13px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg);font-weight:700;white-space:pre-wrap}.ok{color:var(--green)}.error{color:var(--red)}.muted{color:var(--muted);font-size:13px}.candidates{display:grid;gap:10px}.candidate{padding:14px;border:1px solid var(--border);border-radius:10px;background:#fff}.candidate header{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.price{font-size:18px;font-weight:800}.arrow{margin:0 7px;color:var(--muted)}dl{display:grid;grid-template-columns:140px 1fr;gap:5px 10px;margin:10px 0}dt{color:var(--muted)}dd{margin:0}.hidden{display:none!important}@media(max-width:560px){.actions button,.candidate button{width:100%}.candidate header{display:block}.candidate header button{margin-top:10px}dl{grid-template-columns:1fr;gap:2px}}
+  </style>
+</head>
+<body>
+<main>
+  <section class="card">
+    <h1>阶段5E：管理员公共数据回滚</h1>
+    <p class="banner"><strong>仅限合成普通精确价格。</strong>每次回滚只恢复到紧邻的上一批准值，并追加新的不可变公共事件；不会删除、覆盖或改写历史事件。</p>
+    <label for="username">管理员用户名</label>
+    <input id="username" autocomplete="username" spellcheck="false">
+    <label for="password">管理员密码</label>
+    <input id="password" type="password" autocomplete="current-password">
+    <div class="actions">
+      <button id="loginBtn" type="button">安全登录</button>
+      <button id="sessionBtn" class="secondary" type="button">检查/恢复会话</button>
+      <button id="logoutBtn" class="danger" type="button">退出并清除会话</button>
+    </div>
+    <div id="authStatus" class="status" aria-live="polite">尚未检查管理员会话。</div>
+  </section>
+
+  <section class="card">
+    <h2>可回滚项目</h2>
+    <div class="actions"><button id="refreshBtn" type="button">刷新回滚候选</button></div>
+    <div id="listStatus" class="status" aria-live="polite">尚未读取。</div>
+    <div id="candidates" class="candidates"></div>
+  </section>
+
+  <section id="resultCard" class="card hidden">
+    <h2>最近一次操作</h2>
+    <div id="mutationStatus" class="status" aria-live="polite">尚未执行回滚。</div>
+  </section>
+</main>
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const state = { busy: false };
+  const els = Object.fromEntries(['username','password','loginBtn','sessionBtn','logoutBtn','authStatus','refreshBtn','listStatus','candidates','resultCard','mutationStatus'].map(id => [id, $(id)]));
+
+  function setStatus(el, message, kind = '') {
+    el.textContent = message;
+    el.className = `status ${kind}`.trim();
+  }
+
+  function apiUrl(path) {
+    const url = new URL(path, window.location.origin);
+    const current = new URL(window.location.href);
+    for (const name of ['eo_token','eo_time']) {
+      const value = current.searchParams.get(name);
+      if (value) url.searchParams.set(name, value);
+    }
+    return url;
+  }
+
+  async function request(path, options = {}) {
+    let response;
+    try {
+      response = await fetch(apiUrl(path), {
+        credentials: 'same-origin',
+        cache: 'no-store',
+        redirect: 'error',
+        referrerPolicy: 'no-referrer',
+        ...options,
+      });
+    } catch (_) {
+      const error = new Error('无法连接管理员回滚接口。');
+      error.code = 'ADMIN_ROLLBACK_NETWORK_ERROR';
+      throw error;
+    }
+    if (response.status === 204) return null;
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || !payload?.ok) {
+      const error = new Error(payload?.error?.message || `请求失败（HTTP ${response.status}）`);
+      error.code = payload?.error?.code || `HTTP_${response.status}`;
+      throw error;
+    }
+    return payload;
+  }
+
+  function errorText(error) {
+    return `错误码：${String(error?.code || 'ADMIN_ROLLBACK_REQUEST_FAILED')}\n${String(error?.message || '请求失败')}`;
+  }
+
+  function formatTime(value) {
+    const time = Date.parse(String(value || ''));
+    return Number.isFinite(time) ? new Date(time).toLocaleString() : '—';
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  }
+
+  function randomRequestId() {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    const base64 = btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+    return `rbrq_v1_${base64}`;
+  }
+
+  async function login() {
+    const username = String(els.username.value || '').trim();
+    const password = String(els.password.value || '');
+    els.password.value = '';
+    setStatus(els.authStatus, '正在安全登录……');
+    try {
+      const payload = await request('/api/admin/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ schemaVersion: 1, username, password }),
+      });
+      setStatus(els.authStatus, `管理员会话有效：${payload.data.username}，到期 ${new Date(payload.data.expiresAt).toLocaleString()}。`, 'ok');
+      await refresh();
+    } catch (error) {
+      setStatus(els.authStatus, errorText(error), 'error');
+    }
+  }
+
+  async function checkSession() {
+    setStatus(els.authStatus, '正在检查会话……');
+    try {
+      const payload = await request('/api/admin/auth/session');
+      setStatus(els.authStatus, `管理员会话有效：${payload.data.username}，到期 ${new Date(payload.data.expiresAt).toLocaleString()}。`, 'ok');
+    } catch (error) {
+      setStatus(els.authStatus, errorText(error), 'error');
+    }
+  }
+
+  async function logout() {
+    try {
+      await request('/api/admin/auth/logout', { method: 'POST' });
+      els.candidates.replaceChildren();
+      els.resultCard.classList.add('hidden');
+      setStatus(els.authStatus, '已退出并清除管理员会话。', 'ok');
+      setStatus(els.listStatus, '尚未读取。');
+    } catch (error) {
+      setStatus(els.authStatus, errorText(error), 'error');
+    }
+  }
+
+  function renderCandidates(items) {
+    els.candidates.replaceChildren();
+    for (const item of items) {
+      const article = document.createElement('article');
+      article.className = 'candidate';
+      article.innerHTML = `<header><div><strong>${escapeHtml(item.serviceName)}</strong> · ${escapeHtml(item.settleType)}<div class="price">${item.currentUnitPrice}<span class="arrow">→</span>${item.previousUnitPrice}</div></div><button class="danger" type="button">回滚到上一批准值</button></header><dl><dt>当前公共版本</dt><dd>${item.currentVersion}</dd><dt>恢复来源版本</dt><dd>${item.previousVersion}</dd><dt>当前批准时间</dt><dd>${formatTime(item.currentApprovedAt)}</dd><dt>上一批准时间</dt><dd>${formatTime(item.previousApprovedAt)}</dd></dl><p class="muted">目标引用尾标：${escapeHtml(item.rollbackRef.slice(-8))}</p>`;
+      article.querySelector('button').addEventListener('click', () => executeRollback(item));
+      els.candidates.append(article);
+    }
+  }
+
+  async function refresh() {
+    setStatus(els.listStatus, '正在强一致读取可回滚项目……');
+    try {
+      const payload = await request('/api/admin/rollbacks');
+      const result = payload.data.result;
+      renderCandidates(result.candidates);
+      setStatus(els.listStatus, `读取成功：${result.count}个可回滚项目。`, 'ok');
+    } catch (error) {
+      setStatus(els.listStatus, errorText(error), 'error');
+    }
+  }
+
+  async function executeRollback(item) {
+    if (state.busy) return;
+    const confirmed = window.confirm(`确认将“${item.serviceName}”从 ${item.currentUnitPrice} 恢复到上一批准值 ${item.previousUnitPrice}？\n\n该操作会追加新的公共版本，不会删除历史。`);
+    if (!confirmed) return;
+    state.busy = true;
+    els.resultCard.classList.remove('hidden');
+    setStatus(els.mutationStatus, '正在执行回滚并重建最新快照……');
+    try {
+      const payload = await request('/api/admin/rollbacks/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          schemaVersion: 1,
+          rollbackRef: item.rollbackRef,
+          requestId: randomRequestId(),
+          reasonCode: 'restore_previous_approved_value',
+        }),
+      });
+      const result = payload.data.result;
+      await refresh();
+      setStatus(els.mutationStatus, `回滚完成：${result.serviceName} 已从 ${result.replacedUnitPrice} 恢复为 ${result.restoredUnitPrice}。\n公共版本：${result.publicVersion}；事件版本：${result.eventVersion}。`, 'ok');
+    } catch (error) {
+      const message = errorText(error);
+      await refresh();
+      setStatus(els.mutationStatus, message, 'error');
+    } finally {
+      state.busy = false;
+    }
+  }
+
+  els.loginBtn.addEventListener('click', login);
+  els.sessionBtn.addEventListener('click', checkSession);
+  els.logoutBtn.addEventListener('click', logout);
+  els.refreshBtn.addEventListener('click', refresh);
+  window.addEventListener('pagehide', () => { els.password.value = ''; });
+})();
+</script>
+</body>
+</html>
