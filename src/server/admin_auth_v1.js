@@ -322,11 +322,21 @@ export function assertAdminSameOriginRequest(request, { requireOrigin = false } 
   } catch (_) {
     throw new AdminAuthError('ADMIN_REQUEST_ORIGIN_INVALID', '管理员请求地址无效', 403);
   }
-  if (url.protocol !== 'https:') {
+  const forwardedProto = String(request?.headers?.get?.('x-forwarded-proto') || '').trim().toLowerCase();
+  const forwardedProtocolIsSecure = forwardedProto === 'https' || forwardedProto === 'quic';
+  const forwardedProtocolIsValid = !forwardedProto
+    || forwardedProtocolIsSecure
+    || forwardedProto === 'http';
+  const directProtocolIsSecure = url.protocol === 'https:';
+  const trustedProxyHttps = url.protocol === 'http:' && forwardedProtocolIsSecure;
+  if (!forwardedProtocolIsValid
+      || (!directProtocolIsSecure && !trustedProxyHttps)
+      || (directProtocolIsSecure && forwardedProto === 'http')) {
     throw new AdminAuthError('ADMIN_HTTPS_REQUIRED', '管理员接口只允许HTTPS', 403);
   }
+  const publicOrigin = `https://${url.host}`;
   const origin = String(request?.headers?.get?.('origin') || '');
-  if ((requireOrigin && !origin) || (origin && origin !== url.origin)) {
+  if ((requireOrigin && !origin) || (origin && origin !== publicOrigin)) {
     throw new AdminAuthError('ADMIN_REQUEST_ORIGIN_INVALID', '管理员请求必须同源', 403);
   }
   const fetchSite = String(request?.headers?.get?.('sec-fetch-site') || '').toLowerCase();

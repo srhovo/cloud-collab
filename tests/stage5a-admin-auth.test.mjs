@@ -62,8 +62,8 @@ class MemoryBlobStore {
   }
 }
 
-function request(path, { method = 'GET', body, headers = {} } = {}) {
-  return new Request(`https://admin-preview.test${path}`, {
+function request(path, { method = 'GET', body, headers = {}, urlProtocol = 'https' } = {}) {
+  return new Request(`${urlProtocol}://admin-preview.test${path}`, {
     method,
     headers: {
       ...(body ? { 'Content-Type': 'application/json' } : {}),
@@ -186,8 +186,31 @@ test('login rate key contains only salted hashes and the immutable slot blocks r
 
 test('same-origin guard requires HTTPS and rejects cross-site mutation requests', () => {
   assert.equal(assertAdminSameOriginRequest(request('/api/admin/auth/login', { method: 'POST', body: loginBody() }), { requireOrigin: true }), true);
+  assert.equal(assertAdminSameOriginRequest(new Request('http://admin-preview.test/api/admin/auth/login', {
+    method: 'POST',
+    headers: {
+      Origin: 'https://admin-preview.test',
+      'Sec-Fetch-Site': 'same-origin',
+      'X-Forwarded-Proto': 'https',
+    },
+  }), { requireOrigin: true }), true);
+  assert.equal(assertAdminSameOriginRequest(new Request('http://admin-preview.test/api/admin/auth/session', {
+    headers: { 'X-Forwarded-Proto': 'quic' },
+  })), true);
   assert.throws(
     () => assertAdminSameOriginRequest(new Request('http://admin-preview.test/api/admin/auth/session')),
+    error => error.code === 'ADMIN_HTTPS_REQUIRED',
+  );
+  assert.throws(
+    () => assertAdminSameOriginRequest(new Request('http://admin-preview.test/api/admin/auth/session', {
+      headers: { 'X-Forwarded-Proto': 'https,http' },
+    })),
+    error => error.code === 'ADMIN_HTTPS_REQUIRED',
+  );
+  assert.throws(
+    () => assertAdminSameOriginRequest(new Request('https://admin-preview.test/api/admin/auth/session', {
+      headers: { 'X-Forwarded-Proto': 'http' },
+    })),
     error => error.code === 'ADMIN_HTTPS_REQUIRED',
   );
   assert.throws(
@@ -212,7 +235,12 @@ test('disabled login fails before body parsing and Blob initialization', async (
 test('successful login returns no secret or token and establishes a strict cookie', async () => {
   const store = new MemoryBlobStore();
   const response = await handleAdminLoginRequest({
-    request: request('/api/admin/auth/login', { method: 'POST', body: loginBody() }),
+    request: request('/api/admin/auth/login', {
+      method: 'POST',
+      body: loginBody(),
+      urlProtocol: 'http',
+      headers: { 'X-Forwarded-Proto': 'https' },
+    }),
     env: ENV,
   }, {
     createStore: env => {
