@@ -16,11 +16,13 @@ import {
 import {
   ADMIN_ROLLBACK_ALLOWED_GROUP_ID,
   ADMIN_ROLLBACK_ALLOWED_LIBRARY_ID,
+  ADMIN_ROLLBACK_CONFIRMATION,
   ADMIN_ROLLBACK_PREVIEW_STORE_NAME,
   executeAdminRollback,
   isAdminRollbackProjectionSafe,
   listAdminRollbackCandidates,
   readAdminRollbackConfig,
+  rollbackRefForEventPair,
 } from '../src/server/admin_rollback_v1.js';
 import {
   handleAdminRollbackExecuteRequest,
@@ -185,34 +187,45 @@ async function putApprovedEvent(store, {
   return event;
 }
 
-async function seedTwoVersions(store) {
+async function seedTwoVersions(store, {
+  serviceName = '鹅鸭杀',
+  firstPrice = 100,
+  secondPrice = 120,
+  firstVersion = 1,
+  secondVersion = 2,
+  labelPrefix = 'primary',
+} = {}) {
   const first = await putApprovedEvent(store, {
-    version: 1,
-    payload: { serviceName: '鹅鸭杀', settleType: 'round', unitPrice: 100 },
+    version: firstVersion,
+    payload: { serviceName, settleType: 'round', unitPrice: firstPrice },
     baseline: { approvedVersion: 0, contentHash: null, unitPrice: null },
-    label: 'first',
+    label: `${labelPrefix}-first`,
     deviceId: DEVICE_A,
     submissionId: SUBMISSION_A,
-    approvedAt: NOW,
+    approvedAt: NOW + firstVersion * 1000,
   });
   const second = await putApprovedEvent(store, {
-    version: 2,
-    payload: { serviceName: '鹅鸭杀', settleType: 'round', unitPrice: 120 },
-    baseline: { approvedVersion: 1, contentHash: first.contentHash, unitPrice: 100 },
-    label: 'second',
+    version: secondVersion,
+    payload: { serviceName, settleType: 'round', unitPrice: secondPrice },
+    baseline: { approvedVersion: first.version, contentHash: first.contentHash, unitPrice: firstPrice },
+    label: `${labelPrefix}-second`,
     deviceId: DEVICE_B,
     submissionId: SUBMISSION_B,
-    approvedAt: NOW + 1000,
+    approvedAt: NOW + secondVersion * 1000,
   });
   return { first, second };
 }
 
-function command(rollbackRef, suffix = 'ROLLBACKAAAAAAAAAAAAAA') {
+function requestId(label) {
+  return `rbrq_v1_${String(label).replace(/[^A-Za-z0-9_-]/g, 'A').padEnd(22, 'A').slice(0, 40)}`;
+}
+
+function command(rollbackRef, label = 'ROLLBACK') {
   return {
     schemaVersion: 1,
     rollbackRef,
-    requestId: `rbrq_v1_${suffix}`,
-    reasonCode: 'restore_previous_approved_value',
+    requestId: requestId(label),
+    confirmation: ADMIN_ROLLBACK_CONFIRMATION,
   };
 }
 
@@ -258,7 +271,7 @@ test('Stage5E rollback defaults closed, hard-locks fixture scope, and requires a
   assert.equal(readAdminRollbackConfig(ENV).storeName, ADMIN_ROLLBACK_PREVIEW_STORE_NAME);
 });
 
-test('Stage5E lists only items with a previous approved value and hides storage identity', async () => {
+test('Stage5E lists only current items with a previous approved value and hides internal identity', async () => {
   const store = new MemoryBlobStore();
   const config = readAdminRollbackConfig(ENV);
   await seedTwoVersions(store);
@@ -269,7 +282,7 @@ test('Stage5E lists only items with a previous approved value and hides storage 
     label: 'single',
     deviceId: DEVICE_A,
     submissionId: SUBMISSION_A,
-    approvedAt: NOW + 2000,
+    approvedAt: NOW + 3000,
   });
 
   const listed = await listAdminRollbackCandidates({ store, config });
@@ -279,20 +292,57 @@ test('Stage5E lists only items with a previous approved value and hides storage 
   assert.equal(listed.candidates[0].rollbackRef.startsWith('rbref_v1_'), true);
   assert.equal(isAdminRollbackProjectionSafe(listed), true);
   const serialized = JSON.stringify(listed);
-  assert.equal(serialized.includes('businessKey'), false);
-  assert.equal(serialized.includes('contentHash'), false);
-  assert.equal(serialized.includes('eventKey'), false);
+  for (const forbidden of ['businessKey', 'contentHash', 'eventKey', 'deviceId', 'submissionId']) {
+    assert.equal(serialized.includes(forbidden), false);
+  }
   assert.equal(store.lists.every(item => item.consistency === 'strong'), true);
 });
 
-test('Stage5E appends a compensating event, preserves history, rebuilds the snapshot, and replays idempotently', async () => {
+test('Stage5E requires the fixed confirmation phrase and reports first-insert rollback separately', async () => {
+  const store = new MemoryBlobStore();
+  const config = readAdminRollbackConfig(ENV);
+  const first = await putApprovedEvent(store, {
+    version: 1,
+    payload: { serviceName: '首次项目', settleType: 'round', unitPrice: 66 },
+    baseline: { approvedVersion: 0, contentHash: null, unitPrice: null },
+    label: 'first-only',
+    deviceId: DEVICE_A,
+    submissionId: SUBMISSION_A,
+    approvedAt: NOW + 1000,
+  });
+  const firstRef = rollbackRefForEventPair({ config, current: first, previous: null });
+
+  await assert.rejects(
+    () => executeAdminRollback({
+      store,
+      config,
+      identity: IDENTITY,
+      command: { ...command(firstRef, 'BADCONFIRM'), confirmation: 'ROLLBACK' },
+      now: NOW + 2000,
+    }),
+    error => error.code === 'ADMIN_ROLLBACK_CONFIRMATION_REQUIRED' && error.status === 400,
+  );
+
+  await assert.rejects(
+    () => executeAdminRollback({
+      store,
+      config,
+      identity: IDENTITY,
+      command: command(firstRef, 'NOPREVIOUS'),
+      now: NOW + 3000,
+    }),
+    error => error.code === 'ADMIN_ROLLBACK_NO_PREVIOUS_VALUE' && error.status === 409,
+  );
+});
+
+test('Stage5E appends a compensating event, preserves history, rebuilds snapshot, and recovers idempotently', async () => {
   const store = new MemoryBlobStore();
   const config = readAdminRollbackConfig(ENV);
   const seeded = await seedTwoVersions(store);
   const beforeFirst = structuredClone(await store.get(seeded.first.eventKey));
   const beforeSecond = structuredClone(await store.get(seeded.second.eventKey));
   const listed = await listAdminRollbackCandidates({ store, config });
-  const input = command(listed.candidates[0].rollbackRef);
+  const input = command(listed.candidates[0].rollbackRef, 'SUCCESS');
 
   const result = await executeAdminRollback({
     store,
@@ -314,7 +364,9 @@ test('Stage5E appends a compensating event, preserves history, rebuilds the snap
   assert.equal(snapshot.publicVersion, 3);
   assert.equal(snapshot.records[0].payload.unitPrice, 100);
   assert.equal([...store.values.keys()].filter(key => key.startsWith(`public/${LIBRARY_ID}/events/`)).length, 3);
-  assert.equal([...store.values.keys()].filter(key => key.startsWith(`public/${LIBRARY_ID}/rollbacks/`)).length, 1);
+  assert.equal([...store.values.keys()].filter(key => key.startsWith(`rollbacks/${LIBRARY_ID}/decisions/`)).length, 1);
+  assert.equal([...store.values.keys()].filter(key => key.startsWith(`rollbacks/${LIBRARY_ID}/requests/`)).length, 1);
+  assert.equal([...store.values.keys()].filter(key => key.startsWith(`rollbacks/${LIBRARY_ID}/completions/`)).length, 1);
   assert.equal([...store.values.keys()].filter(key => key.startsWith('audit/')).length, 1);
 
   const replay = await executeAdminRollback({
@@ -334,14 +386,38 @@ test('Stage5E appends a compensating event, preserves history, rebuilds the snap
       store,
       config,
       identity: IDENTITY,
-      command: command(listed.candidates[0].rollbackRef, 'STALEAAAAAAAAAAAAAAAAA'),
+      command: command(listed.candidates[0].rollbackRef, 'STALE'),
       now: NOW + 8000,
     }),
-    error => error.code === 'ADMIN_ROLLBACK_TARGET_STALE_OR_MISSING' && error.status === 409,
+    error => error.code === 'ADMIN_ROLLBACK_TARGET_STALE' && error.status === 409,
   );
 });
 
-test('Stage5E fails closed when the current baseline has already been claimed', async () => {
+test('Stage5E same request id with a different valid target conflicts before a second decision is created', async () => {
+  const store = new MemoryBlobStore();
+  const config = readAdminRollbackConfig(ENV);
+  await seedTwoVersions(store, { serviceName: '项目甲', firstVersion: 1, secondVersion: 2, labelPrefix: 'a' });
+  await seedTwoVersions(store, { serviceName: '项目乙', firstVersion: 3, secondVersion: 4, labelPrefix: 'b' });
+  const listed = await listAdminRollbackCandidates({ store, config });
+  assert.equal(listed.count, 2);
+  const sharedId = requestId('SHARED');
+  const firstCommand = {
+    schemaVersion: 1,
+    rollbackRef: listed.candidates[0].rollbackRef,
+    requestId: sharedId,
+    confirmation: ADMIN_ROLLBACK_CONFIRMATION,
+  };
+  const secondCommand = { ...firstCommand, rollbackRef: listed.candidates[1].rollbackRef };
+
+  await executeAdminRollback({ store, config, identity: IDENTITY, command: firstCommand, now: NOW + 5000 });
+  await assert.rejects(
+    () => executeAdminRollback({ store, config, identity: IDENTITY, command: secondCommand, now: NOW + 6000 }),
+    error => error.code === 'ADMIN_ROLLBACK_REQUEST_CONFLICT' && error.status === 409,
+  );
+  assert.equal([...store.values.keys()].filter(key => key.startsWith(`rollbacks/${LIBRARY_ID}/decisions/`)).length, 1);
+});
+
+test('Stage5E rejects an occupied public baseline without overwriting the other transition', async () => {
   const store = new MemoryBlobStore();
   const config = readAdminRollbackConfig(ENV);
   const { second } = await seedTwoVersions(store);
@@ -367,14 +443,16 @@ test('Stage5E fails closed when the current baseline has already been claimed', 
       store,
       config,
       identity: IDENTITY,
-      command: command(listed.candidates[0].rollbackRef, 'CONFLICTAAAAAAAAAAAAAAA'),
+      command: command(listed.candidates[0].rollbackRef, 'CONFLICT'),
       now: NOW + 4000,
     }),
-    error => error.code === 'ADMIN_ROLLBACK_BASELINE_CONFLICT' && error.status === 409,
+    error => error.code === 'ADMIN_ROLLBACK_TRANSITION_CONFLICT' && error.status === 409,
   );
+  const untouched = await store.get(key);
+  assert.equal(untouched.approvalId, approvalId('other-transition'));
 });
 
-test('Stage5E HTTP reuses the admin session and accepts EdgeOne internal HTTP only with same-project HTTPS origin', async () => {
+test('Stage5E HTTP reuses admin session and accepts EdgeOne internal HTTP only with same-project HTTPS origin', async () => {
   const store = new MemoryBlobStore();
   await seedTwoVersions(store);
   const cookie = sessionCookie();
@@ -393,7 +471,7 @@ test('Stage5E HTTP reuses the admin session and accepts EdgeOne internal HTTP on
     {
       request: adminRequest('/api/admin/rollbacks/execute', {
         method: 'POST',
-        body: command(listPayload.data.result.candidates[0].rollbackRef, 'HTTPAAAAAAAAAAAAAAAAAAA'),
+        body: command(listPayload.data.result.candidates[0].rollbackRef, 'HTTP'),
         cookie,
       }),
       env: ENV,
@@ -409,7 +487,7 @@ test('Stage5E HTTP reuses the admin session and accepts EdgeOne internal HTTP on
     {
       request: adminRequest('/api/admin/rollbacks/execute', {
         method: 'POST',
-        body: command(executePayload.data.result.rollbackRef, 'EVILAAAAAAAAAAAAAAAAAAA'),
+        body: command(executePayload.data.result.rollbackRef, 'EVIL'),
         cookie,
         origin: 'https://evil-project-aaaaaaaaaaaa.edgeone.cool',
       }),
