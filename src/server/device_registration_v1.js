@@ -7,6 +7,7 @@ import {
   getJSONStrong,
   putJSONOnlyIfNew,
 } from './blob_repository_v1.js';
+import { readEffectiveDeviceGovernance } from './device_governance_v1.js';
 
 export const DEVICE_REGISTRATION_SCHEMA_VERSION = 1;
 export const DEVICE_TOKEN_VERSION = 1;
@@ -197,6 +198,10 @@ export async function authenticateDevice({ store, authorization, now = Date.now(
   const profile = await getJSONStrong(store, deviceProfileKey(index.deviceId));
   if (!profile || !safeEqual(profile.tokenHash, tokenHash) || profile.tokenVersion !== index.tokenVersion) {
     throw new DeviceRegistrationError('DEVICE_PROFILE_MISMATCH', '设备档案与令牌不一致', 401);
+  }
+  const governance = await readEffectiveDeviceGovernance({ store, deviceId: index.deviceId });
+  if (governance.blocked) {
+    throw new DeviceRegistrationError('DEVICE_BLOCKED', '设备已被管理员封禁', 403);
   }
   return Object.freeze({
     deviceId: index.deviceId,
