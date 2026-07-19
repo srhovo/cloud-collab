@@ -23,6 +23,24 @@ jobs:
         run: node --test tests/stage5e-admin-rollback.test.mjs
       - name: Full Node regression
         run: npm test
+      - name: Diagnostic — immutable records
+        continue-on-error: true
+        run: node tests/stage5e-static-diagnostics.mjs immutable
+      - name: Diagnostic — proven publisher
+        continue-on-error: true
+        run: node tests/stage5e-static-diagnostics.mjs publisher
+      - name: Diagnostic — explicit confirmation
+        continue-on-error: true
+        run: node tests/stage5e-static-diagnostics.mjs confirmation
+      - name: Diagnostic — distinct outcomes
+        continue-on-error: true
+        run: node tests/stage5e-static-diagnostics.mjs outcomes
+      - name: Diagnostic — schema compatibility
+        continue-on-error: true
+        run: node tests/stage5e-static-diagnostics.mjs compatibility
+      - name: Diagnostic — safe projection
+        continue-on-error: true
+        run: node tests/stage5e-static-diagnostics.mjs projection
       - name: Static and privacy validation
         run: npm run validate
       - name: Install browser test runtime
