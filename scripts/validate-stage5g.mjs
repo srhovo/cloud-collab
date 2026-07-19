@@ -10,8 +10,8 @@ const check = (name, ok, details = null) => checks.push({ name, ok: Boolean(ok),
 const policy = read('src/server/ordinary_types_policy_v1.js');
 const acceptance = read('src/server/ordinary_submission_acceptance_v1.js');
 const runtime = read('src/server/ordinary_types_preview_runtime_v1.js');
+const publicEngine = read('src/server/ordinary_public_engine_v1.js');
 const env = read('.env.example');
-const stable = read('码单器8.2.25.html');
 const build = read('scripts/build.mjs');
 
 check('Stage5G gate defaults closed', env.includes('CLOUD_ORDINARY_TYPES_PREVIEW_ENABLED=0'));
@@ -35,8 +35,8 @@ check('Stage5G rejects private and source-context fields recursively', [
   'correctionContext',
   'recentBoss',
 ].every(token => policy.includes(token)));
-check('Stage5G rejects system-produced origins', policy.includes("new Set(['user', 'initialBinding'])")
-  && !policy.includes("'cloudPull', 'rollback'"));
+check('Stage5G only accepts explicit user and initial-binding origins', policy.includes("new Set(['user', 'initialBinding'])")
+  && policy.includes('INVALID_SUBMISSION_ORIGIN'));
 check('Stage5G boss discount stays within 0.8 to 1', policy.includes('MIN_BOSS_DISCOUNT = 0.8')
   && policy.includes('MAX_BOSS_DISCOUNT = 1'));
 check('Stage5G direct-report changes and discount increases cannot auto approve', policy.includes('boss_direct_report_change_sensitive')
@@ -47,9 +47,13 @@ check('Stage5G immutable acceptance exposes no public mutation capability', acce
 check('Stage5G runtime requires ordinary and write configurations together', runtime.includes('readPreviewWriteConfig(env)')
   && runtime.includes('readOrdinaryTypesPreviewConfig(env)')
   && runtime.includes('ORDINARY_TYPES_STORE_MISMATCH'));
-check('Stage5G source contains no browser persistence or embedded secrets', !/(?:localStorage|sessionStorage)\.(?:setItem|getItem|removeItem)/.test([policy, acceptance, runtime].join('\n'))
-  && !/(?:password|secret|token)\s*[:=]\s*['"][^'"]{12,}/i.test([policy, acceptance, runtime].join('\n')));
-check('8.2.25 remains excluded from build inputs', stable.includes('码单器') && !build.includes('码单器8.2.25'));
+check('Stage5G mixed public engine retains schemaVersion 1 and immutable indexes', publicEngine.includes('ORDINARY_PUBLIC_EVENT_SCHEMA_VERSION = 1')
+  && publicEngine.includes('approvalIndexKey')
+  && publicEngine.includes('transitionIndexKey')
+  && publicEngine.includes('putJSONOnlyIfNew'));
+check('Stage5G source contains no browser persistence or embedded secrets', !/(?:localStorage|sessionStorage)\.(?:setItem|getItem|removeItem)/.test([policy, acceptance, runtime, publicEngine].join('\n'))
+  && !/(?:password|secret|token)\s*[:=]\s*['"][^'"]{12,}/i.test([policy, acceptance, runtime, publicEngine].join('\n')));
+check('8.2.25 remains excluded from all build inputs', !build.includes('码单器8.2.25'));
 
 const failed = checks.filter(item => !item.ok);
 const result = {
