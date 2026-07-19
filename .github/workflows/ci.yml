@@ -17,7 +17,12 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm install --ignore-scripts
-      - run: npm run ci
+      - name: Build deterministic candidate
+        run: npm run build
+      - name: Run complete Node test suite
+        run: npm test
+      - name: Run static isolation and privacy gates
+        run: npm run validate
       - name: Install browser test runtime
         run: |
           python3 -m pip install --disable-pip-version-check playwright
