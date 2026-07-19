@@ -119,12 +119,12 @@ def route_handler(route, request):
         assert request.headers.get('origin') == ORIGIN
         assert body['schemaVersion'] == 1
         assert body['requestId'].startswith('dgrq_v1_')
-        if parsed.path.endswith('/trust'):
-            assert body['deviceRef'] == DEVICE_A_REF
-            assert body['reasonCode'] == 'verified_operator'
-        elif parsed.path.endswith('/revoke-trust'):
+        if parsed.path.endswith('/revoke-trust'):
             assert body['deviceRef'] == DEVICE_A_REF
             assert body['reasonCode'] == 'trust_withdrawn'
+        elif parsed.path.endswith('/trust'):
+            assert body['deviceRef'] == DEVICE_A_REF
+            assert body['reasonCode'] == 'verified_operator'
         elif parsed.path.endswith('/block'):
             assert body['deviceRef'] == DEVICE_B_REF
             assert body['reasonCode'] == 'manual_safety'
