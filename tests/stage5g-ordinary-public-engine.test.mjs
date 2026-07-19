@@ -47,6 +47,10 @@ class MemoryBlobStore {
     this.values.set(key, this.clone(value));
   }
 
+  async delete(key) {
+    this.values.delete(key);
+  }
+
   async list(options = {}) {
     this.listCalls.push(this.clone(options));
     const prefix = String(options.prefix || '');
