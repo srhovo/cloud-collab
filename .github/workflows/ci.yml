@@ -21,8 +21,12 @@ jobs:
         run: npm run build
       - name: Run complete Node test suite
         run: npm test
-      - name: Run static isolation and privacy gates
-        run: npm run validate
+      - name: Run legacy static isolation and privacy gates
+        run: node scripts/validate.mjs
+      - name: Run Stage5F export static gates
+        run: node scripts/validate-stage5f.mjs
+      - name: Run Stage5DEF joint acceptance static gates
+        run: node scripts/validate-stage5def.mjs
       - name: Install browser test runtime
         run: |
           python3 -m pip install --disable-pip-version-check playwright
