@@ -92,7 +92,7 @@ check('Stage5DEF routes and pages stay outside ordinary user build', !ordinary.i
   && !ordinary.includes('/api/stage5def')
   && !submissionClient.includes('/api/stage5def'));
 check('Stage5DEF branch is permanently DO NOT MERGE', doc.includes('DO NOT MERGE')
-  && doc.includes('必须始终保持 Draft')
+  && /必须始终保持\s*Draft/.test(doc)
   && doc.includes('绝不合并'));
 check('Stage5DEF CI includes both joint and cleanup browser regressions', workflow.includes('tests/stage5def_browser_joint_acceptance.py')
   && workflow.includes('tests/stage5def_browser_cleanup.py'));
