@@ -32,6 +32,7 @@ const SESSION_SECRET = 'stage5a-session-secret-012345678901234';
 const RATE_SALT = 'stage5a-rate-limit-salt-0123456789012';
 const ENV = Object.freeze({
   CLOUD_ADMIN_PREVIEW_ENABLED: '1',
+  CLOUD_ADMIN_PUBLIC_ORIGIN: 'https://admin-preview.test',
   CLOUD_ADMIN_USERNAME: USERNAME,
   CLOUD_ADMIN_PASSWORD: PASSWORD,
   CLOUD_ADMIN_SESSION_SECRET: SESSION_SECRET,
@@ -110,6 +111,12 @@ test('admin config is default-off, isolated, secret-complete, and cannot overlap
     () => readAdminAuthConfig({ ...ENV, CLOUD_AUTO_APPROVAL_PREVIEW_ENABLED: '1' }),
     error => error.code === 'ADMIN_PREVIEW_REQUIRES_PUBLIC_PREVIEW_DISABLED',
   );
+  for (const value of ['', 'http://admin-preview.test', 'https://admin-preview.test/path', 'https://user@admin-preview.test']) {
+    assert.throws(
+      () => readAdminAuthConfig({ ...ENV, CLOUD_ADMIN_PUBLIC_ORIGIN: value }),
+      error => error.code === 'ADMIN_PUBLIC_ORIGIN_NOT_CONFIGURED',
+    );
+  }
   const config = readAdminAuthConfig(ENV);
   assert.equal(config.storeName, ADMIN_PREVIEW_STORE_NAME);
   assert.equal(config.sessionTtlSeconds, ADMIN_SESSION_TTL_SECONDS);
@@ -185,7 +192,8 @@ test('login rate key contains only salted hashes and the immutable slot blocks r
 });
 
 test('same-origin guard requires HTTPS and rejects cross-site mutation requests', () => {
-  assert.equal(assertAdminSameOriginRequest(request('/api/admin/auth/login', { method: 'POST', body: loginBody() }), { requireOrigin: true }), true);
+  const publicOrigin = ENV.CLOUD_ADMIN_PUBLIC_ORIGIN;
+  assert.equal(assertAdminSameOriginRequest(request('/api/admin/auth/login', { method: 'POST', body: loginBody() }), { requireOrigin: true, publicOrigin }), true);
   assert.equal(assertAdminSameOriginRequest(new Request('http://admin-preview.test/api/admin/auth/login', {
     method: 'POST',
     headers: {
@@ -193,10 +201,17 @@ test('same-origin guard requires HTTPS and rejects cross-site mutation requests'
       'Sec-Fetch-Site': 'same-origin',
       'X-Forwarded-Proto': 'https',
     },
-  }), { requireOrigin: true }), true);
+  }), { requireOrigin: true, publicOrigin }), true);
+  assert.equal(assertAdminSameOriginRequest(new Request('http://admin-preview.test/api/admin/auth/login', {
+    method: 'POST',
+    headers: {
+      Origin: 'https://admin-preview.test',
+      'Sec-Fetch-Site': 'same-origin',
+    },
+  }), { requireOrigin: true, publicOrigin }), true);
   assert.equal(assertAdminSameOriginRequest(new Request('http://admin-preview.test/api/admin/auth/session', {
     headers: { 'X-Forwarded-Proto': 'quic' },
-  })), true);
+  }), { publicOrigin }), true);
   assert.throws(
     () => assertAdminSameOriginRequest(new Request('http://admin-preview.test/api/admin/auth/session')),
     error => error.code === 'ADMIN_HTTPS_REQUIRED',
@@ -204,19 +219,19 @@ test('same-origin guard requires HTTPS and rejects cross-site mutation requests'
   assert.throws(
     () => assertAdminSameOriginRequest(new Request('http://admin-preview.test/api/admin/auth/session', {
       headers: { 'X-Forwarded-Proto': 'https,http' },
-    })),
+    }), { publicOrigin }),
     error => error.code === 'ADMIN_HTTPS_REQUIRED',
   );
   assert.throws(
     () => assertAdminSameOriginRequest(new Request('https://admin-preview.test/api/admin/auth/session', {
       headers: { 'X-Forwarded-Proto': 'http' },
-    })),
+    }), { publicOrigin }),
     error => error.code === 'ADMIN_HTTPS_REQUIRED',
   );
   assert.throws(
     () => assertAdminSameOriginRequest(request('/api/admin/auth/login', {
       method: 'POST', body: loginBody(), headers: { Origin: 'https://attacker.test' },
-    }), { requireOrigin: true }),
+    }), { requireOrigin: true, publicOrigin }),
     error => error.code === 'ADMIN_REQUEST_ORIGIN_INVALID',
   );
 });
@@ -307,13 +322,14 @@ test('session endpoint verifies cookie and clears tampered sessions', async () =
 test('logout is same-origin, stateless, and clears the API-scoped cookie even when preview is disabled', async () => {
   const response = await handleAdminLogoutRequest({
     request: request('/api/admin/auth/logout', { method: 'POST' }),
-    env: { CLOUD_ADMIN_PREVIEW_ENABLED: '0' },
+    env: { CLOUD_ADMIN_PREVIEW_ENABLED: '0', CLOUD_ADMIN_PUBLIC_ORIGIN: ENV.CLOUD_ADMIN_PUBLIC_ORIGIN },
   });
   assert.equal(response.status, 204);
   assert.match(response.headers.get('set-cookie'), /Path=\/api\/admin/);
   assert.match(response.headers.get('set-cookie'), /Max-Age=0/);
   const crossSite = await handleAdminLogoutRequest({
     request: request('/api/admin/auth/logout', { method: 'POST', headers: { Origin: 'https://attacker.test' } }),
+    env: { CLOUD_ADMIN_PUBLIC_ORIGIN: ENV.CLOUD_ADMIN_PUBLIC_ORIGIN },
   });
   assert.equal(crossSite.status, 403);
 });
@@ -358,6 +374,7 @@ test('admin preview page is isolated from the user client and never persists cre
 test('environment template leaves admin preview off and every real credential empty', () => {
   const env = fs.readFileSync('.env.example', 'utf8');
   assert.match(env, /^CLOUD_ADMIN_PREVIEW_ENABLED=0$/m);
+  assert.match(env, /^CLOUD_ADMIN_PUBLIC_ORIGIN=$/m);
   assert.match(env, /^CLOUD_ADMIN_USERNAME=$/m);
   assert.match(env, /^CLOUD_ADMIN_PASSWORD=$/m);
   assert.match(env, /^CLOUD_ADMIN_SESSION_SECRET=$/m);

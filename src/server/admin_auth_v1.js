@@ -49,6 +49,27 @@ export function normalizeAdminUsername(value) {
   return username;
 }
 
+export function readAdminPublicOrigin(env = {}) {
+  const value = String(env.CLOUD_ADMIN_PUBLIC_ORIGIN || '').trim();
+  let url;
+  try {
+    url = new URL(value);
+  } catch (_) {
+    throw new AdminAuthError('ADMIN_PUBLIC_ORIGIN_NOT_CONFIGURED', '管理员公开来源配置无效', 503);
+  }
+  if (secretByteLength(value) > 512
+      || url.protocol !== 'https:'
+      || url.username
+      || url.password
+      || url.pathname !== '/'
+      || url.search
+      || url.hash
+      || !url.hostname) {
+    throw new AdminAuthError('ADMIN_PUBLIC_ORIGIN_NOT_CONFIGURED', '管理员公开来源必须为纯HTTPS来源', 503);
+  }
+  return url.origin;
+}
+
 export function readAdminAuthConfig(env = {}) {
   if (String(env.CLOUD_ADMIN_PREVIEW_ENABLED || '').trim() !== '1') {
     throw new AdminAuthError('ADMIN_PREVIEW_DISABLED', '管理员预览登录未开启', 503);
@@ -86,6 +107,7 @@ export function readAdminAuthConfig(env = {}) {
   if (storeName !== ADMIN_PREVIEW_STORE_NAME) {
     throw new AdminAuthError('ADMIN_STORE_MISCONFIGURED', '管理员预览限流必须使用独立Blob命名空间', 503);
   }
+  const publicOrigin = readAdminPublicOrigin(env);
 
   return Object.freeze({
     schemaVersion: ADMIN_AUTH_CONFIG_VERSION,
@@ -94,6 +116,7 @@ export function readAdminAuthConfig(env = {}) {
     sessionSecret,
     rateLimitSalt,
     storeName,
+    publicOrigin,
     sessionTtlSeconds: ADMIN_SESSION_TTL_SECONDS,
   });
 }
@@ -315,28 +338,37 @@ export async function consumeAdminLoginRate({ store, username, clientAddress, sa
   }
 }
 
-export function assertAdminSameOriginRequest(request, { requireOrigin = false } = {}) {
+export function assertAdminSameOriginRequest(request, { requireOrigin = false, publicOrigin = '' } = {}) {
   let url;
   try {
     url = new URL(request?.url || '');
   } catch (_) {
     throw new AdminAuthError('ADMIN_REQUEST_ORIGIN_INVALID', '管理员请求地址无效', 403);
   }
+  let expectedOrigin;
+  try {
+    expectedOrigin = publicOrigin ? new URL(publicOrigin).origin : (url.protocol === 'https:' ? url.origin : '');
+  } catch (_) {
+    expectedOrigin = '';
+  }
+  const expectedUrl = expectedOrigin ? new URL(expectedOrigin) : null;
   const forwardedProto = String(request?.headers?.get?.('x-forwarded-proto') || '').trim().toLowerCase();
   const forwardedProtocolIsSecure = forwardedProto === 'https' || forwardedProto === 'quic';
   const forwardedProtocolIsValid = !forwardedProto
     || forwardedProtocolIsSecure
     || forwardedProto === 'http';
-  const directProtocolIsSecure = url.protocol === 'https:';
-  const trustedProxyHttps = url.protocol === 'http:' && forwardedProtocolIsSecure;
+  const hostMatches = Boolean(expectedUrl && url.host === expectedUrl.host);
+  const directProtocolIsSecure = url.protocol === 'https:' && url.origin === expectedOrigin;
+  const trustedProxyHttps = url.protocol === 'http:'
+    && hostMatches
+    && (!forwardedProto || forwardedProtocolIsSecure);
   if (!forwardedProtocolIsValid
       || (!directProtocolIsSecure && !trustedProxyHttps)
       || (directProtocolIsSecure && forwardedProto === 'http')) {
     throw new AdminAuthError('ADMIN_HTTPS_REQUIRED', '管理员接口只允许HTTPS', 403);
   }
-  const publicOrigin = `https://${url.host}`;
   const origin = String(request?.headers?.get?.('origin') || '');
-  if ((requireOrigin && !origin) || (origin && origin !== publicOrigin)) {
+  if ((requireOrigin && !origin) || (origin && origin !== expectedOrigin)) {
     throw new AdminAuthError('ADMIN_REQUEST_ORIGIN_INVALID', '管理员请求必须同源', 403);
   }
   const fetchSite = String(request?.headers?.get?.('sec-fetch-site') || '').toLowerCase();

@@ -9,6 +9,7 @@ import {
   createAdminSessionCookie,
   createAdminSessionToken,
   readAdminAuthConfig,
+  readAdminPublicOrigin,
   readAdminSessionCookie,
   verifyAdminCredentials,
   verifyAdminSessionToken,
@@ -127,7 +128,7 @@ export async function handleAdminLoginRequest(context, dependencies = {}) {
   try {
     const env = context?.env || {};
     const config = readAdminAuthConfig(env);
-    assertAdminSameOriginRequest(context.request, { requireOrigin: true });
+    assertAdminSameOriginRequest(context.request, { requireOrigin: true, publicOrigin: config.publicOrigin });
     const input = parseLoginInput(await readJsonBody(context.request, MAX_LOGIN_BYTES));
     const now = dependencies.now?.() ?? Date.now();
     const createStore = dependencies.createStore || createEdgeOneBlobStore;
@@ -159,7 +160,7 @@ export async function handleAdminSessionRequest(context, dependencies = {}) {
   try {
     const env = context?.env || {};
     const config = readAdminAuthConfig(env);
-    assertAdminSameOriginRequest(context.request);
+    assertAdminSameOriginRequest(context.request, { publicOrigin: config.publicOrigin });
     const token = readAdminSessionCookie(context.request);
     const identity = verifyAdminSessionToken(token, config, { now: dependencies.now?.() ?? Date.now() });
     return success(authData(identity));
@@ -172,7 +173,8 @@ export async function handleAdminLogoutRequest(context) {
   const method = requestMethod(context?.request);
   if (method !== 'POST') return methodNotAllowed(method, 'POST');
   try {
-    assertAdminSameOriginRequest(context.request, { requireOrigin: true });
+    const publicOrigin = readAdminPublicOrigin(context?.env || {});
+    assertAdminSameOriginRequest(context.request, { requireOrigin: true, publicOrigin });
     return new Response(null, {
       status: 204,
       headers: responseHeaders({ 'Set-Cookie': clearAdminSessionCookie() }),

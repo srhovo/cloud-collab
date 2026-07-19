@@ -3,6 +3,7 @@ import { getJSONStrong } from './blob_repository_v1.js';
 import {
   ADMIN_PREVIEW_STORE_NAME,
   assertAdminSameOriginRequest,
+  readAdminPublicOrigin,
 } from './admin_auth_v1.js';
 
 export const ADMIN_ACCEPTANCE_CLEANUP_PREFIX = 'admin-preview-rate/login/';
@@ -90,11 +91,11 @@ export function readAdminAcceptanceCleanupConfig(env = {}) {
     );
   }
 
-  return Object.freeze({ cleanupKey, storeName });
+  return Object.freeze({ cleanupKey, storeName, publicOrigin: readAdminPublicOrigin(env) });
 }
 
 export function assertAdminAcceptanceCleanupAccess(request, config, { requireOrigin = false } = {}) {
-  assertAdminSameOriginRequest(request, { requireOrigin });
+  assertAdminSameOriginRequest(request, { requireOrigin, publicOrigin: config?.publicOrigin });
   const supplied = String(request?.headers?.get?.('x-cloud-admin-acceptance-key') || '');
   if (byteLength(supplied) < 32 || byteLength(supplied) > 256
       || !safeEqual(config?.cleanupKey, supplied)) {

@@ -23,6 +23,7 @@ const ENV = Object.freeze({
   CLOUD_ADMIN_ACCEPTANCE_CLEANUP_KEY: CLEANUP_KEY,
   CLOUD_ADMIN_BLOB_STORE_NAME: ADMIN_PREVIEW_STORE_NAME,
   CLOUD_ADMIN_PREVIEW_ENABLED: '0',
+  CLOUD_ADMIN_PUBLIC_ORIGIN: 'https://stage5a-acceptance.test',
   CLOUD_ADMIN_PASSWORD: 'stage5a-admin-password-0123456789',
   CLOUD_ADMIN_SESSION_SECRET: 'stage5a-session-secret-012345678901234',
   CLOUD_ADMIN_RATE_LIMIT_SALT: 'stage5a-rate-limit-salt-0123456789012',
@@ -119,7 +120,9 @@ test('cleanup access requires same-origin HTTPS and exact temporary key', () => 
     );
   }
   assert.throws(
-    () => assertAdminAcceptanceCleanupAccess(new Request('http://stage5a-acceptance.test/api/admin/acceptance/status'), config),
+    () => assertAdminAcceptanceCleanupAccess(new Request('http://stage5a-acceptance.test/api/admin/acceptance/status', {
+      headers: { 'X-Forwarded-Proto': 'http' },
+    }), config),
     error => error.code === 'ADMIN_HTTPS_REQUIRED',
   );
 });
