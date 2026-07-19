@@ -51,11 +51,15 @@ const previewRuntime = read('src/server/preview_write_runtime_v1.js');
 const previewHttp = read('src/server/preview_write_http_v1.js');
 const acceptance = read('src/server/submission_acceptance_v1.js');
 const deviceRegistration = read('src/server/device_registration_v1.js');
+const previewAutoApproval = read('src/server/preview_auto_approval_runtime_v1.js');
 const envExample = read('.env.example');
 const workflow = read('.github/workflows/ci.yml');
 const adminMutation = read('src/server/admin_review_mutation_v1.js');
 const adminMutationHttp = read('src/server/admin_review_mutation_http_v1.js');
 const adminMutationPage = read('dist/admin-review-actions-preview.html');
+const deviceGovernance = read('src/server/device_governance_v1.js');
+const deviceGovernanceHttp = read('src/server/device_governance_http_v1.js');
+const deviceGovernancePage = read('dist/admin-device-governance-preview.html');
 
 check('receive and submission clients are both embedded', output.includes('只读API客户端（阶段3B）') && output.includes('隔离候选提交客户端（阶段4C）'));
 check('submission client uses only existing preview routes', submissionClient.includes("'/api/device/register'") && submissionClient.includes("'/api/submissions/create'") && !submissionClient.includes('/api/admin'));
@@ -78,6 +82,18 @@ check('Stage5C admin writes require same-origin authenticated POST', adminMutati
 check('Stage5C mutation page stores no secret or browser state', !/(?:localStorage|sessionStorage)\.(?:setItem|getItem|removeItem)/.test(adminMutationPage) && !/CLOUD_ADMIN_(?:PASSWORD|SESSION_SECRET|RATE_LIMIT_SALT)/.test(adminMutationPage));
 check('Stage5C routes stay outside ordinary user build', !output.includes('admin-review-actions-preview') && !output.includes('/api/admin/reviews/approve') && !submissionClient.includes('/api/admin'));
 check('CI includes Stage5C browser mutation regression', workflow.includes('tests/stage5c_browser_admin_review_mutations.py'));
+
+check('Stage5D governance gate defaults closed and store stays synthetic-only', envExample.includes('CLOUD_ADMIN_DEVICE_GOVERNANCE_PREVIEW_ENABLED=0') && envExample.includes('CLOUD_ADMIN_DEVICE_GOVERNANCE_BLOB_STORE_NAME=cloud-collab-preview-v1') && deviceGovernance.includes("DEVICE_GOVERNANCE_PREVIEW_STORE_NAME = 'cloud-collab-preview-v1'"));
+check('Stage5D uses irreversible refs and immutable governance records', deviceGovernance.includes('devref_v1_') && deviceGovernance.includes('devices/governance/events/') && deviceGovernance.includes('devices/governance/transitions/') && deviceGovernance.includes('devices/governance/requests/'));
+check('Stage5D block revokes trust and unblock never restores it', deviceGovernance.includes("if (action === 'block')") && deviceGovernance.includes('return { trusted: false, blocked: true }') && deviceGovernance.includes('return { trusted: false, blocked: false }'));
+check('Stage5D device authentication fails closed for blocked devices', deviceRegistration.includes("error.code === 'DEVICE_BLOCKED'") || (deviceRegistration.includes("'DEVICE_BLOCKED'") && deviceRegistration.includes('governance.blocked')));
+check('Stage5D auto approval reads effective governance trust', previewAutoApproval.includes('governanceTrustedDeviceResolver') && previewAutoApproval.includes('state.trusted === true && state.blocked === false'));
+check('Stage5D writes require authenticated same-origin POST with public origin forwarding', deviceGovernanceHttp.includes('requireOrigin: true') && deviceGovernanceHttp.includes('publicOrigin: authConfig.publicOrigin') && deviceGovernanceHttp.includes('verifyAdminSessionToken'));
+check('Stage5D projection forbids raw device and storage identity', deviceGovernance.includes("'deviceId', 'deviceToken', 'tokenHash'") && deviceGovernance.includes("'eventKey'") && deviceGovernance.includes("'blobKey'"));
+check('Stage5D page persists no credentials or governance state', !/(?:localStorage|sessionStorage)\.(?:setItem|getItem|removeItem)/.test(deviceGovernancePage) && !/CLOUD_ADMIN_(?:PASSWORD|SESSION_SECRET|RATE_LIMIT_SALT|DEVICE_REF_SALT)/.test(deviceGovernancePage));
+check('Stage5D admin controls have exact unique accessible labels', ['设为可信','撤销可信','封禁设备','解除封禁'].every(label => (deviceGovernancePage.match(new RegExp(`>${label}<`, 'g')) || []).length === 1));
+check('Stage5D routes and page stay outside ordinary user build', !output.includes('admin-device-governance-preview') && !output.includes('/api/admin/devices') && !submissionClient.includes('/api/admin'));
+check('CI includes Stage5D browser governance regression', workflow.includes('tests/stage5d_browser_device_governance.py'));
 
 const backupBlock = output.match(/getModuleConfigs\(\) \{\s*return \[([\s\S]*?)\];\s*\}/)?.[1] || '';
 check('cloud keys remain excluded from standard backup', cloudKeys.every(key => !backupBlock.includes(key)));
