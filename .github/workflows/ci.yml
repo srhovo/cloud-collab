@@ -16,8 +16,21 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm install --ignore-scripts
-      - run: npm run ci
+      - name: Run npm install --ignore-scripts
+        run: npm install --ignore-scripts
+      - name: Run npm run ci
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run ci 2>&1 | tee ci.log
+      - name: Upload CI command log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-command-log
+          path: ci.log
+          if-no-files-found: error
+          retention-days: 7
       - name: Install browser test runtime
         run: |
           python3 -m pip install --disable-pip-version-check playwright
