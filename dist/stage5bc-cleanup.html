@@ -35,6 +35,19 @@
   const CONFIRMATION = 'DELETE_STAGE5BC_SYNTHETIC_PREVIEW_V1';
   const els = Object.fromEntries(['cleanupKey','inspectBtn','executeBtn','verifyBtn','publicCount','adminCount','totalCount','status'].map(id => [id, document.getElementById(id)]));
   const state = { key: '', publicDigest: '', adminDigest: '', busy: false };
+  const ERROR_HINTS = Object.freeze({
+    STAGE5BC_CLEANUP_DISABLED: '当前打开的部署未启用清理开关；环境变量保存后必须生成并打开新的清理部署。',
+    STAGE5BC_CLEANUP_REQUIRES_ALL_CAPABILITIES_CLOSED: '仍有联合验收、公共预览或管理员能力开关未关闭。',
+    STAGE5BC_CLEANUP_CONFIRMATION_MISSING: '固定清理确认词未正确配置。',
+    STAGE5BC_CLEANUP_SCOPE_INVALID: '两套Blob名称或fixture作用域配置不匹配。',
+    STAGE5BC_CLEANUP_KEY_INVALID: '服务端清理密钥长度不是32至256字节。',
+    STAGE5BC_CLEANUP_KEY_REUSED: '清理密钥与其他预览或管理员凭据发生复用。',
+    STAGE5BC_CLEANUP_ACCESS_DENIED: '页面输入的清理密钥与当前部署不匹配。',
+    ADMIN_PUBLIC_ORIGIN_NOT_CONFIGURED: '管理员公开来源必须填写同一EdgeOne项目的纯HTTPS来源，不含路径、查询参数或预览token。',
+    ADMIN_HTTPS_REQUIRED: '当前请求未被识别为允许的同项目HTTPS来源，请确认打开的是最新清理部署。',
+    ADMIN_REQUEST_ORIGIN_INVALID: '当前页面与清理接口不属于允许的同项目来源。',
+    STAGE5BC_CLEANUP_NETWORK_ERROR: '无法连接清理接口，请确认旧验收部署已停止且当前网址来自最新清理部署。',
+  });
 
   function setStatus(message, kind = '') {
     els.status.textContent = message;
@@ -47,6 +60,18 @@
     els.verifyBtn.disabled = value;
     els.executeBtn.disabled = value || !state.publicDigest || !state.adminDigest;
     els.cleanupKey.disabled = value;
+  }
+
+  function clearKey() {
+    state.key = '';
+    els.cleanupKey.value = '';
+  }
+
+  function formatError(error, fallback) {
+    const code = String(error?.code || 'STAGE5BC_CLEANUP_REQUEST_FAILED');
+    const message = String(error?.message || fallback);
+    const hint = ERROR_HINTS[code] || '请按错误码核对当前清理部署的环境变量和来源配置。';
+    return `错误码：${code}\n${message}\n${hint}\n本次清理密钥已从页面内存清除，请重新输入后重试。`;
   }
 
   function apiUrl() {
@@ -72,15 +97,22 @@
 
   async function api(body) {
     const key = loadKey();
-    const response = await fetch(apiUrl(), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-cloud-stage5bc-cleanup-key': key },
-      body: JSON.stringify(body),
-      credentials: 'same-origin',
-      cache: 'no-store',
-      redirect: 'error',
-      referrerPolicy: 'no-referrer',
-    });
+    let response;
+    try {
+      response = await fetch(apiUrl(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-cloud-stage5bc-cleanup-key': key },
+        body: JSON.stringify(body),
+        credentials: 'same-origin',
+        cache: 'no-store',
+        redirect: 'error',
+        referrerPolicy: 'no-referrer',
+      });
+    } catch (_) {
+      const error = new Error('无法连接阶段5B/5C联合验收清理接口。');
+      error.code = 'STAGE5BC_CLEANUP_NETWORK_ERROR';
+      throw error;
+    }
     const payload = await response.json().catch(() => null);
     if (!response.ok || !payload?.ok) {
       const error = new Error(payload?.error?.message || `清理接口失败（HTTP ${response.status}）`);
@@ -89,7 +121,9 @@
     }
     if (payload.data?.acceptanceEnabled !== false || payload.data?.publicMutationAllowed !== false
         || payload.data?.reviewMutationAllowed !== false || payload.data?.cleanupOnly !== true) {
-      throw new Error('清理响应未保持全部业务能力关闭。');
+      const error = new Error('清理响应未保持全部业务能力关闭。');
+      error.code = 'STAGE5BC_CLEANUP_CAPABILITY_RESPONSE_INVALID';
+      throw error;
     }
     return payload.data;
   }
@@ -118,7 +152,8 @@
     } catch (error) {
       state.publicDigest = '';
       state.adminDigest = '';
-      setStatus(error?.message || '强一致检查失败。', 'error');
+      clearKey();
+      setStatus(formatError(error, '强一致检查失败。'), 'error');
     } finally {
       setBusy(false);
     }
@@ -142,13 +177,16 @@
       state.adminDigest = '';
       if (data.completed !== true || data.remainingObjectCount !== 0
           || data.publicRemainingCount !== 0 || data.adminRemainingCount !== 0) {
-        throw new Error('清理响应未达到两套Blob剩余0。');
+        const error = new Error('清理响应未达到两套Blob剩余0。');
+        error.code = 'STAGE5BC_CLEANUP_INCOMPLETE_RESPONSE';
+        throw error;
       }
       setStatus(`删除完成：共删除${data.deletedObjectCount}个（公共${data.publicDeletedCount}、管理员${data.adminDeletedCount}），强一致剩余0。请点击二次复查。`, 'ok');
     } catch (error) {
       state.publicDigest = '';
       state.adminDigest = '';
-      setStatus(`${error?.message || '删除失败'}；必须重新检查后再继续。`, 'error');
+      clearKey();
+      setStatus(`${formatError(error, '删除失败。')}\n必须重新检查后再继续。`, 'error');
     } finally {
       setBusy(false);
     }
@@ -157,7 +195,7 @@
   els.inspectBtn.addEventListener('click', () => inspect());
   els.verifyBtn.addEventListener('click', () => inspect({ verify: true }));
   els.executeBtn.addEventListener('click', execute);
-  window.addEventListener('pagehide', () => { state.key = ''; els.cleanupKey.value = ''; });
+  window.addEventListener('pagehide', clearKey);
 })();
 </script>
 </body>
