@@ -6,36 +6,37 @@ import {
   putJSONOnlyIfNew,
 } from './blob_repository_v1.js';
 import {
-  approvalIndexKey,
-  buildPublicSnapshot,
   listValidPublicEvents,
-  publicEventKey,
-  publicEventPrefix,
-  publicSnapshotKey,
-  transitionIndexKey,
+  publishAdminReviewApproval,
 } from './auto_approval_engine_v1.js';
-import { canonicalize } from './submission_policy_v1.js';
+import {
+  buildIdempotencyKey,
+  canonicalize,
+  normalizeExactPricePayload,
+  normalizeSubmission,
+} from './submission_policy_v1.js';
 
 export const ADMIN_ROLLBACK_SCHEMA_VERSION = 1;
 export const ADMIN_ROLLBACK_MAX_BODY_BYTES = 768;
 export const ADMIN_ROLLBACK_PREVIEW_STORE_NAME = 'cloud-collab-preview-v1';
 export const ADMIN_ROLLBACK_ALLOWED_GROUP_ID = 'group_fixture';
 export const ADMIN_ROLLBACK_ALLOWED_LIBRARY_ID = 'lib_receive_fixture';
+export const ADMIN_ROLLBACK_CONFIRMATION = 'ROLLBACK_TO_PREVIOUS_APPROVED_VALUE';
 export const MAX_ADMIN_ROLLBACK_CANDIDATES = 500;
 export const MAX_ADMIN_ROLLBACK_EVENT_OBJECTS = 10_000;
-export const MAX_ADMIN_ROLLBACK_RESERVATION_ATTEMPTS = 64;
 
 const ROLLBACK_REF_PATTERN = /^rbref_v1_[A-Za-z0-9_-]{43}$/;
 const REQUEST_ID_PATTERN = /^rbrq_v1_[A-Za-z0-9_-]{22,64}$/;
+const REQUEST_TOKEN_PATTERN = /^rbtok_v1_[A-Za-z0-9_-]{43}$/;
 const REQUEST_HASH_PATTERN = /^rbrh_v1_[A-Za-z0-9_-]{43}$/;
-const DECISION_ID_PATTERN = /^rbd_v1_[A-Za-z0-9_-]{43}$/;
+const ROLLBACK_ID_PATTERN = /^rb_v1_[A-Za-z0-9_-]{43}$/;
 const AUDIT_ID_PATTERN = /^rbau_v1_[A-Za-z0-9_-]{43}$/;
-const APPROVAL_ID_PATTERN = /^ap_v1_[A-Za-z0-9_-]{43}$/;
+const ACTOR_TAG_PATTERN = /^admin_[A-Za-z0-9_-]{12}$/;
 const BUSINESS_KEY_PATTERN = /^bk_v1_[A-Za-z0-9_-]{43}$/;
 const CONTENT_HASH_PATTERN = /^ch_v1_[A-Za-z0-9_-]{43}$/;
-const ACTOR_TAG_PATTERN = /^admin_[A-Za-z0-9_-]{12}$/;
-const EVENT_FILE_PATTERN = /^([0-9]{12})\.json$/;
-const REASON_CODES = new Set(['restore_previous_approved_value']);
+const APPROVAL_ID_PATTERN = /^ap_v1_[A-Za-z0-9_-]{43}$/;
+const DEVICE_ID_PATTERN = /^dev_[0-9A-HJKMNP-TV-Z]{26}$/;
+const SUBMISSION_ID_PATTERN = /^sub_[0-9A-HJKMNP-TV-Z]{26}$/;
 
 export const ADMIN_ROLLBACK_CAPABILITIES = Object.freeze({
   rollbackListRead: true,
@@ -49,7 +50,7 @@ export const ADMIN_ROLLBACK_CAPABILITIES = Object.freeze({
 
 export class AdminRollbackError extends Error {
   constructor(code, message, status = 400, details = null, cause = null) {
-    super(message || code || '管理员回滚失败');
+    super(message || code || '管理员公共数据回滚失败');
     this.name = 'AdminRollbackError';
     this.code = code || 'ADMIN_ROLLBACK_ERROR';
     this.status = status;
@@ -118,47 +119,43 @@ function normalizeRequestId(value) {
   return text;
 }
 
-function normalizeReasonCode(value) {
-  const text = String(value || '').trim();
-  if (!REASON_CODES.has(text)) {
-    throw new AdminRollbackError('ADMIN_ROLLBACK_REASON_INVALID', '回滚原因无效', 400);
-  }
-  return text;
-}
-
 function normalizeCommand(command) {
-  assertExactKeys(command, ['schemaVersion', 'rollbackRef', 'requestId', 'reasonCode'], 'ADMIN_ROLLBACK_INPUT_INVALID', '回滚请求字段无效');
+  assertExactKeys(
+    command,
+    ['schemaVersion', 'rollbackRef', 'requestId', 'confirmation'],
+    'ADMIN_ROLLBACK_INPUT_INVALID',
+    '回滚请求字段无效',
+  );
   if (command.schemaVersion !== ADMIN_ROLLBACK_SCHEMA_VERSION) {
     throw new AdminRollbackError('ADMIN_ROLLBACK_SCHEMA_UNSUPPORTED', '回滚协议版本不受支持', 400);
+  }
+  if (command.confirmation !== ADMIN_ROLLBACK_CONFIRMATION) {
+    throw new AdminRollbackError('ADMIN_ROLLBACK_CONFIRMATION_REQUIRED', '回滚请求缺少明确确认', 400);
   }
   return Object.freeze({
     schemaVersion: ADMIN_ROLLBACK_SCHEMA_VERSION,
     rollbackRef: normalizeRollbackRef(command.rollbackRef),
     requestId: normalizeRequestId(command.requestId),
-    reasonCode: normalizeReasonCode(command.reasonCode),
+    confirmation: ADMIN_ROLLBACK_CONFIRMATION,
   });
 }
 
-function normalizeInternalEvent(event) {
-  if (!isPlainObject(event)
-      || !Number.isSafeInteger(event.version) || event.version < 1
-      || typeof event.eventKey !== 'string'
-      || !APPROVAL_ID_PATTERN.test(String(event.approvalId || ''))
-      || event.groupId !== ADMIN_ROLLBACK_ALLOWED_GROUP_ID
-      || event.libraryId !== ADMIN_ROLLBACK_ALLOWED_LIBRARY_ID
-      || !BUSINESS_KEY_PATTERN.test(String(event.businessKey || ''))
-      || !CONTENT_HASH_PATTERN.test(String(event.contentHash || ''))
-      || event.dataType !== 'exact_price'
-      || event.operation !== 'upsert'
-      || !isPlainObject(event.payload)
-      || !Number.isFinite(event.payload.unitPrice) || event.payload.unitPrice <= 0
-      || !isPlainObject(event.approval)
-      || !Array.isArray(event.approval.deviceIds) || event.approval.deviceIds.length < 1
-      || !Array.isArray(event.approval.submissionIds)
-      || event.approval.submissionIds.length !== event.approval.deviceIds.length) {
-    throw new AdminRollbackError('ADMIN_ROLLBACK_EVENT_INVALID', '公共事件不满足回滚要求', 503);
+function isAlreadyExists(error) {
+  return error instanceof BlobRepositoryError && error.code === 'BLOB_ALREADY_EXISTS';
+}
+
+async function putImmutableExact(store, key, value, conflictCode, conflictMessage) {
+  try {
+    await putJSONOnlyIfNew(store, key, value);
+    return Object.freeze({ value, created: true });
+  } catch (error) {
+    if (!isAlreadyExists(error)) throw error;
+    const existing = await getJSONStrong(store, key);
+    if (!existing || canonicalize(existing) !== canonicalize(value)) {
+      throw new AdminRollbackError(conflictCode, conflictMessage, 409, null, error);
+    }
+    return Object.freeze({ value: existing, created: false });
   }
-  return event;
 }
 
 export function readAdminRollbackConfig(env = {}) {
@@ -200,6 +197,7 @@ export function readAdminRollbackConfig(env = {}) {
   }
   return Object.freeze({
     schemaVersion: ADMIN_ROLLBACK_SCHEMA_VERSION,
+    previewEnabled: true,
     storeName,
     groupId,
     libraryId,
@@ -207,510 +205,595 @@ export function readAdminRollbackConfig(env = {}) {
   });
 }
 
-function rollbackRefForCandidate(candidate, salt) {
-  return `rbref_v1_${hmacBase64Url(canonicalize({
-    schemaVersion: ADMIN_ROLLBACK_SCHEMA_VERSION,
-    groupId: candidate.current.groupId,
-    libraryId: candidate.current.libraryId,
-    businessKey: candidate.current.businessKey,
-    currentVersion: candidate.current.version,
-    currentContentHash: candidate.current.contentHash,
-    previousVersion: candidate.previous.version,
-    previousContentHash: candidate.previous.contentHash,
-  }), salt)}`;
+function normalizeEvidence(value, label) {
+  const deviceIds = Array.isArray(value?.deviceIds) ? value.deviceIds.map(String) : [];
+  const submissionIds = Array.isArray(value?.submissionIds) ? value.submissionIds.map(String) : [];
+  if (deviceIds.length < 1 || deviceIds.length > 128 || deviceIds.length !== submissionIds.length
+      || new Set(deviceIds).size !== deviceIds.length
+      || new Set(submissionIds).size !== submissionIds.length
+      || deviceIds.some(id => !DEVICE_ID_PATTERN.test(id))
+      || submissionIds.some(id => !SUBMISSION_ID_PATTERN.test(id))) {
+    throw new AdminRollbackError('ADMIN_ROLLBACK_EVENT_EVIDENCE_INVALID', `${label}事件批准证据无效`, 503);
+  }
+  return Object.freeze(deviceIds.map((deviceId, index) => Object.freeze({
+    deviceId,
+    submissionId: submissionIds[index],
+  })));
 }
 
-function projectCandidate(candidate, config) {
+function normalizeInternalEvent(event, label = '公共') {
+  if (!isPlainObject(event)
+      || !Number.isSafeInteger(event.version) || event.version < 1
+      || event.groupId !== ADMIN_ROLLBACK_ALLOWED_GROUP_ID
+      || event.libraryId !== ADMIN_ROLLBACK_ALLOWED_LIBRARY_ID
+      || !BUSINESS_KEY_PATTERN.test(String(event.businessKey || ''))
+      || !CONTENT_HASH_PATTERN.test(String(event.contentHash || ''))
+      || event.dataType !== 'exact_price'
+      || event.operation !== 'upsert'
+      || !Number.isFinite(Date.parse(event.approvedAt))) {
+    throw new AdminRollbackError('ADMIN_ROLLBACK_EVENT_INVALID', `${label}事件不满足回滚要求`, 503);
+  }
+  let payload;
+  try {
+    payload = normalizeExactPricePayload(event.payload);
+  } catch (error) {
+    throw new AdminRollbackError('ADMIN_ROLLBACK_EVENT_INVALID', `${label}事件普通单价无效`, 503, null, error);
+  }
   return Object.freeze({
-    schemaVersion: ADMIN_ROLLBACK_SCHEMA_VERSION,
-    rollbackRef: rollbackRefForCandidate(candidate, config.rollbackRefSalt),
-    serviceName: candidate.current.payload.serviceName,
-    settleType: candidate.current.payload.settleType,
-    currentUnitPrice: candidate.current.payload.unitPrice,
-    previousUnitPrice: candidate.previous.payload.unitPrice,
-    currentVersion: candidate.current.version,
-    previousVersion: candidate.previous.version,
-    currentApprovedAt: candidate.current.approvedAt,
-    previousApprovedAt: candidate.previous.approvedAt,
+    version: event.version,
+    groupId: event.groupId,
+    libraryId: event.libraryId,
+    businessKey: event.businessKey,
+    contentHash: event.contentHash,
+    approvedAt: event.approvedAt,
+    payload,
+    evidence: normalizeEvidence(event.approval, label),
   });
 }
 
-async function collectCandidates({ store, config } = {}) {
+function rollbackRefFromParts(config, source, restore) {
+  return `rbref_v1_${hmacBase64Url(canonicalize({
+    schemaVersion: ADMIN_ROLLBACK_SCHEMA_VERSION,
+    groupId: config.groupId,
+    libraryId: config.libraryId,
+    businessKey: source.businessKey,
+    sourceVersion: source.version,
+    sourceContentHash: source.contentHash,
+    restoreVersion: restore?.version ?? 0,
+    restoreContentHash: restore?.contentHash ?? null,
+  }), config.rollbackRefSalt)}`;
+}
+
+export function rollbackRefForEventPair({ config, current, previous = null } = {}) {
+  const source = normalizeInternalEvent(current, '当前');
+  const restore = previous === null ? null : normalizeInternalEvent(previous, '上一');
+  if (restore && restore.businessKey !== source.businessKey) {
+    throw new AdminRollbackError('ADMIN_ROLLBACK_EVENT_PAIR_INVALID', '回滚事件业务键不一致', 503);
+  }
+  return rollbackRefFromParts(config, source, restore);
+}
+
+async function collectHistories({ store, config } = {}) {
   const events = await listValidPublicEvents({ store, libraryId: config.libraryId });
+  if (events.length > MAX_ADMIN_ROLLBACK_EVENT_OBJECTS) {
+    throw new AdminRollbackError('ADMIN_ROLLBACK_EVENT_LIMIT_EXCEEDED', '公共事件数量超过回滚安全上限', 409);
+  }
   const histories = new Map();
   for (const rawEvent of events) {
     const event = normalizeInternalEvent(rawEvent);
+    if (event.groupId !== config.groupId || event.libraryId !== config.libraryId) {
+      throw new AdminRollbackError('ADMIN_ROLLBACK_EVENT_SCOPE_MISMATCH', '公共事件作用域与回滚配置不一致', 503);
+    }
     if (!histories.has(event.businessKey)) histories.set(event.businessKey, []);
-    histories.get(event.businessKey).push(event);
+    histories.get(event.businessKey).push(Object.freeze({ raw: rawEvent, normalized: event }));
   }
+  for (const history of histories.values()) {
+    history.sort((left, right) => left.normalized.version - right.normalized.version);
+  }
+  return histories;
+}
+
+function projectCandidate(config, current, previous) {
+  return Object.freeze({
+    schemaVersion: ADMIN_ROLLBACK_SCHEMA_VERSION,
+    rollbackRef: rollbackRefFromParts(config, current.normalized, previous.normalized),
+    serviceName: current.normalized.payload.serviceName,
+    settleType: current.normalized.payload.settleType,
+    currentUnitPrice: current.normalized.payload.unitPrice,
+    previousUnitPrice: previous.normalized.payload.unitPrice,
+    currentVersion: current.normalized.version,
+    previousVersion: previous.normalized.version,
+    currentApprovedAt: current.normalized.approvedAt,
+    previousApprovedAt: previous.normalized.approvedAt,
+  });
+}
+
+export async function listAdminRollbackCandidates({ store, config } = {}) {
+  const histories = await collectHistories({ store, config });
   const candidates = [];
   for (const history of histories.values()) {
-    history.sort((left, right) => left.version - right.version);
     if (history.length < 2) continue;
     const current = history[history.length - 1];
     const previous = history[history.length - 2];
-    if (current.contentHash === previous.contentHash) continue;
-    candidates.push(Object.freeze({ current, previous }));
+    if (current.normalized.contentHash === previous.normalized.contentHash) continue;
+    candidates.push(projectCandidate(config, current, previous));
   }
   if (candidates.length > MAX_ADMIN_ROLLBACK_CANDIDATES) {
     throw new AdminRollbackError('ADMIN_ROLLBACK_CANDIDATE_LIMIT_EXCEEDED', '回滚候选数量超过安全上限', 409);
   }
-  return candidates.sort((left, right) => right.current.version - left.current.version);
-}
-
-export async function listAdminRollbackCandidates({ store, config } = {}) {
-  const candidates = await collectCandidates({ store, config });
+  candidates.sort((left, right) => right.currentVersion - left.currentVersion
+    || left.serviceName.localeCompare(right.serviceName));
   return Object.freeze({
     schemaVersion: ADMIN_ROLLBACK_SCHEMA_VERSION,
     count: candidates.length,
-    candidates: Object.freeze(candidates.map(candidate => projectCandidate(candidate, config))),
+    candidates: Object.freeze(candidates),
   });
 }
 
 async function resolveCandidateByRef({ store, config, rollbackRef } = {}) {
   const normalizedRef = normalizeRollbackRef(rollbackRef);
-  const candidates = await collectCandidates({ store, config });
-  const matches = candidates.filter(candidate => rollbackRefForCandidate(candidate, config.rollbackRefSalt) === normalizedRef);
-  if (matches.length === 0) {
-    throw new AdminRollbackError('ADMIN_ROLLBACK_TARGET_STALE_OR_MISSING', '回滚目标不存在或已经过期', 409);
+  const histories = await collectHistories({ store, config });
+  let historicalMatch = false;
+  for (const history of histories.values()) {
+    for (let index = 0; index < history.length; index += 1) {
+      const current = history[index];
+      const previous = index > 0 ? history[index - 1] : null;
+      const candidateRef = rollbackRefFromParts(
+        config,
+        current.normalized,
+        previous?.normalized ?? null,
+      );
+      if (candidateRef !== normalizedRef) continue;
+      if (index !== history.length - 1) {
+        historicalMatch = true;
+        continue;
+      }
+      if (!previous) {
+        throw new AdminRollbackError(
+          'ADMIN_ROLLBACK_NO_PREVIOUS_VALUE',
+          '首次新增项目没有上一份已批准值，不能通过回滚删除',
+          409,
+        );
+      }
+      if (current.normalized.contentHash === previous.normalized.contentHash) {
+        throw new AdminRollbackError('ADMIN_ROLLBACK_NO_CHANGE', '当前值与上一批准值相同，无需回滚', 409);
+      }
+      return Object.freeze({ current, previous });
+    }
   }
-  if (matches.length !== 1) {
-    throw new AdminRollbackError('ADMIN_ROLLBACK_REF_COLLISION', '回滚引用发生冲突', 500);
+  if (historicalMatch) {
+    throw new AdminRollbackError('ADMIN_ROLLBACK_TARGET_STALE', '回滚目标已不是当前公共值', 409);
   }
-  return matches[0];
+  throw new AdminRollbackError('ADMIN_ROLLBACK_TARGET_NOT_FOUND', '回滚目标不存在', 404);
 }
 
-function requestHashFor(command, actorTag) {
-  return `rbrh_v1_${sha256Base64Url(canonicalize({
-    schemaVersion: ADMIN_ROLLBACK_SCHEMA_VERSION,
-    actorTag,
-    rollbackRef: command.rollbackRef,
-    requestId: command.requestId,
-    reasonCode: command.reasonCode,
-  }))}`;
+function requestTokenFor(requestId) {
+  return `rbtok_v1_${sha256Base64Url(requestId)}`;
 }
 
-function decisionIdFor(requestHash) {
-  return `rbd_v1_${sha256Base64Url(requestHash)}`;
+function requestHashFor(command) {
+  return `rbrh_v1_${sha256Base64Url(canonicalize(command))}`;
 }
 
-function approvalIdForRollback(requestHash) {
-  return `ap_v1_${sha256Base64Url(canonicalize({ mode: 'admin_rollback', requestHash }))}`;
+function rollbackIdFor(requestHash) {
+  return `rb_v1_${sha256Base64Url(requestHash)}`;
 }
 
-function auditIdFor(decisionId) {
-  return `rbau_v1_${sha256Base64Url(decisionId)}`;
+function auditIdFor(rollbackId) {
+  return `rbau_v1_${sha256Base64Url(rollbackId)}`;
 }
 
-function rollbackRequestKey(config, requestId) {
-  return normalizeBlobKey(`rollbacks/${config.libraryId}/requests/${requestId}.json`);
+function requestIndexKey(config, requestToken) {
+  if (!REQUEST_TOKEN_PATTERN.test(requestToken)) {
+    throw new AdminRollbackError('ADMIN_ROLLBACK_REQUEST_TOKEN_INVALID', '回滚请求索引无效', 500);
+  }
+  return normalizeBlobKey(`rollbacks/${config.libraryId}/requests/${requestToken}.json`);
 }
 
-function rollbackDecisionKey(config, approvalId) {
-  return normalizeBlobKey(`public/${config.libraryId}/rollbacks/${approvalId}.json`);
+function decisionKey(config, rollbackId) {
+  if (!ROLLBACK_ID_PATTERN.test(rollbackId)) {
+    throw new AdminRollbackError('ADMIN_ROLLBACK_ID_INVALID', '回滚决策ID无效', 500);
+  }
+  return normalizeBlobKey(`rollbacks/${config.libraryId}/decisions/${rollbackId}.json`);
 }
 
-function rollbackAuditKey(auditId, createdAt) {
-  const date = new Date(createdAt);
+function completionKey(config, rollbackId) {
+  return normalizeBlobKey(`rollbacks/${config.libraryId}/completions/${rollbackId}.json`);
+}
+
+function auditKey(auditId, occurredAt) {
+  if (!AUDIT_ID_PATTERN.test(auditId)) {
+    throw new AdminRollbackError('ADMIN_ROLLBACK_AUDIT_ID_INVALID', '回滚审计ID无效', 500);
+  }
+  const date = new Date(occurredAt);
   if (!Number.isFinite(date.getTime())) {
     throw new AdminRollbackError('ADMIN_ROLLBACK_AUDIT_TIME_INVALID', '回滚审计时间无效', 500);
   }
   return normalizeBlobKey(`audit/${date.getUTCFullYear()}/${String(date.getUTCMonth() + 1).padStart(2, '0')}/${auditId}.json`);
 }
 
-function isAlreadyExists(error) {
-  return error instanceof BlobRepositoryError && error.code === 'BLOB_ALREADY_EXISTS';
-}
-
-async function putImmutableExact(store, key, value, conflictCode, conflictMessage) {
-  try {
-    await putJSONOnlyIfNew(store, key, value);
-    return Object.freeze({ value, created: true });
-  } catch (error) {
-    if (!isAlreadyExists(error)) throw error;
-    const existing = await getJSONStrong(store, key);
-    if (!existing || canonicalize(existing) !== canonicalize(value)) {
-      throw new AdminRollbackError(conflictCode, conflictMessage, 409, null, error);
-    }
-    return Object.freeze({ value: existing, created: false });
-  }
-}
-
-async function listEventKeysStrong(store, libraryId) {
-  if (!store || typeof store.list !== 'function') {
-    throw new AdminRollbackError('ADMIN_ROLLBACK_LIST_UNAVAILABLE', '回滚需要Blob list能力', 503);
-  }
-  const prefix = publicEventPrefix(libraryId);
-  let result;
-  try {
-    result = await store.list({ prefix, consistency: 'strong' });
-  } catch (error) {
-    throw new AdminRollbackError('ADMIN_ROLLBACK_LIST_FAILED', '强一致列举公共事件失败', 503, null, error);
-  }
-  const blobs = Array.isArray(result?.blobs) ? result.blobs : [];
-  if (blobs.length > MAX_ADMIN_ROLLBACK_EVENT_OBJECTS) {
-    throw new AdminRollbackError('ADMIN_ROLLBACK_EVENT_LIMIT_EXCEEDED', '公共事件数量超过回滚安全上限', 409);
-  }
-  const keys = blobs.map(item => String(item?.key || '')).filter(Boolean);
-  if (keys.length !== blobs.length || new Set(keys).size !== keys.length) {
-    throw new AdminRollbackError('ADMIN_ROLLBACK_LIST_INVALID', '公共事件列举结果无效', 503);
-  }
-  return { prefix, keys: keys.sort() };
-}
-
-function eventVersionFromKey(prefix, key) {
-  if (!key.startsWith(prefix)) return null;
-  const match = EVENT_FILE_PATTERN.exec(key.slice(prefix.length));
-  if (!match) return null;
-  const value = Number(match[1]);
-  return Number.isSafeInteger(value) && value >= 1 ? value : null;
-}
-
-async function reserveRollbackEvent({ store, config, candidate, approvalId, now } = {}) {
-  for (let attempt = 0; attempt < MAX_ADMIN_ROLLBACK_RESERVATION_ATTEMPTS; attempt += 1) {
-    const { prefix, keys } = await listEventKeysStrong(store, config.libraryId);
-    let maxVersion = 0;
-    for (const key of keys) {
-      const version = eventVersionFromKey(prefix, key);
-      if (version === null) {
-        throw new AdminRollbackError('ADMIN_ROLLBACK_EVENT_KEY_INVALID', '公共事件目录包含无效Key', 503);
-      }
-      maxVersion = Math.max(maxVersion, version);
-    }
-    const version = maxVersion + 1;
-    const eventKey = publicEventKey(config.libraryId, version);
-    const previous = candidate.previous;
-    const current = candidate.current;
-    const event = Object.freeze({
-      schemaVersion: 1,
-      version,
-      eventKey,
-      approvalId,
-      groupId: config.groupId,
-      libraryId: config.libraryId,
-      approvedAt: new Date(now).toISOString(),
-      businessKey: current.businessKey,
-      contentHash: previous.contentHash,
-      dataType: 'exact_price',
-      operation: 'upsert',
-      payload: previous.payload,
-      baseline: Object.freeze({
-        approvedVersion: current.version,
-        contentHash: current.contentHash,
-        unitPrice: current.payload.unitPrice,
-      }),
-      approval: Object.freeze({
-        mode: 'admin_approved',
-        deviceIds: Object.freeze([...previous.approval.deviceIds]),
-        submissionIds: Object.freeze([...previous.approval.submissionIds]),
-      }),
-    });
-    try {
-      await putJSONOnlyIfNew(store, eventKey, event);
-      return event;
-    } catch (error) {
-      if (!isAlreadyExists(error)) throw error;
-    }
-  }
-  throw new AdminRollbackError('ADMIN_ROLLBACK_EVENT_RESERVATION_EXHAUSTED', '回滚事件版本预留失败', 503);
-}
-
-function assertTransition(value, expectedKey) {
-  if (!isPlainObject(value)
-      || value.schemaVersion !== 1
-      || value.transitionKey !== expectedKey
-      || !APPROVAL_ID_PATTERN.test(String(value.approvalId || ''))
-      || value.groupId !== ADMIN_ROLLBACK_ALLOWED_GROUP_ID
-      || value.libraryId !== ADMIN_ROLLBACK_ALLOWED_LIBRARY_ID
-      || !BUSINESS_KEY_PATTERN.test(String(value.businessKey || ''))
-      || !Number.isSafeInteger(value.baselineApprovedVersion) || value.baselineApprovedVersion < 1
-      || !CONTENT_HASH_PATTERN.test(String(value.baselineContentHash || ''))
-      || !CONTENT_HASH_PATTERN.test(String(value.targetContentHash || ''))
-      || !Number.isSafeInteger(value.version) || value.version < 1
-      || typeof value.eventKey !== 'string'
-      || !Number.isSafeInteger(value.createdAt) || value.createdAt <= 0) {
-    throw new AdminRollbackError('ADMIN_ROLLBACK_TRANSITION_INVALID', '回滚基线迁移声明无效', 503);
-  }
-  return value;
-}
-
-async function claimTransition({ store, config, candidate, approvalId, event, now } = {}) {
-  const key = transitionIndexKey(config.libraryId, candidate.current.businessKey, candidate.current.version);
-  const proposed = Object.freeze({
+function buildReplaySubmission(target) {
+  const primary = target.previous.normalized.evidence[0];
+  const submission = {
     schemaVersion: 1,
-    transitionKey: key,
-    approvalId,
+    payloadSchemaVersion: 1,
+    submissionId: primary.submissionId,
+    deviceId: primary.deviceId,
+    groupId: target.previous.normalized.groupId,
+    libraryId: target.previous.normalized.libraryId,
+    bossId: null,
+    dataType: 'exact_price',
+    operation: 'upsert',
+    origin: 'user',
+    clientCreatedAt: 0,
+    businessKey: target.previous.normalized.businessKey,
+    contentHash: target.previous.normalized.contentHash,
+    idempotencyKey: buildIdempotencyKey(primary.deviceId, primary.submissionId),
+    payload: target.previous.normalized.payload,
+    clientContext: {
+      appVersion: '8.2.28-stage5e',
+      projectionSpecVersion: 1,
+      queueSchemaVersion: 1,
+    },
+  };
+  try {
+    return Object.freeze({
+      submission: normalizeSubmission(submission),
+      evidence: target.previous.normalized.evidence,
+    });
+  } catch (error) {
+    throw new AdminRollbackError('ADMIN_ROLLBACK_REPLAY_SUBMISSION_INVALID', '上一批准值无法构造回滚补偿事件', 503, null, error);
+  }
+}
+
+function buildDecision({ config, identity, command, requestHash, rollbackId, target, now }) {
+  const replay = buildReplaySubmission(target);
+  return Object.freeze({
+    schemaVersion: ADMIN_ROLLBACK_SCHEMA_VERSION,
+    rollbackId,
+    requestHash,
+    rollbackRef: command.rollbackRef,
+    actorTag: actorTagFor(identity),
+    createdAt: now,
     groupId: config.groupId,
     libraryId: config.libraryId,
-    businessKey: candidate.current.businessKey,
-    baselineApprovedVersion: candidate.current.version,
-    baselineContentHash: candidate.current.contentHash,
-    targetContentHash: candidate.previous.contentHash,
-    version: event.version,
-    eventKey: event.eventKey,
-    createdAt: now,
+    businessKey: target.current.normalized.businessKey,
+    source: Object.freeze({
+      version: target.current.normalized.version,
+      contentHash: target.current.normalized.contentHash,
+      unitPrice: target.current.normalized.payload.unitPrice,
+      approvedAt: target.current.normalized.approvedAt,
+    }),
+    restore: Object.freeze({
+      version: target.previous.normalized.version,
+      contentHash: target.previous.normalized.contentHash,
+      unitPrice: target.previous.normalized.payload.unitPrice,
+      approvedAt: target.previous.normalized.approvedAt,
+    }),
+    targetSubmission: replay.submission,
+    evidence: replay.evidence,
   });
-  try {
-    await putJSONOnlyIfNew(store, key, proposed);
-    return Object.freeze({ transition: proposed, created: true });
-  } catch (error) {
-    if (!isAlreadyExists(error)) throw error;
-    const existing = assertTransition(await getJSONStrong(store, key), key);
-    if (existing.approvalId !== approvalId
-        || existing.baselineContentHash !== candidate.current.contentHash
-        || existing.targetContentHash !== candidate.previous.contentHash) {
-      throw new AdminRollbackError('ADMIN_ROLLBACK_BASELINE_CONFLICT', '当前公共版本已被另一操作占用', 409, null, error);
-    }
-    return Object.freeze({ transition: existing, created: false });
-  }
 }
 
-function assertDecision(value, expected = {}) {
+function normalizeVersionSummary(value, label) {
+  assertExactKeys(
+    value,
+    ['version', 'contentHash', 'unitPrice', 'approvedAt'],
+    'ADMIN_ROLLBACK_DECISION_INVALID',
+    `${label}版本摘要无效`,
+    503,
+  );
+  if (!Number.isSafeInteger(value.version) || value.version < 1
+      || !CONTENT_HASH_PATTERN.test(String(value.contentHash || ''))
+      || !Number.isFinite(value.unitPrice) || value.unitPrice <= 0
+      || !Number.isFinite(Date.parse(value.approvedAt))) {
+    throw new AdminRollbackError('ADMIN_ROLLBACK_DECISION_INVALID', `${label}版本摘要内容无效`, 503);
+  }
+  return Object.freeze({ ...value });
+}
+
+function normalizeStoredEvidence(value) {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 128) {
+    throw new AdminRollbackError('ADMIN_ROLLBACK_DECISION_INVALID', '回滚批准证据数量无效', 503);
+  }
+  const devices = new Set();
+  const submissions = new Set();
+  return Object.freeze(value.map(item => {
+    assertExactKeys(item, ['deviceId', 'submissionId'], 'ADMIN_ROLLBACK_DECISION_INVALID', '回滚批准证据结构无效', 503);
+    if (!DEVICE_ID_PATTERN.test(String(item.deviceId || ''))
+        || !SUBMISSION_ID_PATTERN.test(String(item.submissionId || ''))
+        || devices.has(item.deviceId) || submissions.has(item.submissionId)) {
+      throw new AdminRollbackError('ADMIN_ROLLBACK_DECISION_INVALID', '回滚批准证据内容无效', 503);
+    }
+    devices.add(item.deviceId);
+    submissions.add(item.submissionId);
+    return Object.freeze({ deviceId: item.deviceId, submissionId: item.submissionId });
+  }));
+}
+
+function assertDecision(value, config, expected = {}) {
   assertExactKeys(value, [
-    'schemaVersion', 'decisionId', 'approvalId', 'requestHash', 'requestId', 'rollbackRef',
-    'actorTag', 'reasonCode', 'groupId', 'libraryId', 'businessKey', 'currentVersion',
-    'currentContentHash', 'currentUnitPrice', 'previousVersion', 'previousContentHash',
-    'previousUnitPrice', 'eventVersion', 'eventKey', 'createdAt',
-  ], 'ADMIN_ROLLBACK_DECISION_INVALID', '回滚决策声明结构无效', 503);
+    'schemaVersion', 'rollbackId', 'requestHash', 'rollbackRef', 'actorTag', 'createdAt',
+    'groupId', 'libraryId', 'businessKey', 'source', 'restore', 'targetSubmission', 'evidence',
+  ], 'ADMIN_ROLLBACK_DECISION_INVALID', '管理员回滚决策结构无效', 503);
   if (value.schemaVersion !== ADMIN_ROLLBACK_SCHEMA_VERSION
-      || !DECISION_ID_PATTERN.test(String(value.decisionId || ''))
-      || !APPROVAL_ID_PATTERN.test(String(value.approvalId || ''))
+      || !ROLLBACK_ID_PATTERN.test(String(value.rollbackId || ''))
       || !REQUEST_HASH_PATTERN.test(String(value.requestHash || ''))
-      || !REQUEST_ID_PATTERN.test(String(value.requestId || ''))
       || !ROLLBACK_REF_PATTERN.test(String(value.rollbackRef || ''))
       || !ACTOR_TAG_PATTERN.test(String(value.actorTag || ''))
-      || !REASON_CODES.has(value.reasonCode)
-      || value.groupId !== ADMIN_ROLLBACK_ALLOWED_GROUP_ID
-      || value.libraryId !== ADMIN_ROLLBACK_ALLOWED_LIBRARY_ID
+      || value.groupId !== config.groupId
+      || value.libraryId !== config.libraryId
       || !BUSINESS_KEY_PATTERN.test(String(value.businessKey || ''))
-      || !Number.isSafeInteger(value.currentVersion) || value.currentVersion < 2
-      || !CONTENT_HASH_PATTERN.test(String(value.currentContentHash || ''))
-      || !Number.isFinite(value.currentUnitPrice) || value.currentUnitPrice <= 0
-      || !Number.isSafeInteger(value.previousVersion) || value.previousVersion < 1
-      || value.previousVersion >= value.currentVersion
-      || !CONTENT_HASH_PATTERN.test(String(value.previousContentHash || ''))
-      || !Number.isFinite(value.previousUnitPrice) || value.previousUnitPrice <= 0
-      || !Number.isSafeInteger(value.eventVersion) || value.eventVersion <= value.currentVersion
-      || typeof value.eventKey !== 'string'
-      || !Number.isSafeInteger(value.createdAt) || value.createdAt <= 0
-      || (expected.requestHash && value.requestHash !== expected.requestHash)
-      || (expected.requestId && value.requestId !== expected.requestId)
-      || (expected.approvalId && value.approvalId !== expected.approvalId)) {
-    throw new AdminRollbackError('ADMIN_ROLLBACK_DECISION_INVALID', '回滚决策声明内容无效', 503);
-  }
-  return value;
-}
-
-function assertRequestRecord(value, expected = {}) {
-  assertExactKeys(value, [
-    'schemaVersion', 'requestId', 'requestHash', 'decisionId', 'approvalId', 'createdAt',
-  ], 'ADMIN_ROLLBACK_REQUEST_INVALID', '回滚请求索引结构无效', 503);
-  if (value.schemaVersion !== ADMIN_ROLLBACK_SCHEMA_VERSION
-      || !REQUEST_ID_PATTERN.test(String(value.requestId || ''))
-      || !REQUEST_HASH_PATTERN.test(String(value.requestHash || ''))
-      || !DECISION_ID_PATTERN.test(String(value.decisionId || ''))
-      || !APPROVAL_ID_PATTERN.test(String(value.approvalId || ''))
-      || !Number.isSafeInteger(value.createdAt) || value.createdAt <= 0
-      || (expected.requestId && value.requestId !== expected.requestId)
+      || (expected.rollbackId && value.rollbackId !== expected.rollbackId)
       || (expected.requestHash && value.requestHash !== expected.requestHash)) {
-    throw new AdminRollbackError('ADMIN_ROLLBACK_REQUEST_INVALID', '回滚请求索引内容无效', 503);
+    throw new AdminRollbackError('ADMIN_ROLLBACK_DECISION_INVALID', '管理员回滚决策内容无效', 503);
   }
+  assertSafeTime(value.createdAt);
+  const source = normalizeVersionSummary(value.source, '当前');
+  const restore = normalizeVersionSummary(value.restore, '恢复');
+  if (restore.version >= source.version) {
+    throw new AdminRollbackError('ADMIN_ROLLBACK_DECISION_INVALID', '恢复版本必须早于当前版本', 503);
+  }
+  let targetSubmission;
+  try {
+    targetSubmission = normalizeSubmission(value.targetSubmission);
+  } catch (error) {
+    throw new AdminRollbackError('ADMIN_ROLLBACK_DECISION_INVALID', '回滚补偿提交无效', 503, null, error);
+  }
+  const evidence = normalizeStoredEvidence(value.evidence);
+  if (targetSubmission.groupId !== config.groupId
+      || targetSubmission.libraryId !== config.libraryId
+      || targetSubmission.businessKey !== value.businessKey
+      || targetSubmission.contentHash !== restore.contentHash
+      || targetSubmission.payload.unitPrice !== restore.unitPrice
+      || value.rollbackRef !== rollbackRefFromParts(config, {
+        businessKey: value.businessKey,
+        version: source.version,
+        contentHash: source.contentHash,
+      }, {
+        businessKey: value.businessKey,
+        version: restore.version,
+        contentHash: restore.contentHash,
+      })) {
+    throw new AdminRollbackError('ADMIN_ROLLBACK_DECISION_INVALID', '回滚目标与补偿提交不一致', 503);
+  }
+  return Object.freeze({
+    ...value,
+    source,
+    restore,
+    targetSubmission,
+    evidence,
+  });
+}
+
+function assertRequestIndex(value, expectedToken = null) {
+  assertExactKeys(value, [
+    'schemaVersion', 'requestToken', 'requestHash', 'rollbackId', 'createdAt',
+  ], 'ADMIN_ROLLBACK_REQUEST_INDEX_INVALID', '回滚请求索引结构无效', 503);
+  if (value.schemaVersion !== ADMIN_ROLLBACK_SCHEMA_VERSION
+      || !REQUEST_TOKEN_PATTERN.test(String(value.requestToken || ''))
+      || !REQUEST_HASH_PATTERN.test(String(value.requestHash || ''))
+      || !ROLLBACK_ID_PATTERN.test(String(value.rollbackId || ''))
+      || (expectedToken && value.requestToken !== expectedToken)) {
+    throw new AdminRollbackError('ADMIN_ROLLBACK_REQUEST_INDEX_INVALID', '回滚请求索引内容无效', 503);
+  }
+  assertSafeTime(value.createdAt);
   return value;
 }
 
-async function ensureSnapshot(store, config, now) {
-  const snapshot = await buildPublicSnapshot({
-    store,
-    groupId: config.groupId,
-    libraryId: config.libraryId,
-    now,
-  });
-  if (snapshot.publicVersion < 1) {
-    throw new AdminRollbackError('ADMIN_ROLLBACK_SNAPSHOT_INVALID', '回滚后公共快照无有效版本', 503);
+function assertCompletion(value, decision) {
+  assertExactKeys(value, [
+    'schemaVersion', 'rollbackId', 'auditId', 'status', 'completedAt', 'sourceVersion',
+    'restoreVersion', 'publicVersion', 'eventVersion', 'approvalId', 'publicMutationApplied',
+  ], 'ADMIN_ROLLBACK_COMPLETION_INVALID', '回滚完成记录结构无效', 503);
+  if (value.schemaVersion !== ADMIN_ROLLBACK_SCHEMA_VERSION
+      || value.rollbackId !== decision.rollbackId
+      || !AUDIT_ID_PATTERN.test(String(value.auditId || ''))
+      || value.status !== 'rolled_back'
+      || value.sourceVersion !== decision.source.version
+      || value.restoreVersion !== decision.restore.version
+      || !Number.isSafeInteger(value.publicVersion) || value.publicVersion < 1
+      || !Number.isSafeInteger(value.eventVersion) || value.eventVersion < 1
+      || !APPROVAL_ID_PATTERN.test(String(value.approvalId || ''))
+      || typeof value.publicMutationApplied !== 'boolean') {
+    throw new AdminRollbackError('ADMIN_ROLLBACK_COMPLETION_INVALID', '回滚完成记录内容无效', 503);
   }
-  const key = publicSnapshotKey(config.libraryId, snapshot.publicVersion);
-  await putImmutableExact(
-    store,
-    key,
-    snapshot,
-    'ADMIN_ROLLBACK_SNAPSHOT_CONFLICT',
-    '同一公共版本对应不同快照',
-  );
-  return { snapshot, snapshotKey: key };
+  assertSafeTime(value.completedAt);
+  return value;
 }
 
-async function finalizeRollback({ store, config, decision, duplicate, now } = {}) {
-  const event = normalizeInternalEvent(await getJSONStrong(store, decision.eventKey));
-  if (event.version !== decision.eventVersion
-      || event.approvalId !== decision.approvalId
-      || event.businessKey !== decision.businessKey
-      || event.contentHash !== decision.previousContentHash
-      || event.baseline.approvedVersion !== decision.currentVersion
-      || event.baseline.contentHash !== decision.currentContentHash) {
-    throw new AdminRollbackError('ADMIN_ROLLBACK_EVENT_LINK_INVALID', '回滚事件与决策声明不一致', 503);
-  }
-
-  const index = Object.freeze({
-    schemaVersion: 1,
-    approvalId: decision.approvalId,
-    groupId: config.groupId,
-    libraryId: config.libraryId,
-    businessKey: decision.businessKey,
-    contentHash: decision.previousContentHash,
-    baselineApprovedVersion: decision.currentVersion,
-    baselineContentHash: decision.currentContentHash,
-    version: decision.eventVersion,
-    eventKey: decision.eventKey,
-    createdAt: decision.createdAt,
-  });
-  const indexResult = await putImmutableExact(
-    store,
-    approvalIndexKey(config.libraryId, decision.approvalId),
-    index,
-    'ADMIN_ROLLBACK_APPROVAL_INDEX_CONFLICT',
-    '回滚批准索引冲突',
-  );
-
-  const requestRecord = Object.freeze({
-    schemaVersion: ADMIN_ROLLBACK_SCHEMA_VERSION,
-    requestId: decision.requestId,
-    requestHash: decision.requestHash,
-    decisionId: decision.decisionId,
-    approvalId: decision.approvalId,
-    createdAt: decision.createdAt,
-  });
-  await putImmutableExact(
-    store,
-    rollbackRequestKey(config, decision.requestId),
-    requestRecord,
-    'ADMIN_ROLLBACK_REQUEST_CONFLICT',
-    '回滚请求索引冲突',
-  );
-
-  const auditId = auditIdFor(decision.decisionId);
-  const audit = Object.freeze({
-    schemaVersion: ADMIN_ROLLBACK_SCHEMA_VERSION,
-    auditId,
-    decisionId: decision.decisionId,
-    actorTag: decision.actorTag,
-    action: 'rollback_previous_approved_value',
-    reasonCode: decision.reasonCode,
-    currentVersion: decision.currentVersion,
-    previousVersion: decision.previousVersion,
-    eventVersion: decision.eventVersion,
-    createdAt: decision.createdAt,
-  });
-  await putImmutableExact(
-    store,
-    rollbackAuditKey(auditId, decision.createdAt),
-    audit,
-    'ADMIN_ROLLBACK_AUDIT_CONFLICT',
-    '回滚审计冲突',
-  );
-
-  const latest = await ensureSnapshot(store, config, now);
-  const record = latest.snapshot.records.find(item => item.businessKey === decision.businessKey);
-  if (!record || record.approvedVersion !== decision.eventVersion
-      || record.contentHash !== decision.previousContentHash
-      || record.payload.unitPrice !== decision.previousUnitPrice) {
-    throw new AdminRollbackError('ADMIN_ROLLBACK_SNAPSHOT_MISMATCH', '回滚后快照未恢复到上一批准值', 503);
-  }
-
+function projectCompletion(decision, completion, duplicate) {
   return Object.freeze({
     schemaVersion: ADMIN_ROLLBACK_SCHEMA_VERSION,
     rollbackRef: decision.rollbackRef,
-    serviceName: record.payload.serviceName,
-    settleType: record.payload.settleType,
-    restoredUnitPrice: decision.previousUnitPrice,
-    replacedUnitPrice: decision.currentUnitPrice,
-    restoredFromVersion: decision.previousVersion,
-    replacedVersion: decision.currentVersion,
-    eventVersion: decision.eventVersion,
-    publicVersion: latest.snapshot.publicVersion,
-    duplicate: Boolean(duplicate || !indexResult.created),
+    status: completion.status,
+    serviceName: decision.targetSubmission.payload.serviceName,
+    settleType: decision.targetSubmission.payload.settleType,
+    restoredUnitPrice: decision.restore.unitPrice,
+    replacedUnitPrice: decision.source.unitPrice,
+    restoredFromVersion: decision.restore.version,
+    replacedVersion: decision.source.version,
+    eventVersion: completion.eventVersion,
+    publicVersion: completion.publicVersion,
+    publicMutationApplied: completion.publicMutationApplied,
+    duplicate: Boolean(duplicate),
   });
 }
 
-export async function executeAdminRollback({ store, config, identity, command, now = Date.now() } = {}) {
-  assertSafeTime(now);
-  const input = normalizeCommand(command);
-  const actorTag = actorTagFor(identity);
-  const requestHash = requestHashFor(input, actorTag);
-  const decisionId = decisionIdFor(requestHash);
-  const approvalId = approvalIdForRollback(requestHash);
-
-  const existingRequest = await getJSONStrong(store, rollbackRequestKey(config, input.requestId));
-  if (existingRequest) {
-    const request = assertRequestRecord(existingRequest, { requestId: input.requestId, requestHash });
-    const decision = assertDecision(
-      await getJSONStrong(store, rollbackDecisionKey(config, request.approvalId)),
-      { requestHash, requestId: input.requestId, approvalId: request.approvalId },
-    );
-    return finalizeRollback({ store, config, decision, duplicate: true, now });
+async function executeDecision({ store, decision }) {
+  let published;
+  try {
+    published = await publishAdminReviewApproval({
+      store,
+      submission: decision.targetSubmission,
+      baseline: {
+        approvedVersion: decision.source.version,
+        contentHash: decision.source.contentHash,
+        unitPrice: decision.source.unitPrice,
+      },
+      approvalMode: 'admin_edit_and_approved',
+      evidence: decision.evidence,
+      now: decision.createdAt,
+    });
+  } catch (error) {
+    if (error?.code === 'BASELINE_TRANSITION_CONFLICT') {
+      throw new AdminRollbackError(
+        'ADMIN_ROLLBACK_TRANSITION_CONFLICT',
+        '当前公共基线已被另一项批准或回滚占用',
+        409,
+        null,
+        error,
+      );
+    }
+    if (error?.code === 'STALE_PUBLIC_BASELINE') {
+      throw new AdminRollbackError('ADMIN_ROLLBACK_TARGET_STALE', '回滚目标已不是当前公共值', 409, null, error);
+    }
+    throw error;
+  }
+  if (published.event.businessKey !== decision.businessKey
+      || published.event.contentHash !== decision.restore.contentHash
+      || published.event.payload.unitPrice !== decision.restore.unitPrice
+      || published.event.baseline.approvedVersion !== decision.source.version
+      || published.event.baseline.contentHash !== decision.source.contentHash) {
+    throw new AdminRollbackError('ADMIN_ROLLBACK_EVENT_LINK_INVALID', '回滚补偿事件与决策不一致', 503);
   }
 
-  const existingDecision = await getJSONStrong(store, rollbackDecisionKey(config, approvalId));
-  if (existingDecision) {
-    const decision = assertDecision(existingDecision, { requestHash, requestId: input.requestId, approvalId });
-    return finalizeRollback({ store, config, decision, duplicate: true, now });
-  }
-
-  const candidate = await resolveCandidateByRef({ store, config, rollbackRef: input.rollbackRef });
-  const event = await reserveRollbackEvent({ store, config, candidate, approvalId, now });
-  const claimed = await claimTransition({ store, config, candidate, approvalId, event, now });
-  const canonicalEvent = normalizeInternalEvent(await getJSONStrong(store, claimed.transition.eventKey));
-  if (canonicalEvent.approvalId !== approvalId) {
-    throw new AdminRollbackError('ADMIN_ROLLBACK_TRANSITION_EVENT_MISMATCH', '回滚迁移声明与事件不一致', 503);
-  }
-
-  const decision = Object.freeze({
+  const auditId = auditIdFor(decision.rollbackId);
+  const audit = Object.freeze({
     schemaVersion: ADMIN_ROLLBACK_SCHEMA_VERSION,
-    decisionId,
-    approvalId,
-    requestHash,
-    requestId: input.requestId,
-    rollbackRef: input.rollbackRef,
-    actorTag,
-    reasonCode: input.reasonCode,
-    groupId: config.groupId,
-    libraryId: config.libraryId,
-    businessKey: candidate.current.businessKey,
-    currentVersion: candidate.current.version,
-    currentContentHash: candidate.current.contentHash,
-    currentUnitPrice: candidate.current.payload.unitPrice,
-    previousVersion: candidate.previous.version,
-    previousContentHash: candidate.previous.contentHash,
-    previousUnitPrice: candidate.previous.payload.unitPrice,
-    eventVersion: canonicalEvent.version,
-    eventKey: canonicalEvent.eventKey,
-    createdAt: now,
+    auditId,
+    rollbackId: decision.rollbackId,
+    action: 'admin_rollback',
+    actorTag: decision.actorTag,
+    occurredAt: decision.createdAt,
+    groupId: decision.groupId,
+    libraryId: decision.libraryId,
+    businessKey: decision.businessKey,
+    sourceVersion: decision.source.version,
+    sourceContentHash: decision.source.contentHash,
+    restoreVersion: decision.restore.version,
+    restoreContentHash: decision.restore.contentHash,
+    publicVersion: published.snapshot.publicVersion,
+    eventVersion: published.event.version,
+    approvalId: published.approvalId,
   });
-  const stored = await putImmutableExact(
+  await putImmutableExact(
     store,
-    rollbackDecisionKey(config, approvalId),
-    decision,
-    'ADMIN_ROLLBACK_DECISION_CONFLICT',
-    '回滚决策声明冲突',
+    auditKey(auditId, decision.createdAt),
+    audit,
+    'ADMIN_ROLLBACK_AUDIT_CONFLICT',
+    '管理员回滚审计记录冲突',
   );
-  return finalizeRollback({
-    store,
-    config,
-    decision: assertDecision(stored.value, { requestHash, requestId: input.requestId, approvalId }),
-    duplicate: !stored.created || !claimed.created,
-    now,
+
+  const completion = Object.freeze({
+    schemaVersion: ADMIN_ROLLBACK_SCHEMA_VERSION,
+    rollbackId: decision.rollbackId,
+    auditId,
+    status: 'rolled_back',
+    completedAt: decision.createdAt,
+    sourceVersion: decision.source.version,
+    restoreVersion: decision.restore.version,
+    publicVersion: published.snapshot.publicVersion,
+    eventVersion: published.event.version,
+    approvalId: published.approvalId,
+    publicMutationApplied: true,
   });
+  await putImmutableExact(
+    store,
+    completionKey({ libraryId: decision.libraryId }, decision.rollbackId),
+    completion,
+    'ADMIN_ROLLBACK_COMPLETION_CONFLICT',
+    '管理员回滚完成记录冲突',
+  );
+  return assertCompletion(completion, decision);
+}
+
+export async function executeAdminRollback({
+  store,
+  config,
+  identity,
+  command,
+  now = Date.now(),
+} = {}) {
+  assertSafeTime(now);
+  if (!config?.previewEnabled) {
+    throw new AdminRollbackError('ADMIN_ROLLBACK_PREVIEW_DISABLED', '管理员回滚预览未开启', 503);
+  }
+  const input = normalizeCommand(command?.input || command);
+  const requestToken = requestTokenFor(input.requestId);
+  const requestHash = requestHashFor(input);
+  const rollbackId = rollbackIdFor(requestHash);
+  const requestKey = requestIndexKey(config, requestToken);
+  const storedDecisionKey = decisionKey(config, rollbackId);
+
+  const existingRequest = await getJSONStrong(store, requestKey);
+  if (existingRequest) {
+    const requestIndex = assertRequestIndex(existingRequest, requestToken);
+    if (requestIndex.requestHash !== requestHash || requestIndex.rollbackId !== rollbackId) {
+      throw new AdminRollbackError('ADMIN_ROLLBACK_REQUEST_CONFLICT', '同一回滚请求ID对应了不同正文', 409);
+    }
+  }
+
+  let decision = await getJSONStrong(store, storedDecisionKey);
+  if (decision) {
+    decision = assertDecision(decision, config, { rollbackId, requestHash });
+  } else {
+    const target = await resolveCandidateByRef({ store, config, rollbackRef: input.rollbackRef });
+    decision = assertDecision(buildDecision({
+      config,
+      identity,
+      command: input,
+      requestHash,
+      rollbackId,
+      target,
+      now,
+    }), config, { rollbackId, requestHash });
+    const written = await putImmutableExact(
+      store,
+      storedDecisionKey,
+      decision,
+      'ADMIN_ROLLBACK_DECISION_CONFLICT',
+      '管理员回滚决策冲突',
+    );
+    decision = assertDecision(written.value, config, { rollbackId, requestHash });
+  }
+
+  const requestIndex = Object.freeze({
+    schemaVersion: ADMIN_ROLLBACK_SCHEMA_VERSION,
+    requestToken,
+    requestHash,
+    rollbackId,
+    createdAt: decision.createdAt,
+  });
+  await putImmutableExact(
+    store,
+    requestKey,
+    requestIndex,
+    'ADMIN_ROLLBACK_REQUEST_CONFLICT',
+    '同一回滚请求ID对应了不同正文',
+  );
+
+  const existingCompletion = await getJSONStrong(store, completionKey(config, rollbackId));
+  if (existingCompletion) {
+    return projectCompletion(decision, assertCompletion(existingCompletion, decision), true);
+  }
+  const completion = await executeDecision({ store, decision });
+  return projectCompletion(decision, completion, false);
 }
 
 export function isAdminRollbackProjectionSafe(value) {
   const forbiddenKeys = new Set([
-    'businessKey', 'contentHash', 'currentContentHash', 'previousContentHash',
-    'eventKey', 'snapshotKey', 'approvalId', 'requestHash', 'requestId', 'decisionId',
-    'auditId', 'deviceId', 'deviceIds', 'submissionId', 'submissionIds', 'tokenHash',
-    'blobKey', 'secret', 'salt', 'actorTag',
+    'businessKey', 'contentHash', 'sourceContentHash', 'restoreContentHash',
+    'eventKey', 'snapshotKey', 'approvalId', 'requestHash', 'requestId', 'requestToken',
+    'rollbackId', 'auditId', 'deviceId', 'deviceIds', 'submissionId', 'submissionIds',
+    'idempotencyKey', 'tokenHash', 'blobKey', 'secret', 'salt', 'actorTag',
   ]);
   const visit = (item, depth = 0) => {
     if (depth > 12) return false;
-    if (item === null || ['string', 'number', 'boolean'].includes(typeof item)) return true;
+    if (item === null || ['string', 'number', 'boolean'].includes(typeof item)) {
+      if (typeof item === 'string' && (item.includes('public/') || item.includes('rollbacks/') || item.includes('audit/'))) return false;
+      return true;
+    }
     if (Array.isArray(item)) return item.every(entry => visit(entry, depth + 1));
     if (!isPlainObject(item)) return false;
     return Object.entries(item).every(([key, entry]) => !forbiddenKeys.has(key) && visit(entry, depth + 1));
