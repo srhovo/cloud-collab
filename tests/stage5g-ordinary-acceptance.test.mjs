@@ -53,6 +53,10 @@ class MemoryBlobStore {
     this.values.set(key, this.clone(value));
   }
 
+  async delete(key) {
+    this.values.delete(key);
+  }
+
   async list({ prefix = '' } = {}) {
     return {
       blobs: [...this.values.keys()]
