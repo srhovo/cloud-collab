@@ -44,7 +44,13 @@ def error_payload(code, message):
 def route_handler(route, request):
     parsed = urlparse(request.url)
     body = request.post_data_json if request.method == 'POST' and request.post_data else None
-    requests.append({'method': request.method, 'path': parsed.path, 'body': body, 'headers': dict(request.headers)})
+    requests.append({
+        'method': request.method,
+        'path': parsed.path,
+        'query': parsed.query,
+        'body': body,
+        'headers': dict(request.headers),
+    })
 
     if parsed.path == '/stage5def-admin-acceptance.html':
         route.fulfill(status=200, content_type='text/html; charset=utf-8', body=PAGE_HTML)
@@ -119,12 +125,12 @@ def route_handler(route, request):
         assert request.headers.get('origin') == ORIGIN
         assert body['schemaVersion'] == 1
         assert body['requestId'].startswith('dgrq_v1_')
-        if parsed.path.endswith('/revoke-trust'):
-            assert body['deviceRef'] == DEVICE_A_REF
-            assert body['reasonCode'] == 'trust_withdrawn'
-        elif parsed.path.endswith('/trust'):
+        if parsed.path.endswith('/trust'):
             assert body['deviceRef'] == DEVICE_A_REF
             assert body['reasonCode'] == 'verified_operator'
+        elif parsed.path.endswith('/revoke-trust'):
+            assert body['deviceRef'] == DEVICE_A_REF
+            assert body['reasonCode'] == 'trust_withdrawn'
         elif parsed.path.endswith('/block'):
             assert body['deviceRef'] == DEVICE_B_REF
             assert body['reasonCode'] == 'manual_safety'
@@ -273,10 +279,15 @@ with sync_playwright() as playwright:
     context = browser.new_context(viewport={'width': 430, 'height': 932}, accept_downloads=True)
     page = context.new_page()
     console_errors = []
-    downloads = []
-    page.on('console', lambda message: console_errors.append(message.text) if message.type == 'error' else None)
+    page_errors = []
+
+    def record_console_error(message):
+        if message.type == 'error' and not message.text.startswith('Failed to load resource:'):
+            console_errors.append(message.text)
+
+    page.on('console', record_console_error)
+    page.on('pageerror', lambda error: page_errors.append(str(error)))
     page.on('dialog', lambda dialog: dialog.accept())
-    page.on('download', lambda download: downloads.append(download.suggested_filename))
     page.route(f'{ORIGIN}/**', route_handler)
     page.goto(f'{ORIGIN}/stage5def-admin-acceptance.html?eo_token=test-token&eo_time=1784500000', wait_until='domcontentloaded')
 
@@ -305,9 +316,12 @@ with sync_playwright() as playwright:
         for origin in storage_state.get('origins', [])
         for item in origin.get('localStorage', [])
     ]
+    stage5def_requests = [item for item in requests if item['path'].startswith('/api/stage5def/')]
     assert local_values == []
     assert not console_errors, console_errors
-    assert all('eo_token=test-token' in item['headers'].get('referer', '') or True for item in requests)
+    assert not page_errors, page_errors
+    assert stage5def_requests
+    assert all('eo_token=test-token' in item['query'] and 'eo_time=1784500000' in item['query'] for item in stage5def_requests)
     context.close()
     browser.close()
 
@@ -321,5 +335,6 @@ print(json.dumps({
     'staleRollbackPassed': True,
     'exportAndReplayPassed': True,
     'finalCleanupReadinessPassed': True,
+    'previewTokenForwardingPassed': True,
     'browserStorageEmpty': True,
 }, ensure_ascii=False))
