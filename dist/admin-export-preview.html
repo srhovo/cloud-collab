@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <title>阶段5F管理员公共数据库导出</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;color-scheme:light;--blue:#0969da;--green:#1a7f37;--red:#cf222e;--amber:#9a6700;--border:#d0d7de;--muted:#57606a;--bg:#f6f8fa}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#1f2328}main{width:min(820px,calc(100% - 24px));margin:18px auto 50px}.card{margin-bottom:14px;padding:18px;border:1px solid var(--border);border-radius:14px;background:#fff;box-shadow:0 8px 24px rgba(31,35,40,.06)}h1,h2{margin:0 0 10px}h1{font-size:24px}h2{font-size:20px}.banner{padding:11px 13px;border-left:4px solid var(--amber);border-radius:8px;background:#fff8c5;line-height:1.55}label{display:block;margin:12px 0 6px;font-weight:750}input{width:100%;min-height:44px;border:1px solid #8c959f;border-radius:8px;padding:9px;font:16px system-ui}.actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:13px}button{min-height:42px;border:0;border-radius:8px;padding:9px 14px;background:var(--blue);color:#fff;font:750 15px system-ui;cursor:pointer}button.secondary{background:#656d76}button.danger{background:var(--red)}button:disabled{opacity:.45}.status{margin-top:13px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg);font-weight:700;white-space:pre-wrap}.ok{color:var(--green)}.error{color:var(--red)}dl{display:grid;grid-template-columns:180px 1fr;gap:7px 12px;margin:14px 0 0}dt{color:var(--muted)}dd{margin:0;font-weight:700}.hidden{display:none!important}@media(max-width:560px){.actions button{width:100%}dl{grid-template-columns:1fr;gap:2px}}
+  </style>
+</head>
+<body>
+<main>
+  <section class="card">
+    <h1>阶段5F：管理员公共数据库导出</h1>
+    <p class="banner"><strong>只导出合成公共数据库。</strong>ZIP不保存到Blob，不创建公开下载地址；导出不会修改公共事件、快照或版本。</p>
+    <label for="username">管理员用户名</label>
+    <input id="username" autocomplete="username" spellcheck="false">
+    <label for="password">管理员密码</label>
+    <input id="password" type="password" autocomplete="current-password">
+    <div class="actions">
+      <button id="loginBtn" type="button">安全登录</button>
+      <button id="sessionBtn" class="secondary" type="button">检查/恢复会话</button>
+      <button id="logoutBtn" class="danger" type="button">退出并清除会话</button>
+    </div>
+    <div id="authStatus" class="status" aria-live="polite">尚未检查管理员会话。</div>
+  </section>
+
+  <section class="card">
+    <h2>导出摘要</h2>
+    <div class="actions">
+      <button id="refreshBtn" type="button">刷新导出摘要</button>
+      <button id="downloadBtn" type="button">下载标准导出包</button>
+    </div>
+    <div id="summaryStatus" class="status" aria-live="polite">尚未读取。</div>
+    <dl id="summary" class="hidden">
+      <dt>公共版本</dt><dd id="publicVersion">—</dd>
+      <dt>有效公共事件</dt><dd id="eventCount">—</dd>
+      <dt>当前记录</dt><dd id="recordCount">—</dd>
+      <dt>脱敏回滚摘要</dt><dd id="rollbackCount">—</dd>
+      <dt>ZIP文件数量</dt><dd id="fileCount">—</dd>
+      <dt>预计大小</dt><dd id="packageSize">—</dd>
+      <dt>内容包尾标</dt><dd id="packageSuffix">—</dd>
+    </dl>
+    <div id="downloadStatus" class="status" aria-live="polite">尚未下载。</div>
+  </section>
+</main>
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const els = Object.fromEntries(['username','password','loginBtn','sessionBtn','logoutBtn','authStatus','refreshBtn','downloadBtn','summaryStatus','summary','publicVersion','eventCount','recordCount','rollbackCount','fileCount','packageSize','packageSuffix','downloadStatus'].map(id => [id,$(id)]));
+  let busy = false;
+
+  function setStatus(el, message, kind = '') {
+    el.textContent = message;
+    el.className = `status ${kind}`.trim();
+  }
+
+  function apiUrl(path) {
+    const url = new URL(path, window.location.origin);
+    const current = new URL(window.location.href);
+    for (const name of ['eo_token','eo_time']) {
+      const value = current.searchParams.get(name);
+      if (value) url.searchParams.set(name, value);
+    }
+    return url;
+  }
+
+  async function jsonRequest(path, options = {}) {
+    let response;
+    try {
+      response = await fetch(apiUrl(path), {
+        credentials:'same-origin',cache:'no-store',redirect:'error',referrerPolicy:'no-referrer',...options,
+      });
+    } catch (_) {
+      const error = new Error('无法连接管理员导出接口。');
+      error.code = 'ADMIN_EXPORT_NETWORK_ERROR';
+      throw error;
+    }
+    if (response.status === 204) return null;
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || !payload?.ok) {
+      const error = new Error(payload?.error?.message || `请求失败（HTTP ${response.status}）`);
+      error.code = payload?.error?.code || `HTTP_${response.status}`;
+      throw error;
+    }
+    return payload;
+  }
+
+  function errorText(error) {
+    return `错误码：${String(error?.code || 'ADMIN_EXPORT_REQUEST_FAILED')}\n${String(error?.message || '请求失败')}`;
+  }
+
+  function randomRequestId() {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    const value = btoa(String.fromCharCode(...bytes)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/g,'');
+    return `exrq_v1_${value}`;
+  }
+
+  function formatBytes(value) {
+    const bytes = Number(value || 0);
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+  }
+
+  async function login() {
+    const username = String(els.username.value || '').trim();
+    const password = String(els.password.value || '');
+    els.password.value = '';
+    setStatus(els.authStatus,'正在安全登录……');
+    try {
+      const payload = await jsonRequest('/api/admin/auth/login',{
+        method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({schemaVersion:1,username,password}),
+      });
+      setStatus(els.authStatus,`管理员会话有效：${payload.data.username}，到期 ${new Date(payload.data.expiresAt).toLocaleString()}。`,'ok');
+      await refreshSummary();
+    } catch (error) {
+      setStatus(els.authStatus,errorText(error),'error');
+    }
+  }
+
+  async function checkSession() {
+    setStatus(els.authStatus,'正在检查会话……');
+    try {
+      const payload = await jsonRequest('/api/admin/auth/session');
+      setStatus(els.authStatus,`管理员会话有效：${payload.data.username}，到期 ${new Date(payload.data.expiresAt).toLocaleString()}。`,'ok');
+    } catch (error) {
+      setStatus(els.authStatus,errorText(error),'error');
+    }
+  }
+
+  async function logout() {
+    try {
+      await jsonRequest('/api/admin/auth/logout',{method:'POST'});
+      els.summary.classList.add('hidden');
+      setStatus(els.authStatus,'已退出并清除管理员会话。','ok');
+      setStatus(els.summaryStatus,'尚未读取。');
+      setStatus(els.downloadStatus,'尚未下载。');
+    } catch (error) {
+      setStatus(els.authStatus,errorText(error),'error');
+    }
+  }
+
+  function renderSummary(result) {
+    els.publicVersion.textContent = String(result.publicVersion);
+    els.eventCount.textContent = String(result.eventCount);
+    els.recordCount.textContent = String(result.recordCount);
+    els.rollbackCount.textContent = String(result.rollbackCount);
+    els.fileCount.textContent = String(result.fileCount);
+    els.packageSize.textContent = formatBytes(result.packageByteLength);
+    els.packageSuffix.textContent = String(result.packageId).slice(-10);
+    els.summary.classList.remove('hidden');
+  }
+
+  async function refreshSummary() {
+    setStatus(els.summaryStatus,'正在强一致校验公共事件并生成摘要……');
+    try {
+      const payload = await jsonRequest('/api/admin/exports/summary');
+      renderSummary(payload.data.result);
+      setStatus(els.summaryStatus,`摘要读取成功：公共版本 ${payload.data.result.publicVersion}。`,'ok');
+      return payload.data.result;
+    } catch (error) {
+      els.summary.classList.add('hidden');
+      setStatus(els.summaryStatus,errorText(error),'error');
+      throw error;
+    }
+  }
+
+  async function downloadPackage() {
+    if (busy) return;
+    const confirmed = window.confirm('确认下载当前合成公共数据库标准ZIP？\n\n下载会写入私有审计，但不会修改公共数据。');
+    if (!confirmed) return;
+    busy = true;
+    els.downloadBtn.disabled = true;
+    setStatus(els.downloadStatus,'正在生成、校验并下载ZIP……');
+    try {
+      const response = await fetch(apiUrl('/api/admin/exports/download'),{
+        method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',referrerPolicy:'no-referrer',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({schemaVersion:1,requestId:randomRequestId(),confirmation:'EXPORT_SYNTHETIC_PUBLIC_DATABASE'}),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        const error = new Error(payload?.error?.message || `请求失败（HTTP ${response.status}）`);
+        error.code = payload?.error?.code || `HTTP_${response.status}`;
+        throw error;
+      }
+      if (!String(response.headers.get('content-type') || '').toLowerCase().startsWith('application/zip')) {
+        const error = new Error('服务器未返回ZIP文件。');
+        error.code = 'ADMIN_EXPORT_CONTENT_TYPE_UNEXPECTED';
+        throw error;
+      }
+      const blob = await response.blob();
+      const href = URL.createObjectURL(blob);
+      try {
+        const link = document.createElement('a');
+        link.href = href;
+        link.download = '码单器公共数据库导出.zip';
+        link.rel = 'noopener';
+        document.body.append(link);
+        link.click();
+        link.remove();
+      } finally {
+        setTimeout(() => URL.revokeObjectURL(href),0);
+      }
+      const publicVersion = response.headers.get('x-mdq-public-version') || '—';
+      const packageId = response.headers.get('x-mdq-package-id') || '';
+      await refreshSummary();
+      setStatus(els.downloadStatus,`下载完成：公共版本 ${publicVersion}，内容包尾标 ${packageId.slice(-10)}。`,'ok');
+    } catch (error) {
+      const message = errorText(error);
+      try { await refreshSummary(); } catch (_) {}
+      setStatus(els.downloadStatus,message,'error');
+    } finally {
+      busy = false;
+      els.downloadBtn.disabled = false;
+    }
+  }
+
+  els.loginBtn.addEventListener('click',login);
+  els.sessionBtn.addEventListener('click',checkSession);
+  els.logoutBtn.addEventListener('click',logout);
+  els.refreshBtn.addEventListener('click',refreshSummary);
+  els.downloadBtn.addEventListener('click',downloadPackage);
+  window.addEventListener('pagehide',()=>{els.password.value='';});
+})();
+</script>
+</body>
+</html>
