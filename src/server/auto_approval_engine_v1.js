@@ -406,7 +406,14 @@ function assertPublicEvent(event, key, version) {
   const payload = normalizeExactPricePayload(event.payload);
   const baseline = assertBaselineObject(event.baseline);
   assertExactKeys(event.approval, ['mode', 'deviceIds', 'submissionIds'], 'INVALID_EVENT_APPROVAL', '批准证据结构无效');
-  const allowedModes = new Set(['two_devices_match', 'trusted_device', 'two_devices_safe_price_update']);
+  const allowedModes = new Set([
+    'two_devices_match',
+    'trusted_device',
+    'two_devices_safe_price_update',
+    'admin_approved',
+    'admin_edit_and_approved',
+  ]);
+  const singleEvidenceModes = new Set(['trusted_device', 'admin_approved', 'admin_edit_and_approved']);
   const deviceIds = Array.isArray(event.approval.deviceIds) ? event.approval.deviceIds.map(String) : [];
   const submissionIds = Array.isArray(event.approval.submissionIds) ? event.approval.submissionIds.map(String) : [];
   if (event.schemaVersion !== PUBLIC_EVENT_SCHEMA_VERSION || event.version !== version || event.eventKey !== key
@@ -421,7 +428,7 @@ function assertPublicEvent(event, key, version) {
       || deviceIds.some(id => !DEVICE_ID_PATTERN.test(id))
       || submissionIds.some(id => !SUBMISSION_ID_PATTERN.test(id))
       || (event.approval.mode === 'trusted_device' && deviceIds.length !== 1)
-      || (event.approval.mode !== 'trusted_device' && deviceIds.length < 2)) {
+      || (!singleEvidenceModes.has(event.approval.mode) && deviceIds.length < 2)) {
     throw new AutoApprovalError('INVALID_PUBLIC_EVENT', '公共批准事件内容无效', 500, { key, version });
   }
   return Object.freeze({ ...event, groupId, libraryId, payload, baseline });
@@ -807,6 +814,42 @@ async function publishAutomaticApproval({ store, submission, baseline, approvalM
     ...latest,
     duplicateApproval: !indexCreated || !transitionCreated || Boolean(reservedEvent && reservedEvent.eventKey !== event.eventKey),
     publicMutationApplied: indexCreated,
+  });
+}
+
+export async function publishAdminReviewApproval({
+  store,
+  submission,
+  baseline,
+  approvalMode,
+  evidence,
+  now = Date.now(),
+} = {}) {
+  assertSafeTime(now);
+  const normalizedSubmission = normalizeSubmission(submission);
+  const normalizedBaseline = normalizeBaseline(baseline);
+  if (!['admin_approved', 'admin_edit_and_approved'].includes(approvalMode)) {
+    throw new AutoApprovalError('INVALID_ADMIN_APPROVAL_MODE', '管理员批准模式无效', 400);
+  }
+  if (!Array.isArray(evidence) || evidence.length < 1 || evidence.length > MAX_CONFIRMATION_MARKERS_PER_CYCLE) {
+    throw new AutoApprovalError('INVALID_ADMIN_APPROVAL_EVIDENCE', '管理员批准证据数量无效', 400);
+  }
+  const markers = new Map();
+  for (const item of evidence) {
+    const deviceId = assertPattern(item?.deviceId, DEVICE_ID_PATTERN, 'INVALID_DEVICE_ID', 'deviceId');
+    const submissionId = assertPattern(item?.submissionId, SUBMISSION_ID_PATTERN, 'INVALID_SUBMISSION_ID', 'submissionId');
+    if (markers.has(deviceId)) {
+      throw new AutoApprovalError('INVALID_ADMIN_APPROVAL_EVIDENCE', '管理员批准证据包含重复设备', 400);
+    }
+    markers.set(deviceId, Object.freeze({ submissionId }));
+  }
+  return publishAutomaticApproval({
+    store,
+    submission: normalizedSubmission,
+    baseline: normalizedBaseline,
+    approvalMode,
+    markers,
+    now,
   });
 }
 

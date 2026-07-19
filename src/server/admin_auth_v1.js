@@ -49,6 +49,27 @@ export function normalizeAdminUsername(value) {
   return username;
 }
 
+export function readAdminPublicOrigin(env = {}) {
+  const value = String(env.CLOUD_ADMIN_PUBLIC_ORIGIN || '').trim();
+  let url;
+  try {
+    url = new URL(value);
+  } catch (_) {
+    throw new AdminAuthError('ADMIN_PUBLIC_ORIGIN_NOT_CONFIGURED', '管理员公开来源配置无效', 503);
+  }
+  if (secretByteLength(value) > 512
+      || url.protocol !== 'https:'
+      || url.username
+      || url.password
+      || url.pathname !== '/'
+      || url.search
+      || url.hash
+      || !url.hostname) {
+    throw new AdminAuthError('ADMIN_PUBLIC_ORIGIN_NOT_CONFIGURED', '管理员公开来源必须为纯HTTPS来源', 503);
+  }
+  return url.origin;
+}
+
 export function readAdminAuthConfig(env = {}) {
   if (String(env.CLOUD_ADMIN_PREVIEW_ENABLED || '').trim() !== '1') {
     throw new AdminAuthError('ADMIN_PREVIEW_DISABLED', '管理员预览登录未开启', 503);
@@ -86,6 +107,7 @@ export function readAdminAuthConfig(env = {}) {
   if (storeName !== ADMIN_PREVIEW_STORE_NAME) {
     throw new AdminAuthError('ADMIN_STORE_MISCONFIGURED', '管理员预览限流必须使用独立Blob命名空间', 503);
   }
+  const publicOrigin = readAdminPublicOrigin(env);
 
   return Object.freeze({
     schemaVersion: ADMIN_AUTH_CONFIG_VERSION,
@@ -94,6 +116,7 @@ export function readAdminAuthConfig(env = {}) {
     sessionSecret,
     rateLimitSalt,
     storeName,
+    publicOrigin,
     sessionTtlSeconds: ADMIN_SESSION_TTL_SECONDS,
   });
 }
@@ -315,18 +338,66 @@ export async function consumeAdminLoginRate({ store, username, clientAddress, sa
   }
 }
 
-export function assertAdminSameOriginRequest(request, { requireOrigin = false } = {}) {
+function edgeOneDeploymentProjectKey(url) {
+  if (!url || url.port) return '';
+  const match = String(url.hostname || '').toLowerCase().match(
+    /^([a-z0-9](?:[a-z0-9-]*[a-z0-9])?)-[a-z0-9]{12}\.edgeone\.cool$/,
+  );
+  return match?.[1] || '';
+}
+
+export function assertAdminSameOriginRequest(request, { requireOrigin = false, publicOrigin = '' } = {}) {
   let url;
   try {
     url = new URL(request?.url || '');
   } catch (_) {
     throw new AdminAuthError('ADMIN_REQUEST_ORIGIN_INVALID', '管理员请求地址无效', 403);
   }
-  if (url.protocol !== 'https:') {
+  let configuredUrl;
+  try {
+    configuredUrl = publicOrigin ? new URL(publicOrigin) : (url.protocol === 'https:' ? url : null);
+  } catch (_) {
+    configuredUrl = null;
+  }
+  const configuredProjectKey = edgeOneDeploymentProjectKey(configuredUrl);
+  const origin = String(request?.headers?.get?.('origin') || '');
+  if (configuredProjectKey) {
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      throw new AdminAuthError('ADMIN_HTTPS_REQUIRED', '管理员接口只允许HTTPS', 403);
+    }
+    if (requireOrigin && !origin) {
+      throw new AdminAuthError('ADMIN_REQUEST_ORIGIN_INVALID', '管理员请求必须同源', 403);
+    }
+    if (origin) {
+      let originUrl;
+      try {
+        originUrl = new URL(origin);
+      } catch (_) {
+        originUrl = null;
+      }
+      if (!originUrl
+          || originUrl.protocol !== 'https:'
+          || originUrl.origin !== origin
+          || edgeOneDeploymentProjectKey(originUrl) !== configuredProjectKey) {
+        throw new AdminAuthError('ADMIN_REQUEST_ORIGIN_INVALID', '管理员请求必须同源', 403);
+      }
+    }
+    const fetchSite = String(request?.headers?.get?.('sec-fetch-site') || '').toLowerCase();
+    if (fetchSite && fetchSite !== 'same-origin') {
+      throw new AdminAuthError('ADMIN_REQUEST_ORIGIN_INVALID', '管理员请求必须同源', 403);
+    }
+    return true;
+  }
+  const hostMatches = Boolean(configuredUrl && (
+    url.host === configuredUrl.host
+  ));
+  const expectedOrigin = hostMatches ? `https://${url.host}` : '';
+  const directProtocolIsSecure = url.protocol === 'https:' && hostMatches;
+  const configuredProxyOrigin = url.protocol === 'http:' && hostMatches;
+  if (!directProtocolIsSecure && !configuredProxyOrigin) {
     throw new AdminAuthError('ADMIN_HTTPS_REQUIRED', '管理员接口只允许HTTPS', 403);
   }
-  const origin = String(request?.headers?.get?.('origin') || '');
-  if ((requireOrigin && !origin) || (origin && origin !== url.origin)) {
+  if ((requireOrigin && !origin) || (origin && origin !== expectedOrigin)) {
     throw new AdminAuthError('ADMIN_REQUEST_ORIGIN_INVALID', '管理员请求必须同源', 403);
   }
   const fetchSite = String(request?.headers?.get?.('sec-fetch-site') || '').toLowerCase();

@@ -5,3 +5,5 @@ node_modules/
 .DS_Store
 *.log
 coverage/
+__pycache__/
+test-results/阶段4C_静态与隐私边界验证结果.json

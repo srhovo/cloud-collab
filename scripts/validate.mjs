@@ -53,6 +53,9 @@ const acceptance = read('src/server/submission_acceptance_v1.js');
 const deviceRegistration = read('src/server/device_registration_v1.js');
 const envExample = read('.env.example');
 const workflow = read('.github/workflows/ci.yml');
+const adminMutation = read('src/server/admin_review_mutation_v1.js');
+const adminMutationHttp = read('src/server/admin_review_mutation_http_v1.js');
+const adminMutationPage = read('dist/admin-review-actions-preview.html');
 
 check('receive and submission clients are both embedded', output.includes('只读API客户端（阶段3B）') && output.includes('隔离候选提交客户端（阶段4C）'));
 check('submission client uses only existing preview routes', submissionClient.includes("'/api/device/register'") && submissionClient.includes("'/api/submissions/create'") && !submissionClient.includes('/api/admin'));
@@ -69,6 +72,12 @@ check('runtime write gate defaults closed and server remains fixture-only', subm
 check('formal public mutation and auto approval remain disabled', acceptance.includes('publicMutationAllowed: false') && acceptance.includes('autoApprovalEnabled: false'));
 check('one-time cleanup route is absent from final branch', !exists('cloud-functions/api/system/cleanup-preview-fixtures-once.js') && !exists('src/server/preview_fixture_cleanup_once_v1.js') && !output.includes('cleanup-preview-fixtures'));
 check('CI runs unit, static, core and browser checks', workflow.includes('npm run ci') && workflow.includes('tests/core_compare.py') && workflow.includes('tests/browser_integration.py'));
+check('Stage5C mutation gate defaults closed', envExample.includes('CLOUD_ADMIN_REVIEW_MUTATION_PREVIEW_ENABLED=0'));
+check('Stage5C mutation scope remains synthetic-only', adminMutation.includes("ADMIN_REVIEW_ALLOWED_GROUP_ID") && adminMutation.includes("ADMIN_REVIEW_ALLOWED_LIBRARY_ID") && adminMutation.includes("ADMIN_REVIEW_PREVIEW_STORE_NAME"));
+check('Stage5C admin writes require same-origin authenticated POST', adminMutationHttp.includes('requireOrigin: true') && adminMutationHttp.includes("method !== 'POST'") && adminMutationHttp.includes('verifyAdminSessionToken'));
+check('Stage5C mutation page stores no secret or browser state', !/(?:localStorage|sessionStorage)\.(?:setItem|getItem|removeItem)/.test(adminMutationPage) && !/CLOUD_ADMIN_(?:PASSWORD|SESSION_SECRET|RATE_LIMIT_SALT)/.test(adminMutationPage));
+check('Stage5C routes stay outside ordinary user build', !output.includes('admin-review-actions-preview') && !output.includes('/api/admin/reviews/approve') && !submissionClient.includes('/api/admin'));
+check('CI includes Stage5C browser mutation regression', workflow.includes('tests/stage5c_browser_admin_review_mutations.py'));
 
 const backupBlock = output.match(/getModuleConfigs\(\) \{\s*return \[([\s\S]*?)\];\s*\}/)?.[1] || '';
 check('cloud keys remain excluded from standard backup', cloudKeys.every(key => !backupBlock.includes(key)));

@@ -31,3 +31,5 @@ jobs:
         run: python3 tests/stage5a_browser_admin_auth.py
       - name: Stage5B admin read-only review browser regression
         run: python3 tests/stage5b_browser_admin_reviews.py
+      - name: Stage5C admin review mutation browser regression
+        run: python3 tests/stage5c_browser_admin_review_mutations.py

@@ -21,7 +21,17 @@ const SUBMISSION_ID_PATTERN = /^sub_[0-9A-HJKMNP-TV-Z]{26}$/;
 const IDEMPOTENCY_KEY_PATTERN = /^ik_v1_[A-Za-z0-9_-]{43}$/;
 const REQUEST_HASH_PATTERN = /^req_v1_[A-Za-z0-9_-]{43}$/;
 const REVIEW_KEY_PATTERN = /^reviews\/(lib_[a-z0-9][a-z0-9_]{2,55})\/pending\/(bk_v1_[A-Za-z0-9_-]{43})\/pv_([0-9]{12})\/(ch_v1_[A-Za-z0-9_-]{43})\.json$/;
+const DECISION_ID_PATTERN = /^rd_v1_[A-Za-z0-9_-]{43}$/;
+const AUDIT_ID_PATTERN = /^au_v1_[A-Za-z0-9_-]{43}$/;
+const APPROVAL_ID_PATTERN = /^ap_v1_[A-Za-z0-9_-]{43}$/;
+const ACTOR_TAG_PATTERN = /^admin_[A-Za-z0-9_-]{12}$/;
 const REVIEW_REASONS = new Set(['candidate_conflict', 'price_change_exceeds_limit']);
+const REVIEW_RESOLUTION_ACTIONS = new Set([
+  'approved_by_admin',
+  'edited_and_approved',
+  'rejected',
+  'superseded',
+]);
 
 export const ADMIN_REVIEW_CAPABILITIES = Object.freeze({
   reviewQueueRead: true,
@@ -63,8 +73,17 @@ function sha256Base64Url(value) {
   return createHash('sha256').update(Buffer.from(String(value), 'utf8')).digest('base64url');
 }
 
-function reviewIdForKey(key) {
+export function reviewIdForKey(key) {
   return `rv_v1_${sha256Base64Url(key)}`;
+}
+
+export function adminReviewResolutionKey(libraryId, reviewId) {
+  const library = String(libraryId || '').trim();
+  const id = String(reviewId || '').trim();
+  if (library !== ADMIN_REVIEW_ALLOWED_LIBRARY_ID || !REVIEW_ID_PATTERN.test(id)) {
+    throw new AdminReviewError('ADMIN_REVIEW_RESOLUTION_KEY_INVALID', '审核归档Key无效', 503);
+  }
+  return `reviews/${library}/resolved/${id}.json`;
 }
 
 function deviceTag(deviceId) {
@@ -126,6 +145,74 @@ function assertReviewMarker(value, parsed, config) {
   }
   assertSafeTimestamp(value.createdAt, 'ADMIN_REVIEW_INVALID_MARKER', '待审核标记时间无效');
   return Object.freeze({ ...value, deviceIds: Object.freeze([...deviceIds].sort()) });
+}
+
+function assertReviewResolution(value, expected, config) {
+  assertExactKeys(value, [
+    'schemaVersion', 'reviewId', 'decisionId', 'auditId', 'action', 'groupId',
+    'libraryId', 'businessKey', 'baselineApprovedVersion', 'sourceContentHash',
+    'targetContentHash', 'resolvedAt',
+  ], 'ADMIN_REVIEW_INVALID_RESOLUTION', '审核归档结构无效');
+  if (value.schemaVersion !== 1
+      || value.reviewId !== expected.reviewId
+      || !DECISION_ID_PATTERN.test(String(value.decisionId || ''))
+      || !AUDIT_ID_PATTERN.test(String(value.auditId || ''))
+      || !REVIEW_RESOLUTION_ACTIONS.has(value.action)
+      || value.groupId !== config.groupId
+      || value.libraryId !== config.libraryId
+      || value.businessKey !== expected.businessKey
+      || value.baselineApprovedVersion !== expected.baselineApprovedVersion
+      || value.sourceContentHash !== expected.contentHash
+      || !(value.targetContentHash === null || CONTENT_HASH_PATTERN.test(String(value.targetContentHash || '')))) {
+    throw new AdminReviewError('ADMIN_REVIEW_INVALID_RESOLUTION', '审核归档内容无效', 503);
+  }
+  assertSafeTimestamp(value.resolvedAt, 'ADMIN_REVIEW_INVALID_RESOLUTION', '审核归档时间无效');
+  return Object.freeze({ ...value });
+}
+
+function reviewAuditKey(auditId, resolvedAt) {
+  const date = new Date(resolvedAt);
+  if (!AUDIT_ID_PATTERN.test(String(auditId || '')) || !Number.isFinite(date.getTime())) {
+    throw new AdminReviewError('ADMIN_REVIEW_INVALID_AUDIT', '审核审计Key无效', 503);
+  }
+  return `audit/${date.getUTCFullYear()}/${String(date.getUTCMonth() + 1).padStart(2, '0')}/${auditId}.json`;
+}
+
+function assertReviewAudit(value, resolution, config) {
+  assertExactKeys(value, [
+    'schemaVersion', 'auditId', 'decisionId', 'reviewId', 'action', 'actorTag',
+    'occurredAt', 'groupId', 'libraryId', 'businessKey', 'baselineApprovedVersion',
+    'sourceContentHash', 'targetContentHash', 'reasonCode', 'publicVersion',
+    'eventVersion', 'approvalId', 'publicMutationApplied', 'evidenceCount',
+    'relatedReviewCount',
+  ], 'ADMIN_REVIEW_INVALID_AUDIT', '审核审计结构无效');
+  const approvalAction = ['approve', 'edit_and_approve'].includes(value.action);
+  if (value.schemaVersion !== 1
+      || value.auditId !== resolution.auditId
+      || value.decisionId !== resolution.decisionId
+      || !REVIEW_ID_PATTERN.test(String(value.reviewId || ''))
+      || !['approve', 'reject', 'edit_and_approve'].includes(value.action)
+      || !ACTOR_TAG_PATTERN.test(String(value.actorTag || ''))
+      || value.occurredAt !== resolution.resolvedAt
+      || value.groupId !== config.groupId
+      || value.libraryId !== config.libraryId
+      || value.businessKey !== resolution.businessKey
+      || value.baselineApprovedVersion !== resolution.baselineApprovedVersion
+      || !CONTENT_HASH_PATTERN.test(String(value.sourceContentHash || ''))
+      || value.targetContentHash !== resolution.targetContentHash
+      || !Number.isSafeInteger(value.publicVersion) || value.publicVersion < 0
+      || typeof value.publicMutationApplied !== 'boolean'
+      || !Number.isSafeInteger(value.evidenceCount) || value.evidenceCount < 1
+      || !Number.isSafeInteger(value.relatedReviewCount) || value.relatedReviewCount < 1
+      || (approvalAction && (!Number.isSafeInteger(value.eventVersion) || value.eventVersion < 1
+        || !APPROVAL_ID_PATTERN.test(String(value.approvalId || ''))
+        || value.publicMutationApplied !== true || value.reasonCode !== null))
+      || (!approvalAction && (value.eventVersion !== null || value.approvalId !== null
+        || value.publicMutationApplied !== false || typeof value.reasonCode !== 'string'))) {
+    throw new AdminReviewError('ADMIN_REVIEW_INVALID_AUDIT', '审核审计内容无效', 503);
+  }
+  assertSafeTimestamp(value.occurredAt, 'ADMIN_REVIEW_INVALID_AUDIT', '审核审计时间无效');
+  return Object.freeze({ ...value });
 }
 
 function assertConfirmationMarker(value, expected) {
@@ -207,26 +294,38 @@ async function listReviewKeysStrong(store, config) {
   return keys.sort();
 }
 
-async function readCandidateForMarker(store, marker, config) {
-  const deviceId = marker.deviceIds[0];
-  const confirmationKey = `${confirmationPrefix(
-    marker.libraryId,
-    marker.businessKey,
-    marker.baselineApprovedVersion,
-  )}${marker.contentHash}/${deviceId}.json`;
-  const confirmation = assertConfirmationMarker(
-    await getJSONStrong(store, confirmationKey),
-    {
-      groupId: marker.groupId,
-      libraryId: marker.libraryId,
-      businessKey: marker.businessKey,
-      baselineApprovedVersion: marker.baselineApprovedVersion,
-      contentHash: marker.contentHash,
-      deviceId,
-    },
-  );
-  const candidate = await getJSONStrong(store, pendingSubmissionKey(marker.libraryId, confirmation.idempotencyKey));
-  return assertStoredCandidate(candidate, confirmation, marker, config);
+async function readCandidatesForMarker(store, marker, config) {
+  const candidates = [];
+  const evidence = [];
+  for (const deviceId of marker.deviceIds) {
+    const confirmationKey = `${confirmationPrefix(
+      marker.libraryId,
+      marker.businessKey,
+      marker.baselineApprovedVersion,
+    )}${marker.contentHash}/${deviceId}.json`;
+    const confirmation = assertConfirmationMarker(
+      await getJSONStrong(store, confirmationKey),
+      {
+        groupId: marker.groupId,
+        libraryId: marker.libraryId,
+        businessKey: marker.businessKey,
+        baselineApprovedVersion: marker.baselineApprovedVersion,
+        contentHash: marker.contentHash,
+        deviceId,
+      },
+    );
+    const candidate = await getJSONStrong(store, pendingSubmissionKey(marker.libraryId, confirmation.idempotencyKey));
+    candidates.push(assertStoredCandidate(candidate, confirmation, marker, config));
+    evidence.push(Object.freeze({ deviceId, submissionId: confirmation.submissionId }));
+  }
+  if (candidates.length < 1 || candidates.some(item => item.submission.contentHash !== marker.contentHash)) {
+    throw new AdminReviewError('ADMIN_REVIEW_CANDIDATE_LINK_MISMATCH', '审核候选证据链不完整', 503);
+  }
+  return Object.freeze({
+    submission: candidates[0].submission,
+    receivedAt: Math.min(...candidates.map(item => item.receivedAt)),
+    evidence: Object.freeze(evidence),
+  });
 }
 
 function indexPublicEvents(events) {
@@ -315,7 +414,7 @@ export function readAdminReviewConfig(env = {}) {
   });
 }
 
-export async function listAdminReviewQueue({ store, config } = {}) {
+async function loadAdminReviewEntries({ store, config } = {}) {
   const keys = await listReviewKeysStrong(store, config);
   let events;
   try {
@@ -324,13 +423,34 @@ export async function listAdminReviewQueue({ store, config } = {}) {
     throw new AdminReviewError('ADMIN_REVIEW_PUBLIC_BASELINE_INVALID', '公共基线无法通过只读校验', 503, null, error);
   }
   const publicIndex = indexPublicEvents(events);
-  const items = [];
+  const entries = [];
   for (const key of keys) {
     const parsed = parseReviewKey(key, config);
+    const reviewId = reviewIdForKey(parsed.key);
+    const resolution = await getJSONStrong(store, adminReviewResolutionKey(config.libraryId, reviewId));
+    if (resolution) {
+      const validResolution = assertReviewResolution(resolution, { reviewId, ...parsed }, config);
+      const audit = await getJSONStrong(store, reviewAuditKey(validResolution.auditId, validResolution.resolvedAt));
+      assertReviewAudit(audit, validResolution, config);
+      continue;
+    }
     const marker = assertReviewMarker(await getJSONStrong(store, key), parsed, config);
-    const candidate = await readCandidateForMarker(store, marker, config);
-    items.push(projectReview(parsed, marker, candidate, baselineProjection(marker, publicIndex)));
+    const candidate = await readCandidatesForMarker(store, marker, config);
+    const baseline = baselineProjection(marker, publicIndex);
+    entries.push(Object.freeze({
+      parsed,
+      marker,
+      candidate,
+      baseline,
+      projected: projectReview(parsed, marker, candidate, baseline),
+    }));
   }
+  return Object.freeze(entries);
+}
+
+export async function listAdminReviewQueue({ store, config } = {}) {
+  const entries = await loadAdminReviewEntries({ store, config });
+  const items = entries.map(entry => entry.projected);
   items.sort((left, right) => right.createdAt.localeCompare(left.createdAt)
     || left.reviewId.localeCompare(right.reviewId));
   return Object.freeze({
@@ -341,6 +461,30 @@ export async function listAdminReviewQueue({ store, config } = {}) {
     }),
     total: items.length,
     items: Object.freeze(items),
+  });
+}
+
+export async function getAdminReviewMutationTarget({ store, config, reviewId } = {}) {
+  const normalizedReviewId = String(reviewId || '').trim();
+  if (!REVIEW_ID_PATTERN.test(normalizedReviewId)) {
+    throw new AdminReviewError('ADMIN_REVIEW_ID_INVALID', '审核详情ID无效', 400);
+  }
+  const entries = await loadAdminReviewEntries({ store, config });
+  const selected = entries.find(entry => entry.projected.reviewId === normalizedReviewId) || null;
+  if (!selected) throw new AdminReviewError('ADMIN_REVIEW_NOT_FOUND', '审核项目不存在或已经归档', 404);
+  const related = entries.filter(entry => entry.marker.businessKey === selected.marker.businessKey
+    && entry.marker.baselineApprovedVersion === selected.marker.baselineApprovedVersion);
+  return Object.freeze({
+    scope: Object.freeze({ groupId: config.groupId, libraryId: config.libraryId }),
+    reviewId: normalizedReviewId,
+    marker: selected.marker,
+    submission: selected.candidate.submission,
+    evidence: selected.candidate.evidence,
+    baseline: selected.baseline,
+    relatedReviews: Object.freeze(related.map(entry => Object.freeze({
+      reviewId: entry.projected.reviewId,
+      contentHash: entry.marker.contentHash,
+    }))),
   });
 }
 
