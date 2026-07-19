@@ -152,14 +152,28 @@ function parseNonNegativeInteger(raw, code, message, fallback = null) {
   return value;
 }
 
-function readFlags() {
+function readFlags(config = {}) {
   return Object.freeze({
     writeEnabled: false,
     publicMutationAllowed: false,
     autoApprovalEnabled: false,
     previewWriteEnabled: true,
     previewAutoApprovalEnabled: true,
+    ...(config.ordinaryTypesEnabled === true ? { previewOrdinaryTypesEnabled: true } : {}),
   });
+}
+
+function recordCounts(snapshot, config = {}) {
+  if (config.ordinaryTypesEnabled !== true) {
+    return Object.freeze({ exactPrice: snapshot.records.length });
+  }
+  const counts = { exactPrice: 0, playableName: 0, bossProfile: 0 };
+  for (const record of snapshot.records) {
+    if (record.dataType === 'exact_price') counts.exactPrice += 1;
+    else if (record.dataType === 'playable_name') counts.playableName += 1;
+    else if (record.dataType === 'boss_profile') counts.bossProfile += 1;
+  }
+  return Object.freeze(counts);
 }
 
 export async function handlePreviewAutoApprovalSubmissionRequest(context, dependencies = {}) {
@@ -168,7 +182,7 @@ export async function handlePreviewAutoApprovalSubmissionRequest(context, depend
   if (method !== 'POST') return methodNotAllowed(WRITE_SERVICE_ID, method, 'POST, OPTIONS');
 
   try {
-    const { env } = assertPreviewAccessBeforeStore(context);
+    const { env, config } = assertPreviewAccessBeforeStore(context);
     const rawSubmission = await readJsonBody(context.request, MAX_SUBMISSION_BYTES);
     const createStore = dependencies.createStore || createEdgeOneBlobStore;
     const acceptAndReview = dependencies.acceptAndReview || acceptAndReviewPreviewSubmission;
@@ -182,7 +196,7 @@ export async function handlePreviewAutoApprovalSubmissionRequest(context, depend
     });
     return success(WRITE_SERVICE_ID, {
       ...result,
-      ...readFlags(),
+      ...readFlags(config),
     }, { status: result?.duplicate ? 200 : 202 });
   } catch (error) {
     return failure(WRITE_SERVICE_ID, error);
@@ -196,7 +210,7 @@ export async function handlePreviewPublicVersionRequest(context, dependencies = 
   if (method !== 'GET' && !head) return methodNotAllowed(READ_SERVICE_ID, method, 'GET, HEAD, OPTIONS', head);
 
   try {
-    const { env } = assertPreviewAccessBeforeStore(context);
+    const { env, config } = assertPreviewAccessBeforeStore(context);
     const { groupId, libraryId } = parseScope(context.request);
     const createStore = dependencies.createStore || createEdgeOneBlobStore;
     const readSnapshot = dependencies.readSnapshot || readPreviewPublicSnapshot;
@@ -216,8 +230,8 @@ export async function handlePreviewPublicVersionRequest(context, dependencies = 
       updatedAt: snapshot.publicVersion > 0 ? snapshot.generatedAt : null,
       status: snapshot.publicVersion > 0 ? 'preview_dynamic_ready' : 'preview_dynamic_empty',
       snapshotAvailable: snapshot.publicVersion > 0,
-      recordCounts: { exactPrice: snapshot.records.length },
-      ...readFlags(),
+      recordCounts: recordCounts(snapshot, config),
+      ...readFlags(config),
     }, { head });
   } catch (error) {
     return failure(READ_SERVICE_ID, error, { head });
@@ -231,7 +245,7 @@ export async function handlePreviewPublicSnapshotRequest(context, dependencies =
   if (method !== 'GET' && !head) return methodNotAllowed(READ_SERVICE_ID, method, 'GET, HEAD, OPTIONS', head);
 
   try {
-    const { env } = assertPreviewAccessBeforeStore(context);
+    const { env, config } = assertPreviewAccessBeforeStore(context);
     const { groupId, libraryId, url } = parseScope(context.request);
     const ifVersion = parseNonNegativeInteger(url.searchParams.get('ifVersion'), 'INVALID_PUBLIC_VERSION', 'ifVersion必须是非负整数', null);
     const createStore = dependencies.createStore || createEdgeOneBlobStore;
@@ -260,7 +274,7 @@ export async function handlePreviewPublicSnapshotRequest(context, dependencies =
       publicVersion: snapshot.publicVersion,
       snapshotVersion: snapshot.snapshotVersion,
       snapshot: payloadSnapshot,
-      ...readFlags(),
+      ...readFlags(config),
     }, { head });
   } catch (error) {
     return failure(READ_SERVICE_ID, error, { head });
@@ -274,7 +288,7 @@ export async function handlePreviewPublicChangesRequest(context, dependencies = 
   if (method !== 'GET' && !head) return methodNotAllowed(READ_SERVICE_ID, method, 'GET, HEAD, OPTIONS', head);
 
   try {
-    const { env } = assertPreviewAccessBeforeStore(context);
+    const { env, config } = assertPreviewAccessBeforeStore(context);
     const { groupId, libraryId, url } = parseScope(context.request);
     const sinceVersion = parseNonNegativeInteger(url.searchParams.get('sinceVersion'), 'INVALID_PUBLIC_VERSION', 'sinceVersion必须是非负整数', 0);
     const limit = parseNonNegativeInteger(url.searchParams.get('limit'), 'INVALID_CHANGE_LIMIT', 'limit必须位于1至100', 100);
@@ -308,7 +322,7 @@ export async function handlePreviewPublicChangesRequest(context, dependencies = 
       changes: selected.map(projectPreviewPublicEvent),
       nextVersion,
       hasMore: events.some(event => event.version > nextVersion),
-      ...readFlags(),
+      ...readFlags(config),
     }, { head });
   } catch (error) {
     return failure(READ_SERVICE_ID, error, { head });
