@@ -12,6 +12,7 @@ import {
 } from '../src/server/admin_rollback_v1.js';
 import {
   approvalIndexKey,
+  buildPublicSnapshot,
   publicEventKey,
 } from '../src/server/auto_approval_engine_v1.js';
 import { canonicalize } from '../src/server/submission_policy_v1.js';
@@ -184,7 +185,7 @@ function count(store, prefix) {
   return [...store.values.keys()].filter(key => key.startsWith(prefix)).length;
 }
 
-test('Stage5E concurrent identical claims converge to one immutable rollback chain', async () => {
+test('Stage5E concurrent identical claims converge to one effective immutable rollback chain', async () => {
   const store = new MemoryBlobStore();
   const config = readAdminRollbackConfig(ENV);
   await seed(store);
@@ -198,7 +199,10 @@ test('Stage5E concurrent identical claims converge to one immutable rollback cha
 
   assert.deepEqual(results.map(item => item.publicVersion), [3, 3]);
   assert.deepEqual(results.map(item => item.eventVersion), [3, 3]);
-  assert.equal(count(store, `public/${LIBRARY_ID}/events/`), 3);
+  const snapshot = await buildPublicSnapshot({ store, groupId: GROUP_ID, libraryId: LIBRARY_ID, now: NOW + 6000 });
+  assert.equal(snapshot.publicVersion, 3);
+  assert.equal(snapshot.records.length, 1);
+  assert.equal(snapshot.records[0].payload.unitPrice, 100);
   assert.equal(count(store, `rollbacks/${LIBRARY_ID}/requests/`), 1);
   assert.equal(count(store, `rollbacks/${LIBRARY_ID}/decisions/`), 1);
   assert.equal(count(store, `rollbacks/${LIBRARY_ID}/completions/`), 1);
