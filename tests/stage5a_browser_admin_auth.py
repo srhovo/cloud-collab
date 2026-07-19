@@ -85,7 +85,20 @@ with sync_playwright() as playwright:
     context = browser.new_context(viewport={'width': 430, 'height': 932})
     page = context.new_page()
     console_errors = []
-    page.on('console', lambda message: console_errors.append(message.text) if message.type == 'error' else None)
+    expected_unauthorized_console = []
+
+    def capture_console(message):
+        if message.type != 'error':
+            return
+        if (
+            message.text.startswith('Failed to load resource:')
+            and '401 (Unauthorized)' in message.text
+        ):
+            expected_unauthorized_console.append(message.text)
+            return
+        console_errors.append(message.text)
+
+    page.on('console', capture_console)
     page.route('https://admin-preview.test/**', route_handler)
     page.goto('https://admin-preview.test/admin-preview.html', wait_until='domcontentloaded')
     expect(page.locator('#status')).to_contain_text('没有有效管理员会话', timeout=10_000)
@@ -112,6 +125,7 @@ with sync_playwright() as playwright:
     assert all(PASSWORD not in value for value in local_values)
     assert all(item['path'].startswith('/api/admin/auth/') or item['path'] == '/admin-preview.html' for item in requests)
     assert not any('/api/submissions' in item['path'] or '/api/preview' in item['path'] for item in requests)
+    assert len(expected_unauthorized_console) == 1, expected_unauthorized_console
     assert not console_errors, console_errors
     context.close()
     browser.close()
