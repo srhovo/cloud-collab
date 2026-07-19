@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <title>阶段5A管理员登录预览</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;color-scheme:light;--blue:#0969da;--green:#1a7f37;--red:#cf222e;--amber:#9a6700;--border:#d0d7de;--muted:#57606a}
+    *{box-sizing:border-box}body{margin:0;background:#f6f8fa;color:#1f2328}main{width:min(620px,calc(100% - 24px));margin:28px auto}.card{padding:20px;border:1px solid var(--border);border-radius:14px;background:#fff;box-shadow:0 8px 24px rgba(31,35,40,.08)}
+    h1{margin:0 0 8px;font-size:24px}p{line-height:1.65}.banner{margin:14px 0;padding:12px 14px;border-left:4px solid var(--amber);border-radius:8px;background:#fff8c5}.muted{color:var(--muted);font-size:14px}
+    label{display:block;margin:15px 0 6px;font-weight:750}input{width:100%;min-height:46px;padding:10px 12px;border:1px solid #8c959f;border-radius:8px;background:#fff;font-size:16px}.actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:16px}
+    button{min-height:44px;border:0;border-radius:8px;padding:10px 15px;background:var(--blue);color:#fff;font:750 16px system-ui;cursor:pointer}button.secondary{background:#57606a}button.danger{background:var(--red)}button:disabled{opacity:.45;cursor:not-allowed}
+    .status{min-height:26px;margin-top:15px;padding:12px;border:1px solid var(--border);border-radius:9px;background:#f6f8fa;font-weight:700;white-space:pre-wrap}.ok{color:var(--green)}.error{color:var(--red)}.session{margin-top:15px;padding:13px;border:1px solid var(--border);border-radius:9px}.session strong{display:block;margin-top:5px;word-break:break-word}
+    @media(max-width:560px){main{margin-top:14px}.card{padding:16px}.actions button{flex:1 1 145px}}
+  </style>
+</head>
+<body>
+<main><section class="card">
+  <h1>阶段5A：管理员登录安全底座</h1>
+  <p class="muted">独立管理员预览入口 · 普通码单器不会链接或加载本页</p>
+  <div class="banner"><strong>当前只验证身份边界。</strong>审核队列、批准、拒绝、可信设备、封禁、回滚、导出及公共数据修改全部关闭。</div>
+
+  <label for="username">管理员用户名</label>
+  <input id="username" type="text" maxlength="128" autocomplete="username" autocapitalize="none" spellcheck="false">
+  <label for="password">管理员密码</label>
+  <input id="password" type="password" maxlength="256" autocomplete="current-password" spellcheck="false">
+  <div class="actions">
+    <button id="loginBtn" type="button">同源安全登录</button>
+    <button id="sessionBtn" class="secondary" type="button">检查当前会话</button>
+    <button id="logoutBtn" class="danger" type="button">退出并清除会话</button>
+  </div>
+  <div id="status" class="status" aria-live="polite">正在检查会话……</div>
+  <div id="sessionBox" class="session" hidden>
+    <span class="muted">已验证管理员</span>
+    <strong id="identity">—</strong>
+    <span class="muted" id="expiry">—</span>
+  </div>
+  <p class="muted">密码输入在请求发出前立即从输入框清空。会话仅通过服务器设置的 HttpOnly、Secure、SameSite=Strict Cookie 保存；本页不使用 LocalStorage、SessionStorage 或 IndexedDB。</p>
+</section></main>
+<script>
+(() => {
+  'use strict';
+  const els = Object.fromEntries(['username','password','loginBtn','sessionBtn','logoutBtn','status','sessionBox','identity','expiry'].map(id => [id, document.getElementById(id)]));
+  let busy = false;
+
+  function setBusy(value) {
+    busy = value;
+    for (const button of [els.loginBtn, els.sessionBtn, els.logoutBtn]) button.disabled = value;
+  }
+
+  function setStatus(message, kind = '') {
+    els.status.textContent = message;
+    els.status.className = `status ${kind}`.trim();
+  }
+
+  function clearIdentity() {
+    els.sessionBox.hidden = true;
+    els.identity.textContent = '—';
+    els.expiry.textContent = '—';
+  }
+
+  function showIdentity(data) {
+    const capabilities = data?.capabilities || {};
+    const allClosed = ['reviewQueueRead','reviewMutation','deviceMutation','rollback','export','publicMutationAllowed']
+      .every(name => capabilities[name] === false);
+    if (!data?.authenticated || !allClosed) throw new Error('服务器未保持阶段5A权限全关闭。');
+    els.identity.textContent = `${data.username} · 会话…${data.sessionIdSuffix}`;
+    els.expiry.textContent = `到期：${new Date(data.expiresAt).toLocaleString()}`;
+    els.sessionBox.hidden = false;
+  }
+
+  async function api(path, init = {}) {
+    const response = await fetch(path, {
+      credentials: 'same-origin',
+      cache: 'no-store',
+      redirect: 'error',
+      referrerPolicy: 'no-referrer',
+      ...init,
+      headers: init.body ? { 'Content-Type': 'application/json' } : undefined,
+    });
+    if (response.status === 204) return null;
+    let payload = null;
+    try { payload = await response.json(); } catch (_) {}
+    if (!response.ok || !payload?.ok) {
+      const error = new Error(payload?.error?.message || `管理员接口请求失败（HTTP ${response.status}）`);
+      error.code = payload?.error?.code || `HTTP_${response.status}`;
+      throw error;
+    }
+    return payload.data;
+  }
+
+  async function checkSession({ quiet = false } = {}) {
+    if (busy) return;
+    setBusy(true);
+    if (!quiet) setStatus('正在检查HttpOnly会话……');
+    try {
+      const data = await api('/api/admin/auth/session');
+      showIdentity(data);
+      setStatus('管理员会话有效；阶段5A业务权限仍全部关闭。', 'ok');
+    } catch (error) {
+      clearIdentity();
+      const expected = ['ADMIN_SESSION_MISSING','ADMIN_SESSION_INVALID','ADMIN_SESSION_EXPIRED','ADMIN_PREVIEW_DISABLED'].includes(error?.code);
+      setStatus(expected ? '当前没有有效管理员会话。' : (error?.message || '会话检查失败。'), expected ? '' : 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  els.loginBtn.addEventListener('click', async () => {
+    if (busy) return;
+    const username = String(els.username.value || '').trim();
+    let password = String(els.password.value || '');
+    if (!username || !password) { setStatus('请输入管理员用户名和密码。', 'error'); return; }
+    let body = JSON.stringify({ schemaVersion: 1, username, password });
+    password = '';
+    els.password.value = '';
+    setBusy(true);
+    setStatus('正在同源验证；密码输入框已清空……');
+    try {
+      const data = await api('/api/admin/auth/login', { method: 'POST', body });
+      body = '';
+      showIdentity(data);
+      setStatus('登录成功；短时HttpOnly会话已建立，业务权限仍全部关闭。', 'ok');
+    } catch (error) {
+      body = '';
+      clearIdentity();
+      setStatus(error?.message || '登录失败。', 'error');
+    } finally {
+      setBusy(false);
+    }
+  });
+
+  els.sessionBtn.addEventListener('click', () => checkSession());
+  els.logoutBtn.addEventListener('click', async () => {
+    if (busy) return;
+    setBusy(true);
+    setStatus('正在清除管理员会话……');
+    try {
+      await api('/api/admin/auth/logout', { method: 'POST' });
+      clearIdentity();
+      els.password.value = '';
+      setStatus('已退出；管理员会话Cookie已清除。', 'ok');
+    } catch (error) {
+      setStatus(error?.message || '退出失败。', 'error');
+    } finally {
+      setBusy(false);
+    }
+  });
+
+  window.addEventListener('pagehide', () => { els.password.value = ''; });
+  checkSession({ quiet: true });
+})();
+</script>
+</body>
+</html>
