@@ -39,3 +39,7 @@ jobs:
         run: python3 tests/stage5e_browser_admin_rollback.py
       - name: Stage5F administrator export browser regression
         run: python3 tests/stage5f_browser_admin_export.py
+      - name: Stage5DEF joint administrator acceptance browser regression
+        run: python3 tests/stage5def_browser_joint_acceptance.py
+      - name: Stage5DEF dual-Blob cleanup browser regression
+        run: python3 tests/stage5def_browser_cleanup.py
