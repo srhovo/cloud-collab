@@ -234,11 +234,12 @@
         }),
       });
       const result = payload.data.result;
-      setStatus(els.mutationStatus, `${label}完成：可信=${result.trusted}，封禁=${result.blocked}，治理版本=${result.governanceVersion}。`, 'ok');
       await refresh();
+      setStatus(els.mutationStatus, `${label}完成：可信=${result.trusted}，封禁=${result.blocked}，治理版本=${result.governanceVersion}。`, 'ok');
     } catch (error) {
-      setStatus(els.mutationStatus, errorText(error), 'error');
+      const message = errorText(error);
       await openDetail(state.selectedRef);
+      setStatus(els.mutationStatus, message, 'error');
     } finally {
       state.busy = false;
     }
