@@ -184,7 +184,7 @@
           schemaVersion: 1,
           rollbackRef: item.rollbackRef,
           requestId: randomRequestId(),
-          reasonCode: 'restore_previous_approved_value',
+          confirmation: 'ROLLBACK_TO_PREVIOUS_APPROVED_VALUE',
         }),
       });
       const result = payload.data.result;
