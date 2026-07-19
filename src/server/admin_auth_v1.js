@@ -360,12 +360,36 @@ export function assertAdminSameOriginRequest(request, { requireOrigin = false, p
     configuredUrl = null;
   }
   const configuredProjectKey = edgeOneDeploymentProjectKey(configuredUrl);
-  const requestProjectKey = edgeOneDeploymentProjectKey(url);
-  const rotatingEdgeOneHostMatches = Boolean(
-    configuredProjectKey && requestProjectKey && configuredProjectKey === requestProjectKey,
-  );
+  const origin = String(request?.headers?.get?.('origin') || '');
+  if (configuredProjectKey) {
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      throw new AdminAuthError('ADMIN_HTTPS_REQUIRED', '管理员接口只允许HTTPS', 403);
+    }
+    if (requireOrigin && !origin) {
+      throw new AdminAuthError('ADMIN_REQUEST_ORIGIN_INVALID', '管理员请求必须同源', 403);
+    }
+    if (origin) {
+      let originUrl;
+      try {
+        originUrl = new URL(origin);
+      } catch (_) {
+        originUrl = null;
+      }
+      if (!originUrl
+          || originUrl.protocol !== 'https:'
+          || originUrl.origin !== origin
+          || edgeOneDeploymentProjectKey(originUrl) !== configuredProjectKey) {
+        throw new AdminAuthError('ADMIN_REQUEST_ORIGIN_INVALID', '管理员请求必须同源', 403);
+      }
+    }
+    const fetchSite = String(request?.headers?.get?.('sec-fetch-site') || '').toLowerCase();
+    if (fetchSite && fetchSite !== 'same-origin') {
+      throw new AdminAuthError('ADMIN_REQUEST_ORIGIN_INVALID', '管理员请求必须同源', 403);
+    }
+    return true;
+  }
   const hostMatches = Boolean(configuredUrl && (
-    url.host === configuredUrl.host || rotatingEdgeOneHostMatches
+    url.host === configuredUrl.host
   ));
   const expectedOrigin = hostMatches ? `https://${url.host}` : '';
   const directProtocolIsSecure = url.protocol === 'https:' && hostMatches;
@@ -373,7 +397,6 @@ export function assertAdminSameOriginRequest(request, { requireOrigin = false, p
   if (!directProtocolIsSecure && !configuredProxyOrigin) {
     throw new AdminAuthError('ADMIN_HTTPS_REQUIRED', '管理员接口只允许HTTPS', 403);
   }
-  const origin = String(request?.headers?.get?.('origin') || '');
   if ((requireOrigin && !origin) || (origin && origin !== expectedOrigin)) {
     throw new AdminAuthError('ADMIN_REQUEST_ORIGIN_INVALID', '管理员请求必须同源', 403);
   }
