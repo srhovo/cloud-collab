@@ -1,5 +1,5 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { assertAdminSameOriginRequest } from './admin_auth_v1.js';
+import { assertAdminSameOriginRequest, readAdminPublicOrigin } from './admin_auth_v1.js';
 
 export const STAGE5BC_CLEANUP_SCHEMA_VERSION = 1;
 export const STAGE5BC_PUBLIC_STORE = 'cloud-collab-preview-v1';
@@ -119,16 +119,22 @@ export function readStage5bcCleanupConfig(env = {}) {
     throw new Stage5bcCleanupError('STAGE5BC_CLEANUP_KEY_REUSED', '清理密钥不得复用任何预览或管理员凭据', 503);
   }
 
+  const publicOrigin = readAdminPublicOrigin(env);
+
   return Object.freeze({
     schemaVersion: STAGE5BC_CLEANUP_SCHEMA_VERSION,
     cleanupKey,
+    publicOrigin,
     publicStoreName: STAGE5BC_PUBLIC_STORE,
     adminStoreName: STAGE5BC_ADMIN_STORE,
   });
 }
 
 export function assertStage5bcCleanupAccess(request, config) {
-  assertAdminSameOriginRequest(request, { requireOrigin: true });
+  assertAdminSameOriginRequest(request, {
+    requireOrigin: true,
+    publicOrigin: config?.publicOrigin,
+  });
   const supplied = String(request?.headers?.get?.('x-cloud-stage5bc-cleanup-key') || '');
   if (secretBytes(supplied) < 32 || secretBytes(supplied) > 256 || !safeEqual(config?.cleanupKey, supplied)) {
     throw new Stage5bcCleanupError('STAGE5BC_CLEANUP_ACCESS_DENIED', '联合验收清理访问被拒绝', 403);

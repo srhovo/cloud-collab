@@ -122,7 +122,10 @@ async function readJsonBody(request) {
 function authenticateAndConfigure(context, dependencies) {
   const env = context?.env || {};
   const authConfig = readAdminAuthConfig(env);
-  assertAdminSameOriginRequest(context.request, { requireOrigin: true });
+  assertAdminSameOriginRequest(context.request, {
+    requireOrigin: true,
+    publicOrigin: authConfig.publicOrigin,
+  });
   const token = readAdminSessionCookie(context.request);
   const identity = verifyAdminSessionToken(token, authConfig, {
     now: dependencies.now?.() ?? Date.now(),

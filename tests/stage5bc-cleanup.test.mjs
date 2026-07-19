@@ -24,6 +24,7 @@ const ENV = Object.freeze({
   CLOUD_WRITE_ALLOWED_LIBRARY_ID: 'lib_receive_fixture',
   CLOUD_BLOB_STORE_NAME: 'cloud-collab-preview-v1',
   CLOUD_ADMIN_PREVIEW_ENABLED: '0',
+  CLOUD_ADMIN_PUBLIC_ORIGIN: 'https://cloud-collab-stage5bc-test-dpxqrhy0935t.edgeone.cool',
   CLOUD_ADMIN_PASSWORD: 'retired-admin-password-123456',
   CLOUD_ADMIN_SESSION_SECRET: 'retired-admin-session-secret-01234567',
   CLOUD_ADMIN_RATE_LIMIT_SALT: 'retired-admin-rate-salt-01234567890',
@@ -76,8 +77,8 @@ function adminKeys() {
   return [`admin-preview-rate/login/${H}/123.json`];
 }
 
-function cleanupRequest(body, { key = CLEANUP_KEY, origin = 'https://stage5bc.test' } = {}) {
-  return new Request('https://stage5bc.test/api/stage5bc/cleanup', {
+function cleanupRequest(body, { key = CLEANUP_KEY, origin = ENV.CLOUD_ADMIN_PUBLIC_ORIGIN } = {}) {
+  return new Request('http://edgeone-cloud-function.internal/api/stage5bc/cleanup', {
     method: 'POST',
     headers: {
       Origin: origin,
