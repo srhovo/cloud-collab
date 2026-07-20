@@ -65,5 +65,6 @@ jobs:
             .pages-artifact/
             .edgeone-artifact/
             dist/stage7h-release-rehearsal.json
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 30
