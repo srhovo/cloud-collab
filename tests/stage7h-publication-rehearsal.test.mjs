@@ -17,6 +17,9 @@ import { auditStage7HRepository } from '../scripts/stage7h-release-rehearsal-v1.
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const COMMIT = 'a'.repeat(40);
+const VERSION = '8.2.31';
+const SHA256 = '79c443e16d2560c43921dad51bfdc0152c440254d450f57b96326fdd27b2ccea';
+const BYTES = 1155499;
 const FIXTURE_FILES = [
   'package.json',
   '.env.example',
@@ -24,11 +27,11 @@ const FIXTURE_FILES = [
   'dist/index.html',
   'dist/build-manifest.json',
   'release/release-closure-ledger-v1.json',
-  'release/最终发布清单_8.2.30.json',
+  'release/最终发布清单_8.2.31.json',
 ];
 
 function fixture() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'stage7h-publication-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'stage7j-publication-'));
   for (const relativePath of FIXTURE_FILES) {
     const source = path.join(ROOT, relativePath);
     const target = path.join(root, relativePath);
@@ -49,9 +52,14 @@ function artifactFixture(channel = 'edgeone-primary') {
   return { root, result, assets };
 }
 
-function responseHeaders(filename, { edgeHeaders = true, omit = null } = {}) {
+function responseHeaders(filename, { edgeHeaders = true, omit = null, jsonCharset = true } = {}) {
   const headers = new Headers();
-  headers.set('Content-Type', filename.endsWith('.html') ? 'text/html; charset=utf-8' : 'application/json; charset=utf-8');
+  headers.set(
+    'Content-Type',
+    filename.endsWith('.html')
+      ? 'text/html; charset=utf-8'
+      : jsonCharset ? 'application/json; charset=utf-8' : 'application/json',
+  );
   if (edgeHeaders) {
     const values = new Map([
       ['Cache-Control', 'no-cache, max-age=0, must-revalidate'],
@@ -66,34 +74,36 @@ function responseHeaders(filename, { edgeHeaders = true, omit = null } = {}) {
   return headers;
 }
 
-function fetchFixture(assets, { edgeHeaders = true, omit = null, exposeAdmin = false } = {}) {
+function fetchFixture(assets, options = {}) {
   return async value => {
     const url = new URL(value);
     if (url.pathname.endsWith('/admin-sensitive-reviews-preview.html')) {
-      return exposeAdmin
-        ? new Response('<title>admin</title>', { status: 200, headers: responseHeaders('admin.html', { edgeHeaders, omit }) })
+      return options.exposeAdmin
+        ? new Response('<title>admin</title>', { status: 200, headers: responseHeaders('admin.html', options) })
         : new Response('not found', { status: 404, headers: { 'Content-Type': 'text/plain' } });
     }
     const body = assets.get(url.pathname);
     if (!body) return new Response('not found', { status: 404, headers: { 'Content-Type': 'text/plain' } });
     const filename = path.posix.basename(url.pathname);
-    return new Response(body, { status: 200, headers: responseHeaders(filename, { edgeHeaders, omit }) });
+    return new Response(body, { status: 200, headers: responseHeaders(filename, options) });
   };
 }
 
-test('阶段7H仓库审计确认双入口预演已准备且未部署', () => {
+test('阶段7J仓库审计确认8.2.31双入口预演已准备且未部署', () => {
   const report = auditStage7HRepository({ root: ROOT });
   assert.equal(report.status, 'rehearsal_ready_not_deployed');
-  assert.equal(report.candidate.version, '8.2.30');
-  assert.equal(report.candidate.sha256, '82bef41a655cd8528a138f7f2d7f7630b10bc391a95738704905c1e0647be89f');
+  assert.equal(report.candidate.version, VERSION);
+  assert.equal(report.candidate.sha256, SHA256);
+  assert.equal(report.candidate.bytes, BYTES);
   assert.deepEqual(report.publicArtifactAllowlist, PUBLIC_CANDIDATE_FILES);
   assert.equal(report.checks.pagesManualDispatchOnly, true);
   assert.equal(report.checks.rehearsalWorkflowDoesNotDeploy, true);
+  assert.equal(report.checks.publicJsonUtf8CharsetConfigured, true);
   assert.equal(report.boundaries.deploymentPerformed, false);
   assert.equal(report.boundaries.stablePromotionPerformed, false);
 });
 
-test('公开候选生成器只输出三个文件并绑定阶段7G冻结摘要', () => {
+test('公开候选生成器只输出三个文件并绑定阶段7J冻结摘要', () => {
   const root = fixture();
   try {
     const result = preparePublicCandidate({
@@ -103,9 +113,9 @@ test('公开候选生成器只输出三个文件并绑定阶段7G冻结摘要', 
       channel: 'github-pages-backup',
     });
     assert.deepEqual(result.files, [...PUBLIC_CANDIDATE_FILES].sort());
-    assert.equal(result.release.candidate.version, '8.2.30');
-    assert.equal(result.release.candidate.sha256, '82bef41a655cd8528a138f7f2d7f7630b10bc391a95738704905c1e0647be89f');
-    assert.equal(result.release.candidate.bytes, 1154030);
+    assert.equal(result.release.candidate.version, VERSION);
+    assert.equal(result.release.candidate.sha256, SHA256);
+    assert.equal(result.release.candidate.bytes, BYTES);
     assert.equal(result.release.stable.promotionAuthorized, false);
     assert.equal(result.release.stable.promotionPerformed, false);
     assert.equal(result.release.productionWriteEnablementIncluded, false);
@@ -118,7 +128,7 @@ test('公开候选生成器只输出三个文件并绑定阶段7G冻结摘要', 
 test('冻结候选摘要被修改时公开产物失败关闭', () => {
   const root = fixture();
   try {
-    const manifestPath = path.join(root, 'release', '最终发布清单_8.2.30.json');
+    const manifestPath = path.join(root, 'release', '最终发布清单_8.2.31.json');
     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
     manifest.candidate.sha256 = '0'.repeat(64);
     fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
@@ -162,7 +172,7 @@ test('EdgeOne候选入口验证提交、摘要、响应头和公开范围', asyn
       retryDelayMs: 0,
     });
     assert.equal(result.status, 'verified_candidate_preview_not_stable');
-    assert.equal(result.candidateVersion, '8.2.30');
+    assert.equal(result.candidateVersion, VERSION);
     assert.equal(result.stablePromotionPerformed, false);
   } finally {
     fs.rmSync(data.root, { recursive: true, force: true });
@@ -201,6 +211,27 @@ test('EdgeOne缺少安全响应头时线上验证失败关闭', async () => {
       error => error instanceof PublicDeploymentVerificationError
         && error.code === 'PUBLIC_DEPLOYMENT_VERIFY_FAILED'
         && error.details.causeCode === 'PUBLIC_DEPLOYMENT_SECURITY_HEADER_INVALID',
+    );
+  } finally {
+    fs.rmSync(data.root, { recursive: true, force: true });
+  }
+});
+
+test('EdgeOne公开JSON缺少UTF-8字符集时线上验证失败关闭', async () => {
+  const data = artifactFixture('edgeone-primary');
+  try {
+    await assert.rejects(
+      verifyPublicDeployment({
+        url: 'https://edgeone.test/candidate/',
+        expectedCommitSha: COMMIT,
+        expectedChannel: 'edgeone-primary',
+        fetchImpl: fetchFixture(data.assets, { jsonCharset: false }),
+        attempts: 1,
+        retryDelayMs: 0,
+      }),
+      error => error instanceof PublicDeploymentVerificationError
+        && error.code === 'PUBLIC_DEPLOYMENT_VERIFY_FAILED'
+        && error.details.causeCode === 'PUBLIC_DEPLOYMENT_CONTENT_TYPE_INVALID',
     );
   } finally {
     fs.rmSync(data.root, { recursive: true, force: true });
