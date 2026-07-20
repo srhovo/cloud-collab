@@ -17,10 +17,11 @@ const appVersionReplacement = "const APP_VERSION = '8.2.30';";
 const titleCount = html.split(stageTitle).length - 1;
 if (titleCount !== 1) throw new Error(`阶段6B兼容壳标题锚点数量无效：${titleCount}`);
 const versionCount = html.split(appVersionAnchor).length - 1;
-if (versionCount !== 1) throw new Error(`候选APP_VERSION锚点数量无效：${versionCount}`);
+if (versionCount < 1) throw new Error(`候选APP_VERSION锚点数量无效：${versionCount}`);
 html = html
   .replace(stageTitle, candidateTitle)
-  .replace(appVersionAnchor, appVersionReplacement);
+  .split(appVersionAnchor).join(appVersionReplacement);
+if (html.includes(appVersionAnchor)) throw new Error('候选构建仍残留8.2.28 APP_VERSION锚点');
 fs.writeFileSync(outputPath, html, 'utf8');
 
 let adminPage = fs.readFileSync(adminPagePath, 'utf8');
@@ -36,6 +37,7 @@ const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 manifest.version = '8.2.30';
 manifest.compatibleShellRetained = true;
 manifest.candidateVersionApproved = true;
+manifest.candidateAppVersionReplacementCount = versionCount;
 manifest.stablePromotionPerformed = false;
 manifest.adminFrameAncestorsHeaderOnly = true;
 manifest.sha256 = crypto.createHash('sha256').update(Buffer.from(html)).digest('hex');
