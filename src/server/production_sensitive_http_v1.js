@@ -1,4 +1,3 @@
-import { SENSITIVE_SUBMISSION_MAX_BYTES } from './sensitive_submission_http_v1.js';
 import { createEdgeOneNamedBlobStore } from './edgeone_blob_runtime_v1.js';
 import {
   ProductionSensitiveRuntimeError,
@@ -10,6 +9,7 @@ import { assertProductionRequestAccess } from './production_write_runtime_v1.js'
 
 const SERVICE_ID = 'cloud-collab-production-sensitive';
 const API_VERSION = '2026-07-21-stage7s';
+const SENSITIVE_SUBMISSION_MAX_BYTES = 24 * 1024;
 
 function requestMethod(request) {
   return String(request?.method || 'GET').toUpperCase();
