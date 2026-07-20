@@ -1,0 +1,73 @@
+name: Deploy verified static backup to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+environment:
+  name: github-pages
+  url: ${{ steps.deployment.outputs.page_url }}
+
+concurrency:
+  group: github-pages-static-backup
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact main commit
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Run complete automated gate
+        run: npm run ci
+
+      - name: Prepare frozen three-file static backup
+        run: npm run public:prepare -- --channel github-pages-backup --output .pages-artifact --commit "$GITHUB_SHA"
+
+      - name: Prove backup remains local-mode only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(find .pages-artifact -maxdepth 1 -type f -printf '%f\n' | sort | tr '\n' ' ')" = "build-manifest.json index.html pages-release.json "
+          node - <<'NODE'
+          const fs = require('fs');
+          const release = JSON.parse(fs.readFileSync('.pages-artifact/pages-release.json', 'utf8'));
+          const manifest = JSON.parse(fs.readFileSync('.pages-artifact/build-manifest.json', 'utf8'));
+          if (release.candidate?.version !== '8.2.31') throw new Error('candidate version mismatch');
+          if (release.stable?.promotionAuthorized !== false || release.stable?.promotionPerformed !== false) throw new Error('stable promotion boundary changed');
+          if (release.productionWriteEnablementIncluded !== false) throw new Error('production write leaked into static backup');
+          if (manifest.formalPublicWritesEnabled !== false || manifest.publicMutationAllowed !== false) throw new Error('static backup is not local-mode only');
+          NODE
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload minimal backup artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: ./.pages-artifact
+
+      - name: Deploy static backup
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Verify deployed commit, title, hash and public scope
+        env:
+          DEPLOYMENT_URL: ${{ steps.deployment.outputs.page_url }}
+        run: npm run public:verify -- --url "$DEPLOYMENT_URL" --expected-commit "$GITHUB_SHA" --expected-channel github-pages-backup
