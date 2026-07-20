@@ -12,7 +12,8 @@
   "scripts": {
     "build": "node scripts/build-stage6b-compatible.mjs",
     "test": "node --test tests/*.test.mjs",
-    "validate": "node scripts/build-stage6b-compatible.mjs && node scripts/validate-compatible-active.mjs && node scripts/validate-stage5f.mjs && node scripts/validate-stage5g-compatible-active.mjs && node scripts/validate-stage6a.mjs && node scripts/validate-stage6a-acceptance.mjs && node scripts/validate-stage6b.mjs",
+    "release:audit": "node scripts/release-readiness-audit-v1.mjs",
+    "validate": "node scripts/build-stage6b-compatible.mjs && node scripts/validate-compatible-active.mjs && node scripts/validate-stage5f.mjs && node scripts/validate-stage5g-compatible-active.mjs && node scripts/validate-stage6a.mjs && node scripts/validate-stage6a-acceptance.mjs && node scripts/validate-stage6b.mjs && npm run release:audit",
     "ci": "npm run build && npm test && npm run validate"
   }
 }
