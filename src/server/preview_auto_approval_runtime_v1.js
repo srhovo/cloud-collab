@@ -23,6 +23,11 @@ import {
   acceptPreviewOrdinarySubmission,
   readOrdinaryTypesRuntimeConfig,
 } from './ordinary_types_preview_runtime_v1.js';
+import { readAdminSensitiveReviewConfig } from './admin_sensitive_review_v1.js';
+import {
+  buildUnifiedSensitivePublicSnapshot,
+  listUnifiedPublicEvents,
+} from './sensitive_public_engine_v1.js';
 
 export const PREVIEW_AUTO_APPROVAL_CONFIG_VERSION = 1;
 
@@ -45,6 +50,10 @@ function ordinaryTypesGateEnabled(env = {}) {
   return String(env.CLOUD_ORDINARY_TYPES_PREVIEW_ENABLED || '').trim() === '1';
 }
 
+function sensitiveReviewGateEnabled(env = {}) {
+  return String(env.CLOUD_SENSITIVE_REVIEW_PREVIEW_ENABLED || '').trim() === '1';
+}
+
 export function readPreviewAutoApprovalConfig(env = {}) {
   const writeConfig = readPreviewWriteConfig(env);
   if (String(env.CLOUD_AUTO_APPROVAL_PREVIEW_ENABLED || '').trim() !== '1') {
@@ -56,11 +65,32 @@ export function readPreviewAutoApprovalConfig(env = {}) {
   }
   const ordinaryTypesEnabled = ordinaryTypesGateEnabled(env);
   if (ordinaryTypesEnabled) readOrdinaryTypesRuntimeConfig(env);
+  const sensitiveReviewEnabled = sensitiveReviewGateEnabled(env);
+  if (sensitiveReviewEnabled) {
+    const sensitive = readAdminSensitiveReviewConfig(env);
+    if (sensitive.storeName !== writeConfig.storeName
+        || sensitive.groupId !== writeConfig.allowedGroupId
+        || sensitive.libraryId !== writeConfig.allowedLibraryId) {
+      throw new PreviewAutoApprovalError(
+        'PREVIEW_SENSITIVE_SCOPE_MISMATCH',
+        '敏感公共读取必须与隔离预览使用同一合成作用域',
+        503,
+      );
+    }
+    if (!ordinaryTypesEnabled) {
+      throw new PreviewAutoApprovalError(
+        'PREVIEW_SENSITIVE_ORDINARY_BASE_REQUIRED',
+        '敏感公共读取必须同时启用阶段5G普通类型基线',
+        503,
+      );
+    }
+  }
   return Object.freeze({
     schemaVersion: PREVIEW_AUTO_APPROVAL_CONFIG_VERSION,
     ...writeConfig,
     previewAutoApprovalEnabled: true,
     ...(ordinaryTypesEnabled ? { ordinaryTypesEnabled: true } : {}),
+    ...(sensitiveReviewEnabled ? { sensitiveReviewEnabled: true } : {}),
   });
 }
 
@@ -189,6 +219,9 @@ export async function readPreviewPublicSnapshot({
 } = {}) {
   const config = readPreviewAutoApprovalConfig(env);
   const scope = assertPreviewAutoApprovalScope(groupId, libraryId, config);
+  if (config.sensitiveReviewEnabled) {
+    return buildUnifiedSensitivePublicSnapshot({ store, ...scope, now });
+  }
   return config.ordinaryTypesEnabled
     ? buildOrdinaryPublicSnapshot({ store, ...scope, now })
     : buildPublicSnapshot({ store, ...scope, now });
@@ -202,9 +235,11 @@ export async function readPreviewPublicEvents({
 } = {}) {
   const config = readPreviewAutoApprovalConfig(env);
   const scope = assertPreviewAutoApprovalScope(groupId, libraryId, config);
-  const events = config.ordinaryTypesEnabled
-    ? await listValidOrdinaryPublicEvents({ store, libraryId: scope.libraryId })
-    : await listValidPublicEvents({ store, libraryId: scope.libraryId });
+  const events = config.sensitiveReviewEnabled
+    ? await listUnifiedPublicEvents({ store, ...scope })
+    : (config.ordinaryTypesEnabled
+      ? await listValidOrdinaryPublicEvents({ store, libraryId: scope.libraryId })
+      : await listValidPublicEvents({ store, libraryId: scope.libraryId }));
   for (const event of events) {
     if (event.groupId !== scope.groupId || event.libraryId !== scope.libraryId) {
       throw new PreviewAutoApprovalError(
@@ -227,5 +262,6 @@ export function projectPreviewPublicEvent(event) {
     dataType: event.dataType,
     operation: event.operation,
     payload: event.payload,
+    ...(event.bossId ? { bossId: event.bossId } : {}),
   });
 }
