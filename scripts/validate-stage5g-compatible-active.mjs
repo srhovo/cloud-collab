@@ -10,8 +10,8 @@ const pattern = /check\('Stage5G package builds and validates the active generat
 const match = original.match(pattern);
 if (!match) throw new Error('阶段5G活动构建验证锚点已变化');
 const replacement = `check('Stage5G package builds and validates the active generated candidate',
-  ['node scripts/build-stage5g.mjs','node scripts/build-stage6b.mjs','node scripts/build-stage6b-compatible.mjs','node scripts/build-stage6b-active.mjs'].includes(packageJson?.scripts?.build)
-  && String(packageJson?.scripts?.validate || '').includes('build-stage6b')
+  ['node scripts/build-stage5g.mjs','node scripts/build-stage6b.mjs','node scripts/build-stage6b-compatible.mjs','node scripts/build-stage6b-active.mjs','node scripts/build-stage7g-release-candidate.mjs'].includes(packageJson?.scripts?.build)
+  && String(packageJson?.scripts?.validate || '').includes('build-stage7g-release-candidate.mjs')
   && String(packageJson?.scripts?.validate || '').includes('validate-stage5g'));
 check('Stage5G browser client recomputes ordinary hashes`;
 const adapted = original.replace(pattern, replacement);
