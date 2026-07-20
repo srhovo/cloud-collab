@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <title>阶段5G+6A+6B敏感验收恢复页</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;color-scheme:light;--blue:#0969da;--green:#1a7f37;--red:#cf222e;--border:#d0d7de;--muted:#57606a;--bg:#f6f8fa}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#1f2328}main{width:min(760px,calc(100% - 24px));margin:18px auto 48px}.card{margin-bottom:14px;padding:18px;border:1px solid var(--border);border-radius:14px;background:#fff;box-shadow:0 8px 24px rgba(31,35,40,.06)}h1,h2{margin:0 0 10px}.banner{padding:12px;border-left:4px solid var(--red);border-radius:8px;background:#ffebe9;line-height:1.55}.hint{color:var(--muted);line-height:1.55}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}label{display:block;margin:10px 0 6px;font-weight:750}input{width:100%;min-height:44px;border:1px solid #8c959f;border-radius:8px;padding:9px;font:16px system-ui}.actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:13px}button,a{display:inline-flex;align-items:center;justify-content:center;min-height:42px;border:0;border-radius:8px;padding:9px 14px;background:var(--blue);color:#fff;font:750 14px system-ui;text-decoration:none;cursor:pointer}button.secondary,a.secondary{background:#656d76}button:disabled{opacity:.45;cursor:not-allowed}.status{margin-top:12px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg);font-weight:650;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.55}.ok{color:var(--green)}.error{color:var(--red)}@media(max-width:680px){.grid{grid-template-columns:1fr}.actions button,.actions a{width:100%}}
+  </style>
+</head>
+<body>
+<main>
+  <section class="card">
+    <h1>敏感审核顺序恢复</h1>
+    <p class="banner"><strong>仅用于当前 [DO NOT MERGE] 合成验收。</strong>本页只补充两条新候选：加价规则编辑后批准探针、礼物规则拒绝探针。不会修改正式环境，也不会复用原步骤3的幂等键。</p>
+    <div class="grid">
+      <div><label for="acceptanceKey">一次性联合验收密钥</label><input id="acceptanceKey" type="password" autocomplete="off" spellcheck="false"></div>
+      <div><label for="previewKey">公共预览访问密钥</label><input id="previewKey" type="password" autocomplete="off" spellcheck="false"></div>
+    </div>
+    <div class="actions">
+      <button id="seedBtn" type="button">1. 恢复两台合成设备</button>
+      <button id="recoverBtn" type="button" disabled>2. 创建两条恢复候选（仅一次）</button>
+      <a id="adminLink" class="secondary" href="#" target="_blank" rel="noopener">打开敏感审核页</a>
+    </div>
+    <div id="status" class="status">尚未开始。</div>
+  </section>
+  <section class="card">
+    <h2>固定处理顺序</h2>
+    <p class="hint">加价候选的提交值是 round=7，请在管理员页把它编辑为 round=6 后批准；礼物候选的提交值是 unitPrice=68，请直接拒绝。拒绝不得增加公共版本。</p>
+  </section>
+</main>
+<script>
+(() => {
+  'use strict';
+  const GROUP='group_fixture', LIB='lib_receive_fixture';
+  const $=id=>document.getElementById(id);
+  const state={devices:null,completed:false};
+  const ids={surcharge:'sub_01JSTAGE5G6A6B000000000024',gift:'sub_01JSTAGE5G6A6B000000000025'};
+  function edgeUrl(path){const url=new URL(path,location.origin);const here=new URL(location.href);for(const key of ['eo_token','eo_time']){const value=here.searchParams.get(key);if(value)url.searchParams.set(key,value)}return url.toString()}
+  $('adminLink').href=edgeUrl('/admin-sensitive-reviews-preview.html');
+  function keys(){const acceptance=$('acceptanceKey').value;const preview=$('previewKey').value;if(acceptance.length<32||preview.length<32)throw new Error('请先填写两项至少32字符且互不相同的临时密钥');if(acceptance===preview)throw new Error('联合验收密钥与公共预览密钥不能相同');return{acceptance,preview}}
+  async function api(path,{method='GET',body=null,preview=true,deviceToken=''}={}){const k=keys();const headers={'X-Cloud-Stage5g6a6b-Acceptance-Key':k.acceptance};if(preview)headers['X-Cloud-Collab-Preview-Key']=k.preview;if(deviceToken){if(!/^dt_v1_[A-Za-z0-9_-]{43}$/.test(deviceToken))throw new Error('合成设备令牌无效，请重新恢复设备');headers.Authorization=`Bearer ${deviceToken}`}if(body!==null)headers['Content-Type']='application/json';const response=await fetch(edgeUrl(path),{method,headers,credentials:'include',cache:'no-store',...(body!==null?{body:JSON.stringify(body)}:{})});const text=await response.text();let payload=null;try{payload=text?JSON.parse(text):null}catch(_){throw new Error(`接口返回非JSON（HTTP ${response.status}）`)}if(!response.ok||!payload?.ok)throw new Error(`${payload?.error?.code||'HTTP_'+response.status}: ${payload?.error?.message||'请求失败'}`);return payload.data}
+  function canonical(value){if(value===null||typeof value==='string'||typeof value==='boolean')return JSON.stringify(value);if(typeof value==='number'){if(!Number.isFinite(value))throw new Error('无效数字');return JSON.stringify(value)}if(Array.isArray(value))return`[${value.map(canonical).join(',')}]`;if(!value||typeof value!=='object')throw new Error('不支持的规范值');return`{${Object.keys(value).sort().map(key=>`${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`}
+  async function digest(text){const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text));let binary='';for(const byte of new Uint8Array(bytes))binary+=String.fromCharCode(byte);return btoa(binary).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')}
+  async function prefixed(prefix,value){return`${prefix}${await digest(canonical(value))}`}
+  async function idempotency(deviceId,submissionId){return prefixed('ik_v1_',{schemaVersion:1,deviceId,submissionId})}
+  function base(device,submissionId,dataType,payload){return{schemaVersion:1,payloadSchemaVersion:1,submissionId,deviceId:device.deviceId,groupId:GROUP,libraryId:LIB,bossId:null,dataType,operation:'upsert',origin:'user',clientCreatedAt:Date.now(),businessKey:`bk_v1_${'A'.repeat(43)}`,contentHash:`ch_v1_${'A'.repeat(43)}`,idempotencyKey:`ik_v1_${'A'.repeat(43)}`,payload,clientContext:{appVersion:'8.2.28',projectionSpecVersion:1,queueSchemaVersion:1}}}
+  async function sensitiveSubmission(device,submissionId,dataType,payload){const item=base(device,submissionId,dataType,payload);const identity=dataType==='surcharge_rule'?{groupId:GROUP,libraryId:LIB,dataType,name:payload.name.toLocaleLowerCase('und'),keywords:[...payload.keywords].map(v=>v.toLocaleLowerCase('und')).sort()}:{groupId:GROUP,libraryId:LIB,dataType,serviceName:payload.serviceName.toLocaleLowerCase('und')};item.businessKey=await prefixed('bk_v1_',identity);item.contentHash=await prefixed('ch_v1_',{schemaVersion:1,payloadSchemaVersion:1,groupId:GROUP,libraryId:LIB,bossId:null,dataType,operation:'upsert',businessKey:null,payload});item.idempotencyKey=await idempotency(device.deviceId,submissionId);return item}
+  function show(text,kind=''){const node=$('status');node.className=`status ${kind}`;node.textContent=text}
+  $('seedBtn').onclick=async()=>{try{show('正在恢复合成设备……');const result=await api('/api/stage5g6a6b/acceptance/seed',{method:'POST',preview:false,body:{confirmation:'SEED_STAGE5G6A6B_SYNTHETIC_V1'}});state.devices=result.devices;$('recoverBtn').disabled=false;show(`设备已恢复：${result.devices.map(v=>v.slot+' / '+v.deviceId.slice(-6)).join('，')}\n幂等重放：${result.duplicate?'是':'首次创建'}\n令牌只保存在当前页面内存。`,'ok')}catch(error){show(error.message,'error')}};
+  $('recoverBtn').onclick=async()=>{try{if(state.completed)throw new Error('恢复候选已经创建，不要重复点击');if(!state.devices||state.devices.length!==2)throw new Error('请先恢复两台合成设备');const [a,b]=state.devices;show('正在创建加价编辑探针和礼物拒绝探针……');const surcharge=await sensitiveSubmission(b,ids.surcharge,'surcharge_rule',{name:'联合验收教学',keywords:['教学','教学单'],prices:{round:7,hour:20},enabled:true});const gift=await sensitiveSubmission(a,ids.gift,'gift_rule',{serviceName:'联合验收礼物',mode:'fixed',unitPrice:68});const r1=await api('/api/stage5g6a6b/acceptance/sensitive-submissions-create',{method:'POST',body:surcharge,deviceToken:b.deviceToken});const r2=await api('/api/stage5g6a6b/acceptance/sensitive-submissions-create',{method:'POST',body:gift,deviceToken:a.deviceToken});if([r1,r2].some(v=>v.decision!=='pending_review'||v.autoApprovalEnabled!==false))throw new Error('恢复候选没有稳定进入人工审核');state.completed=true;$('recoverBtn').disabled=true;show(`加价恢复候选：${r1.status} / ${r1.reason}\n礼物拒绝候选：${r2.status} / ${r2.reason}\n现在打开敏感审核页，按固定顺序处理。`,'ok')}catch(error){show(error.message,'error')}};
+  window.addEventListener('pagehide',()=>{state.devices=null;state.completed=false});
+})();
+</script>
+</body>
+</html>
