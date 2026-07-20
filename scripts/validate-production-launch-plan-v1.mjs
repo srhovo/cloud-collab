@@ -2,13 +2,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import {
+  assertProductionScopeMapping,
+  buildProductionScopeMapping,
+} from '../src/server/production_scope_mapping_v1.js';
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const planPath = path.join(root, 'release', 'production-launch-plan-v1.json');
 const templatePath = path.join(root, 'config', 'production.env.template');
 const outputPath = path.join(root, 'dist', 'production-launch-readiness-v1.json');
 
 function fail(message) {
-  throw new Error(`阶段7L生产准备校验失败：${message}`);
+  throw new Error(`阶段7M生产准备校验失败：${message}`);
 }
 
 function parseEnvTemplate(text) {
@@ -39,12 +44,19 @@ if (plan.candidate?.version !== '8.2.31') fail('候选版本必须为8.2.31');
 if (plan.candidate?.observationPeriod !== 'passed') fail('候选观察期尚未通过');
 if (plan.stableRelease?.targetVersion !== '8.3.0') fail('正式目标版本必须为8.3.0');
 if (plan.stableRelease?.promotionAuthorized !== false || plan.stableRelease?.promotionPerformed !== false) {
-  fail('阶段7L不得授权或执行稳定晋升');
+  fail('阶段7M不得授权或执行稳定晋升');
 }
-if (plan.scope?.groupId !== 'see' || plan.scope?.libraryId !== 'see_cz') fail('正式作用域与负责人决策不一致');
-if (!/^[a-z0-9][a-z0-9_]{2,47}$/u.test(plan.scope.groupId)) fail('groupId格式无效');
-if (!/^[a-z0-9][a-z0-9_]{2,55}$/u.test(plan.scope.libraryId)) fail('libraryId格式无效');
 if (plan.scope?.protocolField !== 'groupId' || plan.scope?.displayLabel !== 'club') fail('club显示层与groupId协议兼容关系无效');
+if (plan.scope?.mappingVersion !== 1 || plan.scope?.legacyPrefixedIdsRemainAccepted !== true) fail('作用域映射版本或兼容声明无效');
+if (plan.scope?.external?.clubId !== 'see' || plan.scope?.external?.libraryId !== 'see_cz') fail('用户可见作用域与负责人决策不一致');
+if (plan.scope?.protocol?.groupId !== 'group_see' || plan.scope?.protocol?.libraryId !== 'lib_see_cz') fail('协议作用域映射不一致');
+assertProductionScopeMapping({
+  schemaVersion: plan.scope.mappingVersion,
+  external: plan.scope.external,
+  protocol: plan.scope.protocol,
+});
+const expectedMapping = buildProductionScopeMapping({ clubId: 'see', libraryId: 'see_cz' });
+if (JSON.stringify(expectedMapping.protocol) !== JSON.stringify(plan.scope.protocol)) fail('协议作用域不是标准派生结果');
 
 for (const name of [
   'CLOUD_PRODUCTION_ENABLED',
@@ -57,8 +69,10 @@ for (const name of [
   'CLOUD_PRODUCTION_BOOTSTRAP_ENABLED',
 ]) assertFlag(env, name);
 
-if (env.get('CLOUD_PRODUCTION_GROUP_ID') !== 'see') fail('模板groupId不一致');
-if (env.get('CLOUD_PRODUCTION_LIBRARY_ID') !== 'see_cz') fail('模板libraryId不一致');
+if (env.get('CLOUD_PRODUCTION_EXTERNAL_CLUB_ID') !== plan.scope.external.clubId) fail('模板外部club ID不一致');
+if (env.get('CLOUD_PRODUCTION_EXTERNAL_LIBRARY_ID') !== plan.scope.external.libraryId) fail('模板外部library ID不一致');
+if (env.get('CLOUD_PRODUCTION_GROUP_ID') !== plan.scope.protocol.groupId) fail('模板协议groupId不一致');
+if (env.get('CLOUD_PRODUCTION_LIBRARY_ID') !== plan.scope.protocol.libraryId) fail('模板协议libraryId不一致');
 if (env.get('CLOUD_ADMIN_USERNAME') !== 'xiaxue') fail('管理员用户名不一致');
 if (env.get('CLOUD_PRODUCTION_BLOB_STORE_NAME') !== 'cloud-collab-production-v1') fail('生产Blob名称不一致');
 if (env.get('CLOUD_ADMIN_PRODUCTION_BLOB_STORE_NAME') !== 'cloud-collab-admin-production-v1') fail('管理员Blob名称不一致');
@@ -87,9 +101,12 @@ const authorized = plan.capabilityAuthorization || {};
 for (const name of ['readSync', 'ordinarySubmission', 'sensitiveSubmission', 'automaticOrdinaryApproval']) {
   if (authorized[name] !== true) fail(`${name}授权记录缺失`);
 }
-if (authorized.activationPerformed !== false) fail('阶段7L不得声称已经启用生产能力');
-if (plan.access?.platformProjectOrDeploymentDomainPermanentForPublicUse !== false) fail('EdgeOne平台域名永久性判断无效');
-if (plan.access?.permanentPrimaryDomainStatus !== 'blocked_pending_owner_controlled_custom_domain') fail('永久入口阻断状态无效');
+if (authorized.activationPerformed !== false) fail('阶段7M不得声称已经启用生产能力');
+if (plan.access?.platformProjectDomainStableWhileProjectExists !== true) fail('EdgeOne固定项目域名状态记录无效');
+if (plan.access?.platformDomainAnonymousPermanentAccess !== false) fail('平台域名匿名长期访问判断无效');
+if (plan.access?.platformPreviewAccessTokenTtlHours !== 3) fail('平台预览令牌有效期记录无效');
+if (plan.access?.permanentAnonymousPrimaryDomainStatus !== 'blocked_pending_owner_controlled_custom_domain') fail('永久匿名入口阻断状态无效');
+if (plan.access?.githubPagesStaticBackupStatus !== 'authorized_for_automatic_verified_candidate_deployment') fail('GitHub Pages备用入口授权状态无效');
 if (plan.administrator?.submittedChatSecretAccepted !== false) fail('聊天中暴露的管理员密钥不得接受');
 
 const report = Object.freeze({
@@ -97,18 +114,19 @@ const report = Object.freeze({
   status: 'production_preparation_ready_domain_blob_and_secrets_required',
   candidateVersion: plan.candidate.version,
   targetStableVersion: plan.stableRelease.targetVersion,
-  groupId: plan.scope.groupId,
-  libraryId: plan.scope.libraryId,
+  externalScope: Object.freeze({ ...plan.scope.external }),
+  protocolScope: Object.freeze({ ...plan.scope.protocol }),
   authorizedCapabilities: Object.freeze({
     readSync: true,
     ordinarySubmission: true,
     automaticOrdinaryApproval: true,
     sensitiveSubmission: true,
   }),
+  githubPagesStaticBackupAuthorized: true,
   productionActivationPerformed: false,
   stablePromotionAuthorized: false,
   stablePromotionPerformed: false,
-  permanentDomainReady: false,
+  permanentAnonymousDomainReady: false,
   productionBlobInitialized: false,
   realSecretsConfigured: false,
   secretVariableCount: secretNames.length,
