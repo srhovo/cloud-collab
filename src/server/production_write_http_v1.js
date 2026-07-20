@@ -9,7 +9,7 @@ import {
 } from './production_write_runtime_v1.js';
 
 const SERVICE_ID = 'cloud-collab-production-write';
-const API_VERSION = '2026-07-21-stage7p';
+const API_VERSION = '2026-07-21-stage7q';
 const MAX_REGISTRATION_BYTES = 4 * 1024;
 
 function requestMethod(request) {
@@ -132,7 +132,7 @@ export async function handleProductionDeviceRegisterRequest(context, dependencie
       protocolScope: { groupId: config.allowedGroupId, libraryId: config.allowedLibraryId },
       submissionEnabled: true,
       publicMutationAllowed: false,
-      autoApprovalEnabled: false,
+      autoApprovalEnabled: config.runtime.flags.autoApproval === true,
       stablePromotionAuthorized: false,
     }, 201);
   } catch (error) {
@@ -150,13 +150,6 @@ export async function handleProductionSubmissionCreateRequest(context, dependenc
     config = readProductionWriteConfig(env);
     if (method === 'OPTIONS') return optionsResponse(request, config);
     assertProductionRequestAccess(request, config);
-    if (config.runtime.flags.autoApproval === true) {
-      throw new ProductionWriteRuntimeError(
-        'PRODUCTION_AUTO_APPROVAL_HANDLER_REQUIRED',
-        '普通自动审核已开启，但当前路由尚未切换到审核处理器',
-        503,
-      );
-    }
     const rawSubmission = await readJsonBody(request, MAX_SUBMISSION_BYTES);
     const accept = dependencies.acceptProduction || acceptProductionExactSubmission;
     const result = await accept({
@@ -166,12 +159,14 @@ export async function handleProductionSubmissionCreateRequest(context, dependenc
       env,
       now: dependencies.now?.() || Date.now(),
     });
+    const autoApproved = result?.autoApprovalResult?.status === 'auto_approved';
     return success(request, config, {
       ...result,
-      publicMutationAllowed: false,
-      autoApprovalEnabled: false,
+      publicMutationAllowed: result?.publicMutationAllowed === true,
+      publicMutationApplied: result?.publicMutationApplied === true,
+      autoApprovalEnabled: result?.autoApprovalEnabled === true,
       stablePromotionAuthorized: false,
-    }, result?.duplicate ? 200 : 202);
+    }, result?.duplicate || autoApproved ? 200 : 202);
   } catch (error) {
     return failure(request, config, error);
   }

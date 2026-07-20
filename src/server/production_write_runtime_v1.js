@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 
+import { reviewExactPriceCandidate } from './auto_approval_engine_v1.js';
 import {
   getJSONStrong,
   normalizeBlobKey,
@@ -150,6 +151,7 @@ export async function acceptProductionExactSubmission({
   now = Date.now(),
   authenticate = authenticateDevice,
   accept = acceptSubmission,
+  review = reviewExactPriceCandidate,
 } = {}) {
   const config = readProductionWriteConfig(env);
   let submission;
@@ -185,13 +187,32 @@ export async function acceptProductionExactSubmission({
     now,
     authenticate: async () => identity,
   });
+
+  let autoApprovalResult = null;
+  if (config.runtime.flags.autoApproval === true) {
+    const candidate = await getJSONStrong(store, candidateKey);
+    if (!candidate) {
+      throw new ProductionWriteRuntimeError(
+        'PRODUCTION_CANDIDATE_NOT_FOUND_AFTER_ACCEPT',
+        '候选接收完成后无法强一致读回，自动审核未执行',
+        503,
+        { candidateKey },
+      );
+    }
+    autoApprovalResult = await review({ store, candidate, now });
+  }
+
+  const autoApprovalEnabled = config.runtime.flags.autoApproval === true;
+  const publicMutationApplied = autoApprovalResult?.publicMutationApplied === true;
   return Object.freeze({
     ...result,
     externalScope: config.externalScope,
     protocolScope: Object.freeze({ groupId: config.allowedGroupId, libraryId: config.allowedLibraryId }),
     ordinarySubmissionEnabled: true,
-    publicMutationAllowed: false,
-    autoApprovalEnabled: false,
+    publicMutationAllowed: autoApprovalEnabled,
+    publicMutationApplied,
+    autoApprovalEnabled,
+    autoApprovalResult,
     stablePromotionAuthorized: false,
   });
 }
