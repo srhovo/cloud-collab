@@ -11,6 +11,10 @@ import {
   readStage5g6a6bAcceptanceConfig,
 } from './stage5g6a6b_acceptance_v1.js';
 
+function requestMethod(request) {
+  return String(request?.method || 'GET').toUpperCase();
+}
+
 function authorize(context) {
   const env = context?.env || {};
   if (String(env.CLOUD_WRITE_PREVIEW_ENABLED || '0').trim() !== '0'
@@ -21,7 +25,10 @@ function authorize(context) {
     throw error;
   }
   const config = readStage5g6a6bAcceptanceConfig({ ...env, CLOUD_WRITE_PREVIEW_ENABLED: '1' });
-  assertStage5g6a6bAcceptanceAccess(context?.request, config);
+  const method = requestMethod(context?.request);
+  assertStage5g6a6bAcceptanceAccess(context?.request, config, {
+    requireOrigin: !['GET', 'HEAD'].includes(method),
+  });
   return { env, config };
 }
 
