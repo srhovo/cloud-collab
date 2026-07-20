@@ -43,6 +43,7 @@ function env(overrides = {}) {
     CLOUD_STAGE5G6A6B_CLEANUP_ENABLED: '0',
     CLOUD_STAGE5G6A6B_CLEANUP_KEY: secrets.cleanup,
     CLOUD_WRITE_PREVIEW_ENABLED: '1',
+    CLOUD_AUTO_APPROVAL_PREVIEW_ENABLED: '0',
     CLOUD_ORDINARY_TYPES_PREVIEW_ENABLED: '1',
     CLOUD_SENSITIVE_RULES_PREVIEW_ENABLED: '1',
     CLOUD_SENSITIVE_REVIEW_PREVIEW_ENABLED: '1',
@@ -73,6 +74,14 @@ function env(overrides = {}) {
     CLOUD_ADMIN_PUBLIC_ORIGIN: 'https://acceptance.example.test',
     ...overrides,
   };
+}
+
+function runtimeEnv(overrides = {}) {
+  return env({
+    CLOUD_WRITE_PREVIEW_ENABLED: '0',
+    CLOUD_AUTO_APPROVAL_PREVIEW_ENABLED: '0',
+    ...overrides,
+  });
 }
 
 function request(path, { method = 'GET', body = null, key = secrets.acceptance } = {}) {
@@ -126,7 +135,7 @@ test('联合状态在空公共库中报告种子、设备和零版本', async ()
   assert.equal(status.sensitivePendingCount, 0);
 });
 
-test('HTTP种子和状态要求同源验收密钥并支持幂等重放', async () => {
+test('HTTP种子和状态要求同源验收密钥、关闭正式写入并支持幂等重放', async () => {
   const store = new MemoryStore();
   const dependencies = { createStore: () => store, now: () => 1_785_000_000_000 };
   const seedResponse = await handleStage5g6a6bSeedRequest({
@@ -134,7 +143,7 @@ test('HTTP种子和状态要求同源验收密钥并支持幂等重放', async (
       method: 'POST',
       body: { confirmation: STAGE5G6A6B_SEED_CONFIRMATION },
     }),
-    env: env(),
+    env: runtimeEnv(),
   }, dependencies);
   assert.equal(seedResponse.status, 201);
   const seedBody = await seedResponse.json();
@@ -146,20 +155,27 @@ test('HTTP种子和状态要求同源验收密钥并支持幂等重放', async (
       method: 'POST',
       body: { confirmation: STAGE5G6A6B_SEED_CONFIRMATION },
     }),
-    env: env(),
+    env: runtimeEnv(),
   }, dependencies);
   assert.equal(replayResponse.status, 200);
 
   const statusResponse = await handleStage5g6a6bStatusRequest({
     request: request('/api/stage5g6a6b/acceptance/status'),
-    env: env(),
+    env: runtimeEnv(),
   }, dependencies);
   assert.equal(statusResponse.status, 200);
   assert.equal((await statusResponse.json()).data.registeredDeviceCount, 2);
 
   const denied = await handleStage5g6a6bStatusRequest({
     request: request('/api/stage5g6a6b/acceptance/status', { key: 'wrong-key'.padEnd(40, 'x') }),
-    env: env(),
+    env: runtimeEnv(),
   }, dependencies);
   assert.equal(denied.status, 403);
+
+  const unsafe = await handleStage5g6a6bStatusRequest({
+    request: request('/api/stage5g6a6b/acceptance/status'),
+    env: runtimeEnv({ CLOUD_WRITE_PREVIEW_ENABLED: '1' }),
+  }, dependencies);
+  assert.equal(unsafe.status, 503);
+  assert.equal((await unsafe.json()).error.code, 'STAGE5G6A6B_FORMAL_PUBLIC_MUTATION_MUST_BE_CLOSED');
 });
