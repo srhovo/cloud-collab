@@ -1,0 +1,40 @@
+name: stage7g-release-candidate
+
+on:
+  pull_request:
+    paths:
+      - 'package.json'
+      - 'scripts/**'
+      - 'src/**'
+      - 'tests/**'
+      - 'release/**'
+      - '.env.example'
+      - '.github/workflows/stage7g-release-candidate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-candidate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install dependencies
+        run: npm install --ignore-scripts
+      - name: Build and validate 8.2.30 candidate
+        run: npm run ci
+      - name: Upload 8.2.30 candidate and final release manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage7g-8.2.30-candidate
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            release/candidates/码单器8.2.30_候选.html
+            release/final-release-manifest-v1.json
+            dist/build-manifest.json
+            dist/release-readiness-audit.json
