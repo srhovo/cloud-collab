@@ -95,6 +95,17 @@ function readConfig(env) {
   return Object.freeze({ write: Object.freeze({ ...write, storeName: writeStoreName }), sensitive });
 }
 
+function projectSensitiveBaselineRecord(record) {
+  if (!record) return null;
+  return Object.freeze({
+    businessKey: record.businessKey,
+    contentHash: record.contentHash,
+    dataType: record.dataType,
+    bossId: record.bossId ?? null,
+    payload: record.payload,
+  });
+}
+
 export async function handleSensitiveSubmissionRequest(context, dependencies = {}) {
   const requestMethod = method(context?.request);
   if (requestMethod === 'OPTIONS') return new Response(null, { status: 204, headers: headers() });
@@ -118,7 +129,9 @@ export async function handleSensitiveSubmissionRequest(context, dependencies = {
     const now = dependencies.now?.() ?? Date.now();
     const snapshotBuilder = dependencies.buildSnapshot || buildUnifiedSensitivePublicSnapshot;
     const snapshot = await snapshotBuilder({ store, groupId: config.sensitive.groupId, libraryId: config.sensitive.libraryId, now });
-    const resolveExistingRecord = async ({ businessKey }) => snapshot.records.find(item => item.businessKey === businessKey) || null;
+    const resolveExistingRecord = async ({ businessKey }) => projectSensitiveBaselineRecord(
+      snapshot.records.find(item => item.businessKey === businessKey) || null,
+    );
     const accept = dependencies.accept || acceptSensitiveSubmission;
     const result = await accept({
       store,
