@@ -11,6 +11,15 @@ const policy = read('src/server/ordinary_types_policy_v1.js');
 const acceptance = read('src/server/ordinary_submission_acceptance_v1.js');
 const runtime = read('src/server/ordinary_types_preview_runtime_v1.js');
 const publicEngine = read('src/server/ordinary_public_engine_v1.js');
+const adminProjection = read('src/server/admin_ordinary_review_projection_v1.js');
+const adminHttp = read('src/server/admin_ordinary_review_http_v1.js');
+const adminMutation = read('src/server/admin_ordinary_review_mutation_v1.js');
+const adminMutationHttp = read('src/server/admin_ordinary_review_mutation_http_v1.js');
+const queueRoute = read('cloud-functions/api/admin/ordinary-reviews.js');
+const detailRoute = read('cloud-functions/api/admin/ordinary-reviews/detail.js');
+const approveRoute = read('cloud-functions/api/admin/ordinary-reviews/approve.js');
+const rejectRoute = read('cloud-functions/api/admin/ordinary-reviews/reject.js');
+const editRoute = read('cloud-functions/api/admin/ordinary-reviews/edit-and-approve.js');
 const env = read('.env.example');
 const build = read('scripts/build.mjs');
 
@@ -51,8 +60,49 @@ check('Stage5G mixed public engine retains schemaVersion 1 and immutable indexes
   && publicEngine.includes('approvalIndexKey')
   && publicEngine.includes('transitionIndexKey')
   && publicEngine.includes('putJSONOnlyIfNew'));
-check('Stage5G source contains no browser persistence or embedded secrets', !/(?:localStorage|sessionStorage)\.(?:setItem|getItem|removeItem)/.test([policy, acceptance, runtime, publicEngine].join('\n'))
-  && !/(?:password|secret|token)\s*[:=]\s*['"][^'"]{12,}/i.test([policy, acceptance, runtime, publicEngine].join('\n')));
+check('Stage5G admin projection uses ordinary validation and strong event chain', adminProjection.includes('normalizeOrdinarySubmission')
+  && adminProjection.includes('listValidOrdinaryPublicEvents')
+  && adminProjection.includes("consistency: 'strong'"));
+check('Stage5G admin read routes remain authenticated and read-only', adminHttp.includes('verifyAdminSessionToken')
+  && adminHttp.includes('handleAdminOrdinaryReviewQueueRequest')
+  && adminHttp.includes('handleAdminOrdinaryReviewDetailRequest')
+  && !adminHttp.includes('putJSONOnlyIfNew'));
+check('Stage5G ordinary mutation uses immutable decisions and ordinary publisher', adminMutation.includes('putImmutableExact')
+  && adminMutation.includes('publishAdminOrdinaryApproval')
+  && adminMutation.includes('ADMIN_ORDINARY_REVIEW_STAGE6_REQUIRED'));
+check('Stage5G mutation blocks exact_price and Stage6-sensitive changes', adminMutation.includes("if (submission.dataType === 'exact_price') return false")
+  && adminMutation.includes('STAGE5G_RESOLVABLE_REASONS')
+  && adminMutation.includes('stage6SensitiveChangesBlocked: true'));
+check('Stage5G mutation HTTP requires same-origin POST JSON', adminMutationHttp.includes('requireOrigin: true')
+  && adminMutationHttp.includes("Allow: 'POST'")
+  && adminMutationHttp.includes('application/json'));
+check('Stage5G ordinary review routes point only to dedicated handlers', [
+  [queueRoute, 'handleAdminOrdinaryReviewQueueRequest'],
+  [detailRoute, 'handleAdminOrdinaryReviewDetailRequest'],
+  [approveRoute, 'handleAdminOrdinaryReviewApproveRequest'],
+  [rejectRoute, 'handleAdminOrdinaryReviewRejectRequest'],
+  [editRoute, 'handleAdminOrdinaryReviewEditAndApproveRequest'],
+].every(([source, token]) => source.includes(token)));
+check('Stage5G source contains no browser persistence or embedded secrets', !/(?:localStorage|sessionStorage)\.(?:setItem|getItem|removeItem)/.test([
+  policy,
+  acceptance,
+  runtime,
+  publicEngine,
+  adminProjection,
+  adminHttp,
+  adminMutation,
+  adminMutationHttp,
+].join('\n'))
+  && !/(?:password|secret|token)\s*[:=]\s*['"][^'"]{12,}/i.test([
+    policy,
+    acceptance,
+    runtime,
+    publicEngine,
+    adminProjection,
+    adminHttp,
+    adminMutation,
+    adminMutationHttp,
+  ].join('\n')));
 check('8.2.25 remains excluded from all build inputs', !build.includes('码单器8.2.25'));
 
 const failed = checks.filter(item => !item.ok);
