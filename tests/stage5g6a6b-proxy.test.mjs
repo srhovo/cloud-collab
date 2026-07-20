@@ -4,6 +4,7 @@ import {
   handleStage5g6a6bDeviceRegisterRequest,
   handleStage5g6a6bOrdinarySubmissionRequest,
   handleStage5g6a6bPublicVersionRequest,
+  handleStage5g6a6bSensitiveSubmissionRequest,
 } from '../src/server/stage5g6a6b_acceptance_proxy_http_v1.js';
 
 const acceptanceKey = 'acceptance-key-'.padEnd(40, 'a');
@@ -116,6 +117,61 @@ test('普通候选代理内部开启自动审核但关闭敏感读取锁，正�
   assert.equal(delegated.CLOUD_WRITE_PREVIEW_ENABLED, '1');
   assert.equal(delegated.CLOUD_AUTO_APPROVAL_PREVIEW_ENABLED, '1');
   assert.equal(delegated.CLOUD_SENSITIVE_REVIEW_PREVIEW_ENABLED, '0');
+});
+
+test('敏感候选只向协议层传递严格公共基线投影', async () => {
+  const businessKey = `bk_v1_${'B'.repeat(43)}`;
+  const contentHash = `ch_v1_${'C'.repeat(43)}`;
+  let observed = null;
+  const response = await handleStage5g6a6bSensitiveSubmissionRequest({
+    request: request('/api/stage5g6a6b/acceptance/sensitive-submissions-create', {
+      body: { groupId: 'group_fixture', libraryId: 'lib_receive_fixture' },
+    }),
+    env: env(),
+  }, {
+    createStore: () => new MemoryStore(),
+    buildSnapshot: async () => ({
+      groupId: 'group_fixture',
+      libraryId: 'lib_receive_fixture',
+      publicVersion: 4,
+      snapshotVersion: 4,
+      baseOrdinaryVersion: 1,
+      generatedAt: '2026-07-20T12:08:23.992Z',
+      records: [{
+        businessKey,
+        contentHash,
+        dataType: 'surcharge_rule',
+        operation: 'upsert',
+        approvedVersion: 3,
+        payload: {
+          name: '联合验收教学',
+          keywords: ['教学', '教学单'],
+          prices: { round: 5, hour: 20 },
+          enabled: true,
+        },
+      }],
+      tombstones: [],
+    }),
+    accept: async ({ resolveExistingRecord }) => {
+      observed = await resolveExistingRecord({ businessKey });
+      return { duplicate: false, status: 'pending_review', decision: 'pending_review' };
+    },
+    now: () => 1_785_000_000_000,
+  });
+  assert.equal(response.status, 202);
+  assert.deepEqual(observed, {
+    businessKey,
+    contentHash,
+    dataType: 'surcharge_rule',
+    bossId: null,
+    payload: {
+      name: '联合验收教学',
+      keywords: ['教学', '教学单'],
+      prices: { round: 5, hour: 20 },
+      enabled: true,
+    },
+  });
+  assert.deepEqual(Object.keys(observed).sort(), ['bossId', 'businessKey', 'contentHash', 'dataType', 'payload']);
 });
 
 test('写入代理缺少Origin时继续失败关闭', async () => {
