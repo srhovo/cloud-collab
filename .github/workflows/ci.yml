@@ -21,8 +21,16 @@ jobs:
       - name: Run npm run ci
         shell: bash
         run: |
-          set -o pipefail
-          npm run ci 2>&1 | tee ci.log
+          set +e
+          npm run ci > ci.log 2>&1
+          status=$?
+          if [ "$status" -eq 0 ]; then
+            tail -n 100 ci.log
+          else
+            echo "npm run ci failed; showing the final 260 log lines."
+            tail -n 260 ci.log
+          fi
+          exit "$status"
       - name: Upload CI command log
         if: always()
         uses: actions/upload-artifact@v4
