@@ -172,7 +172,7 @@ test('Stage5G mixed commit persists prices, confirmed names, bosses and one shar
 test('Stage5G ordinary three-way merge preserves a locally changed name and records a conflict', async () => {
   const original = await record('playable_name', { name: 'Alice' }, 1);
   const snapshot = await mixedSnapshot({ playableName: 'ALICE', includeExact: false, includeBoss: false });
-  const localNames = [{ name: 'Alice Local', original: 'Alice Local', timestamp: 1, source: 'interactive' }];
+  const localNames = [{ name: 'aLiCe', original: 'aLiCe', timestamp: 1, source: 'interactive' }];
   const { harness, app, syncStore } = createHarness({ confirmedNames: localNames });
   const scope = {
     ...clone(syncStore.scope),
@@ -181,10 +181,13 @@ test('Stage5G ordinary three-way merge preserves a locally changed name and reco
     baseHashes: { [original.businessKey]: original.contentHash },
   };
   const plans = await harness.planStage5GMixedMerge(BINDING, scope, snapshot, { id: 'local_fixture', items: [] });
-  assert.equal(plans.ordinaryPlan.counts.upserts, 1);
+  assert.equal(plans.ordinaryPlan.counts.upserts, 0);
+  assert.equal(plans.ordinaryPlan.counts.conflicts, 1);
   const result = harness.commitStage5GMixedPlan(BINDING, scope, plans);
-  assert.equal(result.counts.conflicts, 0);
-  assert.equal(app.enhancedExtractor.data.confirmedNames.some(item => item.name === 'ALICE'), true);
+  assert.equal(result.counts.conflicts, 1);
+  assert.equal(app.enhancedExtractor.data.confirmedNames[0].name, 'aLiCe');
+  assert.equal(syncStore.scope.conflicts.length, 1);
+  assert.equal(syncStore.scope.conflicts[0].dataType, 'playable_name');
 });
 
 test('Stage5G rejects ordinary tombstones before any local write', async () => {
