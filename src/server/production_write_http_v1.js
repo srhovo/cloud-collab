@@ -2,14 +2,14 @@ import { MAX_SUBMISSION_BYTES } from './submission_policy_v1.js';
 import { createEdgeOneNamedBlobStore } from './edgeone_blob_runtime_v1.js';
 import {
   ProductionWriteRuntimeError,
-  acceptProductionExactSubmission,
+  acceptProductionCandidateSubmission,
   assertProductionRequestAccess,
   readProductionWriteConfig,
   registerProductionDevice,
 } from './production_write_runtime_v1.js';
 
 const SERVICE_ID = 'cloud-collab-production-write';
-const API_VERSION = '2026-07-21-stage7p';
+const API_VERSION = '2026-07-21-stage7q';
 const MAX_REGISTRATION_BYTES = 4 * 1024;
 
 function requestMethod(request) {
@@ -131,6 +131,7 @@ export async function handleProductionDeviceRegisterRequest(context, dependencie
       externalScope: config.externalScope,
       protocolScope: { groupId: config.allowedGroupId, libraryId: config.allowedLibraryId },
       submissionEnabled: true,
+      supportedOrdinaryTypes: ['exact_price', 'playable_name', 'boss_profile'],
       publicMutationAllowed: false,
       autoApprovalEnabled: false,
       stablePromotionAuthorized: false,
@@ -158,7 +159,7 @@ export async function handleProductionSubmissionCreateRequest(context, dependenc
       );
     }
     const rawSubmission = await readJsonBody(request, MAX_SUBMISSION_BYTES);
-    const accept = dependencies.acceptProduction || acceptProductionExactSubmission;
+    const accept = dependencies.acceptProduction || acceptProductionCandidateSubmission;
     const result = await accept({
       store: storeFor(config, dependencies),
       authorization: request.headers.get('authorization') || '',
