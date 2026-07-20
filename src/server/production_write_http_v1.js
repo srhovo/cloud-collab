@@ -108,6 +108,18 @@ function storeFor(config, dependencies) {
   return createStore(config.storeName);
 }
 
+function assertAutoApprovalHandlerReady(env, config) {
+  if (config.runtime.flags.autoApproval !== true) return;
+  const ready = String(env?.CLOUD_PRODUCTION_AUTO_APPROVAL_HANDLER_ENABLED ?? '0').trim();
+  if (ready !== '1') {
+    throw new ProductionWriteRuntimeError(
+      'PRODUCTION_AUTO_APPROVAL_HANDLER_REQUIRED',
+      '普通自动审核已授权，但正式审核处理器尚未显式标记就绪',
+      503,
+    );
+  }
+}
+
 export async function handleProductionDeviceRegisterRequest(context, dependencies = {}) {
   const request = context?.request;
   const method = requestMethod(request);
@@ -150,6 +162,7 @@ export async function handleProductionSubmissionCreateRequest(context, dependenc
     config = readProductionWriteConfig(env);
     if (method === 'OPTIONS') return optionsResponse(request, config);
     assertProductionRequestAccess(request, config);
+    assertAutoApprovalHandlerReady(env, config);
     const rawSubmission = await readJsonBody(request, MAX_SUBMISSION_BYTES);
     const accept = dependencies.acceptProduction || acceptProductionOrdinarySubmission;
     const result = await accept({
