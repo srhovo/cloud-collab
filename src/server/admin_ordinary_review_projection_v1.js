@@ -29,6 +29,7 @@ const IDEMPOTENCY_KEY_PATTERN = /^ik_v1_[A-Za-z0-9_-]{43}$/;
 const REQUEST_HASH_PATTERN = /^req_v1_[A-Za-z0-9_-]{43}$/;
 const DECISION_ID_PATTERN = /^rd_v1_[A-Za-z0-9_-]{43}$/;
 const AUDIT_ID_PATTERN = /^au_v1_[A-Za-z0-9_-]{43}$/;
+const ACTOR_TAG_PATTERN = /^admin_[A-Za-z0-9_-]{12}$/;
 const REVIEW_KEY_PATTERN = /^reviews\/(lib_[a-z0-9][a-z0-9_]{2,55})\/pending\/(bk_v1_[A-Za-z0-9_-]{43})\/pv_([0-9]{12})\/(ch_v1_[A-Za-z0-9_-]{43})\.json$/;
 const REVIEW_REASONS = new Set([
   'candidate_conflict',
@@ -237,14 +238,20 @@ function assertResolutionAndAudit(resolution, audit, expected, config) {
       || audit.schemaVersion !== 1
       || audit.auditId !== resolution.auditId
       || audit.decisionId !== resolution.decisionId
-      || audit.reviewId !== resolution.reviewId
+      || !REVIEW_ID_PATTERN.test(String(audit.reviewId || ''))
+      || !ACTOR_TAG_PATTERN.test(String(audit.actorTag || ''))
       || audit.groupId !== config.groupId
       || audit.libraryId !== config.libraryId
       || audit.businessKey !== resolution.businessKey
-      || audit.sourceContentHash !== resolution.sourceContentHash
+      || audit.sourceContentHash !== (resolution.action === 'superseded'
+        ? audit.sourceContentHash
+        : resolution.sourceContentHash)
       || audit.targetContentHash !== resolution.targetContentHash
       || audit.occurredAt !== resolution.resolvedAt) {
     throw new AdminOrdinaryReviewError('ADMIN_ORDINARY_REVIEW_INVALID_AUDIT', '普通共享审核审计内容无效', 503);
+  }
+  if (resolution.action !== 'superseded' && audit.reviewId !== resolution.reviewId) {
+    throw new AdminOrdinaryReviewError('ADMIN_ORDINARY_REVIEW_INVALID_AUDIT', '普通共享审核审计目标不一致', 503);
   }
   return true;
 }
@@ -265,7 +272,7 @@ async function listReviewKeysStrong(store, config) {
   }
   const keys = blobs.map(item => String(item?.key || '')).filter(Boolean);
   if (keys.length !== blobs.length || new Set(keys).size !== keys.length) {
-    throw new AdminOrdinaryReviewError('ADMIN_ORDINARY_REVIEW_INVALID_LIST', '普通共享审核队列列举结果无效', 503);
+    throw new AdminOrdinaryReviewError('ADMIN_ORDINARY_REVIEW_INVALID_LIST', '普通共享审核列举结果无效', 503);
   }
   return keys.sort();
 }
@@ -369,7 +376,13 @@ export function readAdminOrdinaryReviewConfig(env = {}) {
     base = readAdminReviewConfig(env);
     ordinary = readOrdinaryTypesPreviewConfig(env);
   } catch (error) {
-    throw new AdminOrdinaryReviewError(error?.code || 'ADMIN_ORDINARY_REVIEW_CONFIG_INVALID', error?.message || '普通共享审核配置无效', error?.status || 503, error?.details || null, error);
+    throw new AdminOrdinaryReviewError(
+      error?.code || 'ADMIN_ORDINARY_REVIEW_CONFIG_INVALID',
+      error?.message || '普通共享审核配置无效',
+      error?.status || 503,
+      error?.details || null,
+      error,
+    );
   }
   if (base.storeName !== ordinary.storeName
       || base.groupId !== ordinary.groupId
