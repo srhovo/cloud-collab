@@ -6,6 +6,7 @@ import {
   assertAdminSameOriginRequest,
   clearAdminSessionCookie,
   createAdminSessionCookie,
+  readAdminPublicOrigin,
   readAdminSessionCookie,
 } from './admin_auth_v1.js';
 import {
@@ -193,8 +194,8 @@ export async function handleProductionAdminLogoutRequest(context) {
   const method = requestMethod(context?.request);
   if (method !== 'POST') return methodNotAllowed(method, 'POST');
   try {
-    const config = readProductionAdminAuthConfig(context?.env || {});
-    assertAdminSameOriginRequest(context.request, { requireOrigin: true, publicOrigin: config.publicOrigin });
+    const publicOrigin = readAdminPublicOrigin(context?.env || {});
+    assertAdminSameOriginRequest(context.request, { requireOrigin: true, publicOrigin });
     return new Response(null, {
       status: 204,
       headers: responseHeaders({ 'Set-Cookie': clearAdminSessionCookie() }),
