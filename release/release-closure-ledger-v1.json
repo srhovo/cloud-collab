@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "stableVersion": "8.2.25",
+  "currentCompatibleCandidateVersion": "8.2.28",
+  "recommendedCandidateVersionFromPlan": "8.2.30",
+  "candidateVersionDecision": null,
+  "evidence": {
+    "automated": {
+      "stage7dMainCommit": "cf4149fb16575057f9fc9f823e178798034da5ac",
+      "stage7dWorkflowRunNumber": 1149,
+      "stage7dWorkflowConclusion": "success",
+      "coreAndBrowserRegression": "passed"
+    },
+    "realDevice": {
+      "stage5aAuthenticationSessionLogout": "passed",
+      "stage5gOrdinaryConflictAndReview": "passed",
+      "stage6bSensitiveReviewActions": "passed",
+      "finalCleanSnapshotAndTombstoneRerun": "waived_due_to_manual_cost"
+    },
+    "cleanup": {
+      "status": "user_reported_completed",
+      "exactDeletionCountsRecorded": false,
+      "independentZeroCountEvidenceRecorded": false
+    },
+    "temporaryResources": {
+      "status": "verification_required_before_release",
+      "credentialsMustBeRemovedOrRotated": true
+    }
+  },
+  "releasePolicy": {
+    "stableBaselineMustRemainUnchanged": true,
+    "allPreviewCapabilitiesDefaultOff": true,
+    "candidateVersionRequiresOwnerDecision": true,
+    "promotionRequiresSeparateOwnerAuthorization": true,
+    "productionWriteEnablementIncluded": false
+  }
+}
