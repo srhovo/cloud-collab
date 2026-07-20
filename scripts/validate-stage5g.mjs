@@ -15,6 +15,7 @@ const adminProjection = read('src/server/admin_ordinary_review_projection_v1.js'
 const adminHttp = read('src/server/admin_ordinary_review_http_v1.js');
 const adminMutation = read('src/server/admin_ordinary_review_mutation_v1.js');
 const adminMutationHttp = read('src/server/admin_ordinary_review_mutation_http_v1.js');
+const adminPage = read('dist/admin-ordinary-reviews-preview.html');
 const queueRoute = read('cloud-functions/api/admin/ordinary-reviews.js');
 const detailRoute = read('cloud-functions/api/admin/ordinary-reviews/detail.js');
 const approveRoute = read('cloud-functions/api/admin/ordinary-reviews/approve.js');
@@ -83,6 +84,19 @@ check('Stage5G ordinary review routes point only to dedicated handlers', [
   [rejectRoute, 'handleAdminOrdinaryReviewRejectRequest'],
   [editRoute, 'handleAdminOrdinaryReviewEditAndApproveRequest'],
 ].every(([source, token]) => source.includes(token)));
+check('Stage5G administrator page uses dedicated routes and confirmations', [
+  '/api/admin/ordinary-reviews',
+  '/api/admin/ordinary-reviews/approve',
+  '/api/admin/ordinary-reviews/reject',
+  '/api/admin/ordinary-reviews/edit-and-approve',
+  'APPROVE_ORDINARY',
+  'REJECT_ORDINARY',
+  'EDIT_AND_APPROVE_ORDINARY',
+].every(token => adminPage.includes(token))
+  && !adminPage.includes('/api/admin/reviews/approve'));
+check('Stage5G administrator page visibly locks Stage6-sensitive actions', adminPage.includes('stage6SensitiveChangesBlocked')
+  && adminPage.includes('mutableReasons')
+  && adminPage.includes('任何写入都会被服务器'));
 check('Stage5G source contains no browser persistence or embedded secrets', !/(?:localStorage|sessionStorage)\.(?:setItem|getItem|removeItem)/.test([
   policy,
   acceptance,
@@ -92,6 +106,7 @@ check('Stage5G source contains no browser persistence or embedded secrets', !/(?
   adminHttp,
   adminMutation,
   adminMutationHttp,
+  adminPage,
 ].join('\n'))
   && !/(?:password|secret|token)\s*[:=]\s*['"][^'"]{12,}/i.test([
     policy,
@@ -102,6 +117,7 @@ check('Stage5G source contains no browser persistence or embedded secrets', !/(?
     adminHttp,
     adminMutation,
     adminMutationHttp,
+    adminPage,
   ].join('\n')));
 check('8.2.25 remains excluded from all build inputs', !build.includes('码单器8.2.25'));
 
