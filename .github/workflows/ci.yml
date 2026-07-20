@@ -108,6 +108,35 @@ jobs:
       - name: Fail on Stage6B administrator browser regression
         if: steps.stage6b_admin_browser.outcome == 'failure'
         run: exit 1
+      - name: Stage5G+6A+6B joint acceptance browser regression
+        id: stage5g6a6b_acceptance_browser
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p test-results
+          set -o pipefail
+          python3 tests/stage5g6a6b_browser_acceptance.py 2>&1 | tee test-results/stage5g6a6b-acceptance-browser.log
+      - name: Stage5G+6A+6B dual-Blob cleanup browser regression
+        id: stage5g6a6b_cleanup_browser
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p test-results
+          set -o pipefail
+          python3 tests/stage5g6a6b_browser_cleanup.py 2>&1 | tee test-results/stage5g6a6b-cleanup-browser.log
+      - name: Upload Stage5G+6A+6B acceptance diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage5g6a6b-browser-diagnostics
+          path: |
+            test-results/stage5g6a6b-acceptance-browser.log
+            test-results/stage5g6a6b-cleanup-browser.log
+          if-no-files-found: error
+          retention-days: 7
+      - name: Fail on Stage5G+6A+6B joint acceptance browser regression
+        if: steps.stage5g6a6b_acceptance_browser.outcome == 'failure' || steps.stage5g6a6b_cleanup_browser.outcome == 'failure'
+        run: exit 1
       - name: Upload browser regression logs
         if: always()
         uses: actions/upload-artifact@v4
