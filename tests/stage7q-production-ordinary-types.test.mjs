@@ -187,7 +187,8 @@ test('老板身份由groupId和老板名稳定派生', () => {
 });
 
 test('联系方式、错误作用域和错误设备身份均失败关闭', async () => {
-  const unsafe = playable({ payload: { name: '联系我wx_abcd1234' } });
+  const unsafe = playable();
+  unsafe.payload.name = '联系我wx_abcd1234';
   await assert.rejects(
     () => acceptProductionCandidateSubmission({
       store: new MemoryStore(), authorization: 'Bearer token', rawSubmission: unsafe, env: env(), now: NOW,
