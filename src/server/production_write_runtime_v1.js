@@ -127,7 +127,7 @@ export function assertProductionSubmissionScope(submission, config) {
   return submission;
 }
 
-export function assertProductionCandidateHandlerAvailable(rawSubmission, config) {
+export function assertProductionCandidateHandlerAvailable(rawSubmission, config = null) {
   const dataType = String(rawSubmission?.dataType || '').trim().toLowerCase();
   const operation = String(rawSubmission?.operation || '').trim().toLowerCase();
   if (operation === 'delete' || ['rank_range_rule', 'surcharge_rule', 'gift_rule'].includes(dataType)) {
@@ -324,8 +324,9 @@ export async function acceptProductionOrdinarySubmission({
 }
 
 export async function acceptProductionCandidateSubmission(input = {}) {
+  const preliminary = assertProductionCandidateHandlerAvailable(input.rawSubmission);
   const config = readProductionWriteConfig(input.env || {});
-  const { dataType } = assertProductionCandidateHandlerAvailable(input.rawSubmission, config);
-  if (dataType === 'exact_price') return acceptProductionExactSubmission(input);
+  assertProductionCandidateHandlerAvailable(input.rawSubmission, config);
+  if (preliminary.dataType === 'exact_price') return acceptProductionExactSubmission(input);
   return acceptProductionOrdinarySubmission(input);
 }
