@@ -91,7 +91,7 @@ check(cleanupHttp.includes("from './stage5g6a6b_cleanup_exact_v1.js'"), '清理H
 check(!cleanupHttp.includes("from './stage5g6a6b_cleanup_v1.js'"), '清理HTTP不引用旧宽泛实现');
 check(cleanupCore.includes('STAGE5G6A6B_CLEANUP_UNSAFE_OBJECTS'), '清理器未知对象删除前失败关闭');
 check(cleanupCore.includes('STAGE5G6A6B_CLEANUP_KEYSET_CHANGED'), '清理执行绑定检查摘要');
-check(cleanupCore.includes('consistency: \'strong\''), '清理器使用强一致列举');
+check(cleanupCore.includes("consistency: 'strong'"), '清理器使用强一致列举');
 check(cleanupCore.includes('CLOUD_STAGE5G6A6B_ACCEPTANCE_ENABLED') && cleanupCore.includes('CLOUD_ADMIN_PREVIEW_ENABLED'), '清理前要求验收与管理员能力关闭');
 check(!cleanupCore.includes('/.+\\.json$'), '精确白名单不允许任意子路径对象');
 check(cleanupCore.includes('/sensitive-events/') && cleanupCore.includes('/ordinary-decisions/'), '精确白名单覆盖实际普通与敏感事件链');
@@ -121,6 +121,9 @@ const acceptancePage = pages[0][1];
 const cleanupPage = pages[1][1];
 check(acceptancePage.includes('eo_token') && acceptancePage.includes('eo_time'), '联合验收页面转发 EdgeOne 预览查询参数');
 check(acceptancePage.includes('清除页面内存'), '联合验收页面提供内存清除动作');
+check(acceptancePage.includes('headers.Authorization=`Bearer ${deviceToken}`'), '联合验收页面按设备转发 Bearer 令牌');
+check(acceptancePage.includes('deviceToken:a.deviceToken') && acceptancePage.includes('deviceToken:b.deviceToken'), '普通冲突两份候选分别绑定设备 A/B 令牌');
+check(acceptancePage.includes('deviceToken:device.deviceToken') && acceptancePage.includes('deviceToken:devices[1].deviceToken'), '敏感候选与删除候选绑定对应设备令牌');
 check(cleanupPage.includes('第一次独立强一致复查') && cleanupPage.includes('第二次独立强一致复查'), '清理页面要求两次独立零对象复查');
 check(cleanupPage.includes('expectedPublicKeySetDigest') && cleanupPage.includes('expectedAdminKeySetDigest'), '清理页面按两套摘要绑定删除');
 
