@@ -92,18 +92,14 @@ function ledgerOf(value) {
   if (automated?.stage7dWorkflowConclusion !== 'success'
       || automated?.stage7eWorkflowConclusion !== 'success'
       || automated?.coreAndBrowserRegression !== 'passed'
-      || !Number.isSafeInteger(automated?.nodeTestCount) || automated.nodeTestCount <= 0
-      || automated?.nodeTestFailures !== 0) {
+      || !Number.isSafeInteger(automated?.stage7eNodeTestCount) || automated.stage7eNodeTestCount <= 0
+      || automated?.stage7eNodeTestFailures !== 0) {
     fail('RELEASE_AUTOMATED_EVIDENCE_FAILED', '自动化证据未通过');
   }
   const realDevice = value.evidence?.realDevice;
   const rerunState = realDevice?.finalCleanSnapshotAndTombstoneRerun;
   if (!['passed', 'waived_due_to_manual_cost'].includes(rerunState)) {
     fail('RELEASE_REAL_DEVICE_EVIDENCE_INVALID', '最终实机证据状态无效');
-  }
-  if (rerunState === 'waived_due_to_manual_cost'
-      && realDevice?.finalCleanSnapshotAndTombstoneRerunExceptionAcceptedByOwner !== true) {
-    // 允许账本保留待决状态，但不能把未接受的豁免视为已闭环。
   }
   const policy = value.releasePolicy || {};
   if (policy.stableBaselineMustRemainUnchanged !== true
