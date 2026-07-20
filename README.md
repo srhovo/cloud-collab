@@ -1,6 +1,6 @@
 # 码单器公共协作数据库
 
-当前工程阶段为**阶段7M：免费静态备用入口与正式作用域映射**。最终普通用户交付仍是单HTML。
+当前工程阶段为**阶段7N：生产运行时门禁与一次性初始化执行器**。最终普通用户交付仍是单HTML。
 
 ## 当前发布状态
 
@@ -22,7 +22,7 @@ iPhone Safari冒烟：通过
 正式公共写入保持关闭
 ```
 
-阶段7A至7K已经完成维护能力、发布证据闭环、候选打包、双入口预演、EdgeOne真实部署、界面兼容修正和真实网络验收。阶段7L建立生产参数、环境变量模板、密钥生成规则和零写入初始化预演。阶段7M在不修改候选HTML的前提下补齐用户可见ID到既有协议ID的稳定映射，并授权自动部署GitHub Pages静态备用入口。
+阶段7A至7K已经完成维护能力、发布证据闭环、候选打包、双入口预演、EdgeOne真实部署、界面兼容修正和真实网络验收。阶段7L建立生产参数、环境变量模板、密钥生成规则和零写入初始化预演。阶段7M补齐用户可见ID到既有协议ID的稳定映射，并配置GitHub Pages免费静态备用工作流。阶段7N补齐生产运行时依赖门禁和可精确重放的一次性空库初始化执行器。
 
 ## 阶段7J兼容规则
 
@@ -38,7 +38,7 @@ club ID / library ID：仅支持小写英文字母、数字和下划线
 
 既有`group_*`和现有本地绑定不会被批量改名；本阶段不执行破坏性数据迁移。
 
-## 阶段7M作用域映射
+## 正式作用域映射
 
 ```text
 用户可见club ID：see
@@ -63,16 +63,37 @@ club ID / library ID：仅支持小写英文字母、数字和下划线
 
 聊天中出现过的管理员密码已被判定为暴露且不可使用。真实密码、会话密钥和所有盐值必须由本地生成器或密码管理器生成，只进入EdgeOne私密环境变量。
 
+## 阶段7N生产运行时
+
+`src/server/production_runtime_config_v1.js`强制以下顺序：
+
+```text
+只读同步
+→ 普通提交
+→ 普通自动审核
+→ 管理员身份与人工审核
+→ 敏感提交
+```
+
+任何越级开启、弱密钥、复用密钥、非HTTPS来源、错误Store或错误作用域都会失败关闭。一次性初始化必须在全部生产能力关闭时，使用确认词：
+
+```text
+INITIALIZE-see-see_cz-V1
+```
+
+`src/server/production_bootstrap_v1.js`冻结10个初始化资源，执行前全量预检，缺失对象使用`onlyIfNew`写入，执行后全量强一致复核；精确重放不产生新写入，冲突对象在任何新增写入前阻断。运行报告记录实际`get/setJSON/delete`次数。
+
 生产模板与命令：
 
 ```text
 config/production.env.template
 npm run production:validate
 npm run production:bootstrap:plan
+npm run production:runtime:audit
 npm run production:secrets:generate -- --output /安全路径/cloud-collab-production-secrets.env
 ```
 
-所有生产开关默认保持`0`。阶段7M不会创建或写入真实Blob。
+所有生产开关默认保持`0`。阶段7N的CI只使用内存Store，不会创建或写入真实Blob。
 
 ## 发布入口策略
 
@@ -81,7 +102,7 @@ npm run production:secrets:generate -- --output /安全路径/cloud-collab-produ
 | 权威源 | GitHub仓库、PR、Actions | 已使用 |
 | 候选验收入口 | EdgeOne Makers固定项目域名加临时令牌 | 8.2.31已通过Wi-Fi、移动数据和iPhone Safari验收；令牌约3小时有效 |
 | 永久正式主入口 | EdgeOne自定义域名 | 未配置；匿名长期正式上线阻断项 |
-| 免费静态备用 | GitHub Pages | 阶段7M在`main`更新后自动部署冻结候选；不能承载Cloud Functions和Blob |
+| 免费静态备用 | GitHub Pages | 自动工作流已配置；只承载冻结候选静态文件，不能承载Cloud Functions和Blob |
 | 离线兜底 | `码单器8.2.31_候选.html` | 已由Actions生成并冻结摘要 |
 
 EdgeOne项目域名在项目存在期间固定，但“全球可用区（含中国大陆）”仍需要临时访问令牌。GitHub仓库页面不是普通用户应用入口。GitHub Pages只能作为本地模式静态备用，不能替代EdgeOne正式API。
@@ -108,9 +129,10 @@ npm run ci
 npm run release:rehearse
 npm run production:validate
 npm run production:bootstrap:plan
+npm run production:runtime:audit
 ```
 
-`npm run release:rehearse`会重新构建8.2.31候选并核对冻结摘要。生产准备命令只生成机器可读报告，不连接EdgeOne、不读写Blob。
+`npm run release:rehearse`会重新构建8.2.31候选并核对冻结摘要。生产准备与运行时审计命令只生成机器可读报告，不连接EdgeOne、不读写真实Blob。
 
 ## EdgeOne候选构建
 
@@ -143,15 +165,17 @@ Node：22.11.0
 EdgeOne新部署：0
 EdgeOne环境变量写入：0
 真实Blob创建或写入：0
+真实密钥生成：0
 DNS修改：0
 生产能力启用：0
 稳定晋升：0
-GitHub Pages：仅自动部署冻结静态候选，不含后端能力
+GitHub Pages：仅冻结静态候选，不含后端能力
 正式公共写入保持关闭
 ```
 
 详细方案见：
 
+- `docs/阶段7N_生产运行时门禁与一次性初始化执行器.md`
 - `docs/阶段7M_免费静态备用入口与正式作用域映射.md`
 - `docs/阶段7L_生产上线参数与安全初始化准备.md`
 - `docs/阶段7K_8.2.31候选线上与真实网络验收.md`
