@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "stableVersion": "8.2.25",
+  "stableArtifact": {
+    "source": "external_frozen_baseline",
+    "filename": "码单器8.2.25_现.html",
+    "title": "码单器8.2.25",
+    "sha256": "d34a436d5910ab027ad466309c44c6607fc8b60d2b21cf4b1cc4bf5a188bd6d3",
+    "bytes": 908220
+  },
+  "currentCompatibleCandidateVersion": "8.2.28",
+  "recommendedCandidateVersionFromPlan": "8.2.30",
+  "candidateVersionDecision": null,
+  "evidence": {
+    "automated": {
+      "stage7dMainCommit": "cf4149fb16575057f9fc9f823e178798034da5ac",
+      "stage7dWorkflowRunNumber": 1149,
+      "stage7dWorkflowConclusion": "success",
+      "coreAndBrowserRegression": "passed"
+    },
+    "realDevice": {
+      "stage5aAuthenticationSessionLogout": "passed",
+      "stage5gOrdinaryConflictAndReview": "passed",
+      "stage6bSensitiveReviewActions": "passed",
+      "finalCleanSnapshotAndTombstoneRerun": "waived_due_to_manual_cost"
+    },
+    "cleanup": {
+      "status": "user_reported_completed",
+      "exactDeletionCountsRecorded": false,
+      "independentZeroCountEvidenceRecorded": false
+    },
+    "temporaryResources": {
+      "status": "verified_destroyed",
+      "evidenceSource": "user_report",
+      "edgeOneTemporaryProjectDeleted": true,
+      "temporaryDeploymentsDeletedWithProject": true,
+      "projectEnvironmentVariablesDeletedWithProject": true,
+      "credentialsMustNotBeReused": true
+    }
+  },
+  "releasePolicy": {
+    "stableBaselineMustRemainUnchanged": true,
+    "allPreviewCapabilitiesDefaultOff": true,
+    "candidateVersionRequiresOwnerDecision": true,
+    "promotionRequiresSeparateOwnerAuthorization": true,
+    "productionWriteEnablementIncluded": false
+  }
+}
