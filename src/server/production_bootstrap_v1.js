@@ -30,10 +30,38 @@ function sha256(value) {
 }
 
 function assertStore(store, role) {
-  if (!store || typeof store.get !== 'function' || typeof store.setJSON !== 'function') {
-    throw new ProductionBootstrapError('PRODUCTION_BOOTSTRAP_STORE_INVALID', `${role} Store缺少get或setJSON能力`);
+  if (!store || typeof store.get !== 'function' || typeof store.setJSON !== 'function'
+      || typeof store.delete !== 'function') {
+    throw new ProductionBootstrapError('PRODUCTION_BOOTSTRAP_STORE_INVALID', `${role} Store缺少get、setJSON或delete能力`);
   }
   return store;
+}
+
+function operationCounter() {
+  return { getAttempts: 0, getSucceeded: 0, setAttempts: 0, setSucceeded: 0, deleteAttempts: 0, deleteSucceeded: 0 };
+}
+
+function instrumentStore(store, counter) {
+  return Object.freeze({
+    async get(...args) {
+      counter.getAttempts += 1;
+      const value = await store.get(...args);
+      counter.getSucceeded += 1;
+      return value;
+    },
+    async setJSON(...args) {
+      counter.setAttempts += 1;
+      const value = await store.setJSON(...args);
+      counter.setSucceeded += 1;
+      return value;
+    },
+    async delete(...args) {
+      counter.deleteAttempts += 1;
+      const value = await store.delete(...args);
+      counter.deleteSucceeded += 1;
+      return value;
+    },
+  });
 }
 
 function sameValue(left, right) {
@@ -203,6 +231,22 @@ async function writeMissingEntry(store, entry) {
   }
 }
 
+function summarizeOperations(publicCounter, adminCounter) {
+  const sum = name => publicCounter[name] + adminCounter[name];
+  return Object.freeze({
+    publicStore: Object.freeze({ ...publicCounter }),
+    adminStore: Object.freeze({ ...adminCounter }),
+    total: Object.freeze({
+      getAttempts: sum('getAttempts'),
+      getSucceeded: sum('getSucceeded'),
+      setAttempts: sum('setAttempts'),
+      setSucceeded: sum('setSucceeded'),
+      deleteAttempts: sum('deleteAttempts'),
+      deleteSucceeded: sum('deleteSucceeded'),
+    }),
+  });
+}
+
 export async function executeProductionBootstrap({
   publicStore,
   adminStore,
@@ -216,9 +260,11 @@ export async function executeProductionBootstrap({
     }
     throw error;
   }
+  const publicCounter = operationCounter();
+  const adminCounter = operationCounter();
   const stores = Object.freeze({
-    public: assertStore(publicStore, '公共生产'),
-    admin: assertStore(adminStore, '管理员生产'),
+    public: instrumentStore(assertStore(publicStore, '公共生产'), publicCounter),
+    admin: instrumentStore(assertStore(adminStore, '管理员生产'), adminCounter),
   });
   const plan = buildProductionBootstrapResources(config);
 
@@ -250,6 +296,7 @@ export async function executeProductionBootstrap({
     }
   }
 
+  const operations = summarizeOperations(publicCounter, adminCounter);
   return Object.freeze({
     schemaVersion: 1,
     status: createdCount > 0 ? 'initialized' : 'already_initialized_exact',
@@ -258,9 +305,10 @@ export async function executeProductionBootstrap({
     resourceCount: plan.entries.length,
     createdCount,
     existingExactCount,
-    realBlobReadsPerformed: plan.entries.length * 2,
-    realBlobWritesPerformed: createdCount,
-    realBlobDeletesPerformed: 0,
+    operations,
+    realBlobReadsPerformed: operations.total.getSucceeded,
+    realBlobWritesPerformed: operations.total.setSucceeded,
+    realBlobDeletesPerformed: operations.total.deleteSucceeded,
     productionCapabilitiesEnabled: false,
     stablePromotionAuthorized: false,
   });
