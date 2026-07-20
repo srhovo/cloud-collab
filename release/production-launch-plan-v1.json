@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-07-21",
+  "decisionSource": "project_owner_chat",
+  "candidate": {
+    "version": "8.2.31",
+    "sha256": "9a9719e70dce94d875befb287d247fca0755183da7c813779310abb57ba3882b",
+    "bytes": 1155575,
+    "observationPeriod": "passed"
+  },
+  "stableRelease": {
+    "targetVersion": "8.3.0",
+    "versionSelected": true,
+    "promotionAuthorized": false,
+    "promotionPerformed": false,
+    "separateFinalAuthorizationRequired": true
+  },
+  "scope": {
+    "displayLabel": "club",
+    "protocolField": "groupId",
+    "groupId": "see",
+    "libraryId": "see_cz",
+    "legacyGroupIdProtocolRetained": true
+  },
+  "capabilityAuthorization": {
+    "readSync": true,
+    "ordinarySubmission": true,
+    "sensitiveSubmission": true,
+    "automaticOrdinaryApproval": true,
+    "activationPerformed": false,
+    "requiredRolloutOrder": [
+      "bootstrap_and_integrity_check",
+      "read_sync_only",
+      "ordinary_submission_small_cohort",
+      "automatic_ordinary_approval",
+      "sensitive_submission_manual_review",
+      "full_l4_acceptance",
+      "separate_stable_promotion_authorization"
+    ]
+  },
+  "access": {
+    "currentProvider": "edgeone_makers",
+    "currentAccelerationRegion": "global_including_chinese_mainland",
+    "platformProjectOrDeploymentDomainPermanentForPublicUse": false,
+    "platformPreviewLinkTtlHours": 3,
+    "permanentPrimaryDomainStatus": "blocked_pending_owner_controlled_custom_domain",
+    "githubRepositoryUrlIsApplicationEntry": false,
+    "githubPagesStaticBackupStatus": "available_but_not_yet_deployed",
+    "githubPagesCanHostCloudFunctionsOrBlob": false,
+    "mainlandReliabilityWithoutCustomDomain": "not_guaranteed"
+  },
+  "storage": {
+    "bootstrapAuthorized": true,
+    "productionBlobStoreName": "cloud-collab-production-v1",
+    "adminBlobStoreName": "cloud-collab-admin-production-v1",
+    "realBlobWritePerformed": false,
+    "initializationMode": "dry_run_only_until_secrets_and_domain_are_ready"
+  },
+  "administrator": {
+    "username": "xiaxue",
+    "submittedChatSecretAccepted": false,
+    "rejectionReason": "secret_was_exposed_in_chat_and_is_not_sufficiently_random",
+    "realSecretStorage": "edgeone_private_environment_only",
+    "minimumSecretBytes": 32,
+    "minimumIndependentSecrets": 7,
+    "plaintextSecretMayBeCommitted": false
+  },
+  "runtimeSafety": {
+    "allProductionFeatureFlagsDefaultOff": true,
+    "secretsMustBeIndependent": true,
+    "previewAndProductionStoresMustDiffer": true,
+    "previewAndProductionCredentialsMustDiffer": true,
+    "productionPublicWritesCurrentlyEnabled": false
+  }
+}
