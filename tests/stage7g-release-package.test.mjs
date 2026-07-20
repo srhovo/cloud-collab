@@ -10,6 +10,7 @@ import { packageReleaseCandidate } from '../scripts/package-release-candidate-v1
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const digest = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const VERSION = '8.2.31';
+const FROZEN = JSON.parse(fs.readFileSync(path.join(ROOT, 'release', `最终发布清单_${VERSION}.json`), 'utf8'));
 
 test('阶段7J生成8.2.31候选单文件与最终发布清单', () => {
   const outputDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'stage7j-package-'));
@@ -34,12 +35,13 @@ test('阶段7J生成8.2.31候选单文件与最终发布清单', () => {
 
     assert.equal(candidate.toString('utf8').includes(`const APP_VERSION = '${VERSION}';`), true);
     assert.equal(candidate.toString('utf8').includes(`<title>码单器${VERSION}（公共协作发布候选版）</title>`), true);
+    assert.equal((candidate.toString('utf8').match(/<script\b/gi) || []).length, 1);
     assert.equal(manifest.releaseStatus, 'candidate_packaged_not_promoted');
     assert.equal(manifest.candidate.version, VERSION);
     assert.equal(manifest.candidate.sha256, digest(candidate));
-    assert.equal(manifest.candidate.sha256, '79c443e16d2560c43921dad51bfdc0152c440254d450f57b96326fdd27b2ccea');
+    assert.equal(manifest.candidate.sha256, FROZEN.candidate.sha256);
     assert.equal(manifest.candidate.bytes, candidate.length);
-    assert.equal(manifest.candidate.bytes, 1155499);
+    assert.equal(manifest.candidate.bytes, FROZEN.candidate.bytes);
     assert.equal(manifest.stable.version, '8.2.25');
     assert.equal(manifest.stable.unchanged, true);
     assert.equal(manifest.stable.promotionAuthorized, false);
