@@ -10,6 +10,7 @@ const outputPath = path.join(root, 'dist', 'index.html');
 const manifestPath = path.join(root, 'dist', 'build-manifest.json');
 const ordinaryClientSource = fs.readFileSync(path.join(root, 'src', 'cloud_collab_ordinary_types_client.js'), 'utf8').trim();
 const ordinaryFeatureMethods = fs.readFileSync(path.join(root, 'src', 'cloud_collab_ordinary_feature_methods.fragment.js'), 'utf8').trim();
+const ordinaryReadonlyMethods = fs.readFileSync(path.join(root, 'src', 'cloud_collab_ordinary_readonly_methods.fragment.js'), 'utf8').trim();
 const submissionFeatureMethods = fs.readFileSync(path.join(root, 'src', 'cloud_collab_submission_feature_methods.fragment.js'), 'utf8').trim();
 let html = fs.readFileSync(outputPath, 'utf8');
 
@@ -30,8 +31,8 @@ html = replaceOnce(
 html = replaceOnce(
   html,
   `${submissionFeatureMethods}\n\n getModeLabel(mode) {`,
-  `${submissionFeatureMethods}\n\n${ordinaryFeatureMethods}\n\n getModeLabel(mode) {`,
-  'ordinary feature methods',
+  `${submissionFeatureMethods}\n\n${ordinaryFeatureMethods}\n\n${ordinaryReadonlyMethods}\n\n getModeLabel(mode) {`,
+  'ordinary feature and receive methods',
 );
 
 html = replaceOnce(
@@ -46,6 +47,13 @@ html = replaceOnce(
   "if (mode === 'collaborate' && previousBinding?.mode !== 'collaborate') await this.enqueueInitialBindingSubmissions(localLibraryId);",
   `if (mode === 'collaborate' && previousBinding?.mode !== 'collaborate') {\n     await this.enqueueInitialBindingSubmissions(localLibraryId);\n     await this.enqueueInitialOrdinarySubmissions(localLibraryId);\n    }`,
   'initial ordinary enqueue',
+);
+
+html = replaceOnce(
+  html,
+  '    const plan = await CloudCollabSnapshotSync.planExactPriceMerge({ snapshot: rawSnapshot, localItems: targetLibrary.items || [], baseHashes: scope.baseHashes || {} });\n    const result = this.commitExactPricePlan(binding, scope, plan);',
+  '    const plans = await this.planStage5GMixedMerge(binding, scope, rawSnapshot, targetLibrary);\n    const result = this.commitStage5GMixedPlan(binding, scope, plans);',
+  'mixed public snapshot merge',
 );
 
 html = replaceOnce(
@@ -72,7 +80,7 @@ html = replaceOnce(
 html = replaceOnce(
   html,
   '只接收公共普通精确价格；参与协作模式可把白名单价格逐条送入隔离候选区，不能直接修改正式公共库。',
-  '当前接收同步仍保持普通精确价格；参与协作模式可把普通精确价格、明确确认的陪玩名字和明确保存的老板资料逐条送入隔离候选区，不能直接修改正式公共库。',
+  '可三方合并公共普通精确价格、已确认陪玩名字和老板资料；参与协作模式也可将明确用户操作逐条送入隔离候选区，不能直接修改正式公共库。',
   'stage5g collaboration banner',
 );
 
@@ -83,10 +91,24 @@ html = replaceOnce(
   'stage5g queue note',
 );
 
+html = replaceOnce(
+  html,
+  "'公共更新仅合并普通精确价格。'",
+  "'公共更新会三方合并普通精确价格、已确认陪玩名字和老板资料。'",
+  'stage5g public version summary',
+);
+
+html = html
+  .replace('公共版本 ${versionData.publicVersion} 已是最新；未修改本地价格。', '公共版本 ${versionData.publicVersion} 已是最新；未修改本地数据。')
+  .replace('公共库目前为空；本地价格未改变。', '公共库目前为空；本地数据未改变。')
+  .replace('公共快照没有新变化；本地价格未改变。', '公共快照没有新变化；本地数据未改变。')
+  .replace('本地价格保持原状。', '本地数据保持原状。');
+
 fs.writeFileSync(outputPath, html, 'utf8');
 const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 manifest.stage = '5G-ordinary-shared-client';
 manifest.ordinaryTypesClientEnabled = true;
+manifest.ordinaryTypesReceiveEnabled = true;
 manifest.ordinaryTypes = ['playable_name', 'boss_profile'];
 manifest.stage6SensitiveChangesEnabled = false;
 manifest.sha256 = crypto.createHash('sha256').update(Buffer.from(html)).digest('hex');
