@@ -77,8 +77,25 @@ function titleOf(html, version) {
 
 function ledgerOf(value) {
   if (!value || value.schemaVersion !== 1) fail('RELEASE_LEDGER_INVALID', '证据账本无效');
-  for (const key of ['stableVersion', 'currentCompatibleCandidateVersion', 'recommendedCandidateVersionFromPlan']) {
+  for (const key of [
+    'stableVersion',
+    'currentCompatibleCandidateVersion',
+    'recommendedCandidateVersionFromPlan',
+    'protocolCompatibilityVersion',
+  ]) {
     if (!/^\d+\.\d+\.\d+$/.test(String(value[key] || ''))) fail('RELEASE_LEDGER_VERSION_INVALID', '证据账本版本无效', { key });
+  }
+  if (value.candidateVersionDecision !== null
+      && !/^\d+\.\d+\.\d+$/.test(String(value.candidateVersionDecision || ''))) {
+    fail('RELEASE_LEDGER_VERSION_INVALID', '候选版本决策无效', { key: 'candidateVersionDecision' });
+  }
+  if (value.candidateVersionDecision !== null
+      && value.candidateVersionDecision !== value.currentCompatibleCandidateVersion) {
+    fail('RELEASE_CANDIDATE_DECISION_MISMATCH', '候选版本决策与当前构建版本不一致');
+  }
+  if (value.candidateVersionDecision !== null
+      && !String(value.candidateVersionDecisionSource || '').trim()) {
+    fail('RELEASE_CANDIDATE_DECISION_SOURCE_MISSING', '候选版本决策缺少来源记录');
   }
   const stable = value.stableArtifact;
   if (!stable || stable.source !== 'external_frozen_baseline'
@@ -130,14 +147,20 @@ export function auditReleaseRepository({ root } = {}) {
   if (pkg.scripts?.build !== 'node scripts/build-stage6b-compatible.mjs') {
     fail('RELEASE_BUILD_ENTRY_INVALID', '候选构建入口发生变化');
   }
-  if (manifest.version !== ledger.currentCompatibleCandidateVersion || manifest.output !== 'dist/index.html') {
+  if (manifest.version !== ledger.currentCompatibleCandidateVersion
+      || manifest.candidateVersion !== ledger.currentCompatibleCandidateVersion
+      || manifest.protocolCompatibilityVersion !== ledger.protocolCompatibilityVersion
+      || manifest.releaseStage !== '7F-release-consistency'
+      || manifest.output !== 'dist/index.html') {
     fail('RELEASE_MANIFEST_VERSION_INVALID', '构建清单版本无效');
   }
   const candidateSha256 = digest(candidate);
   if (manifest.sha256 !== candidateSha256 || manifest.bytes !== candidate.length) {
     fail('RELEASE_MANIFEST_HASH_MISMATCH', '构建清单与候选摘要不一致');
   }
-  if (!buildScript.includes(`manifest.version = '${ledger.currentCompatibleCandidateVersion}'`)
+  if (!buildScript.includes(`const releaseVersion = '${ledger.currentCompatibleCandidateVersion}'`)
+      || !buildScript.includes(`const protocolCompatibilityVersion = '${ledger.protocolCompatibilityVersion}'`)
+      || !buildScript.includes('manifest.version = releaseVersion')
       || !buildScript.includes('compatibleShellRetained = true')) {
     fail('RELEASE_BUILD_CONTRACT_INVALID', '兼容候选构建契约无效');
   }
@@ -160,6 +183,8 @@ export function auditReleaseRepository({ root } = {}) {
       currentCompatibleVersion: ledger.currentCompatibleCandidateVersion,
       recommendedVersionFromPlan: ledger.recommendedCandidateVersionFromPlan,
       ownerDecision: ledger.candidateVersionDecision,
+      ownerDecisionSource: ledger.candidateVersionDecisionSource,
+      protocolCompatibilityVersion: ledger.protocolCompatibilityVersion,
       title: titleOf(candidate.toString('utf8'), ledger.currentCompatibleCandidateVersion),
       sha256: candidateSha256,
       bytes: candidate.length,

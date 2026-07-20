@@ -1,4 +1,4 @@
-name: stage4c-client-ci
+name: release-candidate-ci
 
 on:
   push:
@@ -16,8 +16,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Run npm install --ignore-scripts
-        run: npm install --ignore-scripts
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
       - name: Run npm run ci
         shell: bash
         run: |
@@ -46,8 +46,8 @@ jobs:
           CHROMIUM_PATH="$(find "$HOME/.cache/ms-playwright" -type f -name chrome | head -n 1)"
           test -n "$CHROMIUM_PATH"
           sudo ln -sf "$CHROMIUM_PATH" /usr/bin/chromium
-      - run: python3 tests/core_compare.py
-      - run: python3 tests/browser_integration.py
+      - run: python3 tests/core_compare.py --html dist/index.html --expected-version 8.2.30
+      - run: python3 tests/browser_integration.py --html dist/index.html --expected-version 8.2.30
       - name: Stage5A admin authentication browser regression
         run: python3 tests/stage5a_browser_admin_auth.py
       - name: Stage5B admin read-only review browser regression

@@ -4,7 +4,7 @@
  <!-- 主要结构：顶部说明区 / 输入与提取区 / 订单结果区 / 历史记录区 / 最近老板与记忆库 / 数据备份迁移 -->
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
- <title>码单器8.2.27（公共协作只接收同步候选）</title>
+ <title>码单器8.2.30（公共协作完整候选版）</title>
  <style>
  :root {
  /* 颜色变量 */
@@ -3321,7 +3321,7 @@ h1 { margin-bottom: 4px; }
 }
 
 
- /* ===== 公共协作数据库（8.2.27 只接收同步候选；三方合并与失败回滚） ===== */
+ /* ===== 公共协作数据库（8.2.28 接收同步 + 隔离候选派发；正式公共写入关闭） ===== */
  .dual-memory-row--cloud { flex-wrap: wrap; }
  .dual-memory-row--cloud .mem-tab-btn { flex: 1 1 calc(50% - 5px); }
  .cloud-collab-content { width: min(680px, calc(100vw - 24px)); max-height: min(88vh, 820px); overflow: auto; }
@@ -3398,7 +3398,7 @@ h1 { margin-bottom: 4px; }
  <symbol id="app-icon-grip-vertical" viewBox="0 0 320 512"><path d="M40 352h48c22.1 0 40 17.9 40 40v48c0 22.1-17.9 40-40 40H40c-22.1 0-40-17.9-40-40v-48c0-22.1 17.9-40 40-40zm192 0h48c22.1 0 40 17.9 40 40v48c0 22.1-17.9 40-40 40h-48c-22.1 0-40-17.9-40-40v-48c0-22.1 17.9-40 40-40zM40 320c-22.1 0-40-17.9-40-40v-48c0-22.1 17.9-40 40-40h48c22.1 0 40 17.9 40 40v48c0 22.1-17.9 40-40 40H40zm192-128h48c22.1 0 40 17.9 40 40v48c0 22.1-17.9 40-40 40h-48c-22.1 0-40-17.9-40-40v-48c0-22.1 17.9-40 40-40zM40 160c-22.1 0-40-17.9-40-40V72c0-22.1 17.9-40 40-40h48c22.1 0 40 17.9 40 40v48c0 22.1-17.9 40-40 40H40zm192-128h48c22.1 0 40 17.9 40 40v48c0 22.1-17.9 40-40 40h-48c-22.1 0-40-17.9-40-40V72c0-22.1 17.9-40 40-40z"/></symbol>
  </defs>
  </svg>
- <!-- 码单器 8.2.27 公共协作数据库只接收同步候选版：公共快照三方合并，服务器失败不影响正常码单 -->
+ <!-- 码单器 8.2.28 公共协作数据库候选派发客户端：只向隔离预览候选区提交，正式公共写入、自动批准和管理员审核保持关闭 -->
  <!-- 码单器 8.2.21：修正局数单价时长换算；单项目时长原样输出，多项目按小时/分钟或小时/余局规范汇总 -->
  <div class="container">
  <header>
@@ -3759,14 +3759,14 @@ h1 { margin-bottom: 4px; }
  <button class="modal-exit-btn" type="button" data-modal-close="cloudCollabModal" aria-label="退出公共协作数据库弹窗">×</button>
  </div>
  <div class="cloud-collab-banner">
- <div><strong>只接收同步候选</strong><span>页面启动不等待服务器；绑定为“只接收”或“参与协作”时异步合并公共普通精确价格。</span></div>
- <span class="cloud-collab-badge" id="cloudServerBadge">只读 · 检查中</span>
+ <div><strong>接收同步 + 隔离候选派发</strong><span>可三方合并价格、陪玩名字、老板资料、区间、加价和礼物规则；敏感新增、修改与明确删除全部进入管理员人工审核。</span></div>
+ <span class="cloud-collab-badge" id="cloudServerBadge">同步 · 检查中</span>
  </div>
 
  <section class="cloud-collab-section" aria-labelledby="cloudServerTitle">
  <h4 id="cloudServerTitle">公共只读同步</h4>
  <div class="cloud-collab-status" id="cloudServerSummary">尚未检查只读测试接口。</div>
- <p class="cloud-collab-note">只发送无凭据GET请求及公共groupId/libraryId；不会上传设备身份、令牌、价格、老板、历史或其他本地内容。</p>
+ <p class="cloud-collab-note">只发送无凭据GET请求及公共groupId/libraryId；不会上传设备令牌、历史、订单、聊天、备注、布局或其他私人内容。</p>
  <div class="cloud-collab-actions">
  <button class="app-btn app-btn--secondary app-btn--sm" id="cloudServerCheckBtn" type="button">检查服务器</button>
  </div>
@@ -3810,13 +3810,22 @@ h1 { margin-bottom: 4px; }
  </select>
  </div>
  </div>
- <div class="cloud-collab-status" id="cloudBindingSummary">选择价格库后可建立本地绑定；保存绑定不会向服务器发送数据。</div>
+ <div class="cloud-collab-status" id="cloudBindingSummary">选择价格库后可建立本地绑定；只有“参与协作”模式会生成白名单候选提交。</div>
  <div class="cloud-collab-actions">
  <button class="app-btn app-btn--primary app-btn--sm" id="cloudBindingSaveBtn" type="button">保存本地绑定</button>
  <button class="app-btn app-btn--secondary app-btn--sm" id="cloudPublicVersionCheckBtn" type="button">检查并接收更新</button>
  <button class="app-btn app-btn--danger app-btn--sm" id="cloudBindingRemoveBtn" type="button">解除绑定</button>
  </div>
  <div class="cloud-collab-status" id="cloudPublicVersionSummary">公共更新尚未检查。</div>
+ </section>
+
+ <section class="cloud-collab-section" aria-labelledby="cloudUploadTitle">
+ <h4 id="cloudUploadTitle">隔离预览候选派发</h4>
+ <p class="cloud-collab-note">页面不接收、显示或保存任何预览密钥。只有部署环境通过受控运行时门禁时才会派发；门禁关闭、离线或服务禁写时，队列留在本机。设备令牌仅保存在独立本地凭据区。</p>
+ <div class="cloud-collab-actions">
+ <button class="app-btn app-btn--secondary app-btn--sm" id="cloudUploadRetryBtn" type="button">立即派发 / 重试可恢复项</button>
+ </div>
+ <div class="cloud-collab-status" id="cloudUploadSummary">候选派发尚未启动。</div>
  </section>
 
  <section class="cloud-collab-section" aria-labelledby="cloudQueueTitle">
@@ -3826,7 +3835,7 @@ h1 { margin-bottom: 4px; }
  <div class="cloud-collab-stat"><strong id="cloudQueueCount">0</strong><span>待上传记录</span></div>
  <div class="cloud-collab-stat"><strong id="cloudConflictCount">0</strong><span>未解决冲突</span></div>
  </div>
- <p class="cloud-collab-note">云端拉取只会更新绑定价格库和同步Hash，不会生成提交；导入、迁移、回滚和系统自动记忆仍不会进入待上传队列。</p>
+ <p class="cloud-collab-note">仅“参与协作”绑定会上传明确用户操作；区间、加价、礼物规则、直属敏感变化及删除全部进入人工审核。只接收模式、导入、迁移、云端拉取、回滚、系统记忆和私人数据永远不会进入上传队列。</p>
  <div class="cloud-collab-actions">
  <button class="app-btn app-btn--secondary app-btn--sm" id="cloudRefreshBtn" type="button">刷新本地状态</button>
  </div>
@@ -3947,9 +3956,9 @@ h1 { margin-bottom: 4px; }
 
 
  <script>
- const APP_VERSION = '8.2.27';
+ const APP_VERSION = '8.2.28';
  const TUTORIAL_VIDEO_URL = 'https://cdn.jsdelivr.net/gh/srhovo/tutorialvideo@main/video.mp4';
- // Release note: 8.2.27 完成只接收公共普通精确价格：版本检查、增量/快照拉取、三方比较、冲突隔离、事务回滚与五分钟轮询；不开放提交、审核或管理员写入。
+ // Release note: 8.2.28 在8.2.27只接收同步基础上增加隔离预览设备注册、本地设备凭据、pendingCloudChanges候选派发、幂等重试、错误分类、状态回写与断网降级；不开放正式公共写入、自动批准或管理员审核。
  // Release note: 8.2.25 统一“时长计算 / 提取名字”与“最近老板”的按钮高度、文字字号、图标尺寸和垂直基线；保留手机、平板与桌面端原有布局及全部业务逻辑。
  // Release note: 8.2.23 修复结构化项目中间精度过早取整；结算量持久化保留6位，最终项目金额保留3位，并同步修正结构化历史派生结果。
 // 版本规则：第三位用于GPT/AI内部修订；第二位仅在整体达到预期、无已知阻断并确认可交付后晋升。
@@ -5832,6 +5841,11 @@ class UltimateStorageManager {
  confirm() {
  const correctedNames = this.getCorrectedNames();
  this.service.enhancedExtractor.saveData();
+ setTimeout(() => {
+  const feature = globalThis.orderCalculator?.cloudCollabFeature;
+  if (!feature?.enqueuePlayableNameUserChange) return;
+  correctedNames.forEach(name => feature.enqueuePlayableNameUserChange(name).catch(error => appLogSilent(error)));
+ }, 0);
  this.close(correctedNames);
  }
 
@@ -11147,6 +11161,9 @@ class DataPortabilityFeature {
  }
  const result = this.bossMemoryFeature.upsertRecord(boss);
  this.bossMemory = result.memory;
+ setTimeout(() => {
+  this.app.cloudCollabFeature?.enqueueBossProfileUserChange?.(boss).catch(error => appLogSilent(error));
+ }, 0);
  this.updateRecentBossUI();
  if (this.el.bossSuggestList?.classList.contains('show')) this.showBossSuggestions(this.el.inputs.boss.value);
  this.showSuccess(result.updated ? `“${boss.name}” 老板信息已更新到记忆库` : `“${boss.name}” 已保存到老板记忆库`);
@@ -12664,6 +12681,7 @@ class PriceRuleEditorFeature {
  this.refreshServicePriceMatchAfterLibraryChange();
  if (this.el.pmUndoBtn) this.el.pmUndoBtn.disabled = false;
  this.showSuccess(resolution.replaced.length ? `已用新规则替换${resolution.replaced.length}条冲突规则` : (previous ? `已更新区间规则：${finalRule.rangeLabel}` : `已添加区间规则：${finalRule.rangeLabel}`));
+ setTimeout(() => this.app.cloudCollabFeature?.enqueueSensitiveRuleUserChange?.('rank_range_rule', finalRule).catch(error => appLogSilent(error)), 0);
  return true;
  } catch (error) {
  this.handleError('saveRangeRule', error, '区间规则保存失败，请重试');
@@ -12716,6 +12734,7 @@ class PriceRuleEditorFeature {
  this.refreshServicePriceMatchAfterLibraryChange();
  if (this.el.pmUndoBtn) this.el.pmUndoBtn.disabled = false;
  this.showSuccess(`已删除区间规则：${rule.rangeLabel}`);
+ setTimeout(() => this.app.cloudCollabFeature?.enqueueSensitiveDeleteUserChange?.('rank_range_rule', rule).catch(error => appLogSilent(error)), 0);
  return true;
  }
 
@@ -12920,6 +12939,10 @@ class PriceRuleEditorFeature {
  ? '已替换当前库中的同名同结算方式记录'
  : (previousEditingKey ? '已保存单价记录' : '已添加到当前价格库'));
  this.showSuccess(message);
+ const cloudLocalLibraryId = workingActive?.id || this.priceLibraryStore.getActiveLibrary(this.priceLibraries)?.id || '';
+ if (cloudLocalLibraryId) setTimeout(() => {
+  this.cloudCollabFeature?.enqueueExactPriceUserChange?.(cloudLocalLibraryId, record).catch(error => appLogSilent(error));
+ }, 0);
  this.resetPriceMemoryEditor({ clear: true });
  } catch (error) {
  this.handleError('addPriceMemory', error, '添加失败，请重试');
@@ -12954,6 +12977,7 @@ class PriceRuleEditorFeature {
 
  deletePriceMemoryItem(key) {
  try {
+ const removedRecord = this.priceMemoryStore.normalize(this.priceMemory).find(item => this.priceMemoryStore.buildKey(item) === key);
  const next = this.priceMemoryStore.removeByKey(this.priceMemory, key);
  if (!next) return;
 
@@ -12963,6 +12987,7 @@ class PriceRuleEditorFeature {
  this.updatePriceMemoryUI();
  this.refreshServicePriceMatchAfterLibraryChange();
  this.showSuccess('已删除单价记录');
+ if (removedRecord) setTimeout(() => this.app.cloudCollabFeature?.enqueueSensitiveDeleteUserChange?.('exact_price', removedRecord).catch(error => appLogSilent(error)), 0);
  } catch (error) {
  this.handleError('deletePriceMemory', error, '删除失败，请重试');
  }
@@ -13099,6 +13124,7 @@ class SurchargeFeature {
  this.resetEditor();
  this.updateUI();
  this.app.showSuccess(previous ? `已更新加价规则：${finalRule.name}` : `已添加加价规则：${finalRule.name}`);
+ setTimeout(() => this.app.cloudCollabFeature?.enqueueSensitiveRuleUserChange?.('surcharge_rule', finalRule).catch(error => appLogSilent(error)), 0);
  return true;
  } catch (error) {
  this.app.handleError('saveSurchargeRule', error, '加价规则保存失败，请重试');
@@ -13134,6 +13160,7 @@ class SurchargeFeature {
  if (this._editingId === id) this.resetEditor();
  this.updateUI();
  this.app.showSuccess(`已删除加价规则：${rule.name}`);
+ setTimeout(() => this.app.cloudCollabFeature?.enqueueSensitiveDeleteUserChange?.('surcharge_rule', rule).catch(error => appLogSilent(error)), 0);
  return true;
  }
 
@@ -13327,6 +13354,8 @@ class GiftMemoryFeature {
  if (!saved) return this.app.showError('礼物名称记忆未能保存，请重试');
  this.resetEditor();
  this.app.showSuccess(existing ? `已更新礼物记忆：${serviceType}` : `已添加礼物记忆：${serviceType}`);
+ const savedGift = this.getMemories().find(item => item.serviceKey === PriceRuleEngine.buildServiceKey(serviceType));
+ if (savedGift) setTimeout(() => this.app.cloudCollabFeature?.enqueueSensitiveRuleUserChange?.('gift_rule', savedGift).catch(error => appLogSilent(error)), 0);
  return true;
  }
 
@@ -13353,6 +13382,7 @@ class GiftMemoryFeature {
  if (!this.persist(this.getMemories().filter(entry => entry.id !== id))) return this.app.showError('礼物名称记忆删除失败，请重试');
  if (this._editingId === id) this.resetEditor();
  this.app.showSuccess(`已删除礼物记忆：${item.serviceType}`);
+ setTimeout(() => this.app.cloudCollabFeature?.enqueueSensitiveDeleteUserChange?.('gift_rule', item).catch(error => appLogSilent(error)), 0);
  return true;
  }
 
@@ -14858,6 +14888,7 @@ async deleteSavedName(name) {
  if (!this.enhancedExtractor.removeConfirmedName(name)) return this.showError('删除名字失败');
  this.updateSavedNamesList();
  this.showSuccess(`已删除“${name}”`);
+ setTimeout(() => this.app.cloudCollabFeature?.enqueueSensitiveDeleteUserChange?.('playable_name', { name }).catch(error => appLogSilent(error)), 0);
  } catch (error) {
  appLogSilent(error);
  }
@@ -16457,6 +16488,7 @@ class BossMemoryFeature {
  if (!this.validateInput(this.el.bossDiscountInput)) return this.showInfo('请输入有效折数，如8、80或0.8');
  const discount = this.normalizeDiscountInputField(this.el.bossDiscountInput);
  const editIndex = Number.isInteger(this.editingIndex) ? this.editingIndex : -1;
+ const previousBossForCloud = editIndex >= 0 && editIndex < this.bossMemory.length ? this.get(editIndex) : null;
  let updated = false;
  if (editIndex >= 0 && editIndex < this.bossMemory.length) {
  this.bossMemory = this.directory.normalizeMemory(this.bossMemory);
@@ -16470,6 +16502,14 @@ class BossMemoryFeature {
  }
  this.showSuccess(updated ? `"${name}" 老板信息已更新` : `"${name}" 已添加到老板记忆库`);
  this.save();
+ setTimeout(() => {
+  const feature = this.app.cloudCollabFeature;
+  const nextBoss = { name, paiDan, discount };
+  const operation = feature?.isStage6BSensitiveBossChange?.(previousBossForCloud, nextBoss)
+   ? feature.enqueueSensitiveBossUserChange?.(nextBoss)
+   : feature?.enqueueBossProfileUserChange?.(nextBoss);
+  operation?.catch?.(error => appLogSilent(error));
+ }, 0);
  this.resetEditor({ clear: true });
  this.refresh();
  this.hideBossSuggestions();
@@ -16500,6 +16540,7 @@ class BossMemoryFeature {
 
  delete(index) {
  try {
+ const deletedBossForCloud = this.get(index);
  const nextMemory = this.directory.removeMemoryAt(this.bossMemory, index);
  if (!nextMemory) return false;
  this.bossMemory = nextMemory;
@@ -16507,6 +16548,7 @@ class BossMemoryFeature {
  this.refresh();
  this.hideBossSuggestions();
  this.showSuccess('已删除老板记录');
+ if (deletedBossForCloud) setTimeout(() => this.app.cloudCollabFeature?.enqueueSensitiveDeleteUserChange?.('boss_profile', deletedBossForCloud).catch(error => appLogSilent(error)), 0);
  return true;
  } catch (error) {
  this.handleError('deleteAction', error, '删除失败，请重试');
@@ -16670,7 +16712,7 @@ class BossMemoryFeature {
     submissionId: /^sub_[0-9A-HJKMNP-TV-Z]{26}$/,
     groupId: /^group_[a-z0-9][a-z0-9_]{2,47}$/,
     libraryId: /^lib_[a-z0-9][a-z0-9_]{2,55}$/,
-    bossId: /^boss_[0-9A-HJKMNP-TV-Z]{26}$/,
+    bossId: /^(?:boss_[0-9A-HJKMNP-TV-Z]{26}|boss_v1_[A-Za-z0-9_-]{43})$/,
     localBossKeyHash: /^lbk_v1_[A-Za-z0-9_-]{43}$/,
     businessKey: /^bk_v1_[A-Za-z0-9_-]{43}$/,
     contentHash: /^ch_v1_[A-Za-z0-9_-]{43}$/,
@@ -17190,7 +17232,7 @@ class BossMemoryFeature {
     if (submission.operation === 'delete') assert(submission.payload === null, 'DELETE_PAYLOAD_MUST_BE_NULL', 'delete提交的payload必须为null');
     else assert(isPlainObject(submission.payload), 'UPSERT_PAYLOAD_REQUIRED', 'upsert提交必须包含对象payload');
     if (['exact_price', 'rank_range_rule', 'surcharge_rule', 'gift_rule'].includes(submission.dataType)) assert(submission.libraryId !== null, 'LIBRARY_SCOPE_REQUIRED', '该数据类型需要libraryId');
-    if (['playable_name', 'boss_profile'].includes(submission.dataType)) assert(submission.libraryId === null, 'GROUP_SCOPE_REQUIRED', '陪玩名字和老板资料必须是group作用域');
+    if (['playable_name', 'boss_profile'].includes(submission.dataType)) assert(submission.libraryId !== null, 'STAGE5G_PREVIEW_LIBRARY_SCOPE_REQUIRED', '阶段5G隔离候选需要绑定的预览libraryId');
     const forbidden = scanForbiddenKeys({ payload: submission.payload, clientContext: submission.clientContext });
     assert(forbidden.length === 0, 'FORBIDDEN_FIELD', 'submission包含禁止字段', forbidden);
     assert(byteLength(submission) <= MAX_SUBMISSION_BYTES, 'SUBMISSION_TOO_LARGE', 'submission超过16KB');
@@ -18093,12 +18135,1521 @@ class BossMemoryFeature {
 });
 // ===== 公共协作数据库：公共快照合并结束 =====
 
+// ===== 公共协作数据库：隔离候选提交客户端（阶段4C） =====
+(function(root, factory) {
+  const api = factory();
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  if (root) root.CloudCollabSubmission = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this, function() {
+  'use strict';
+
+  const APP_VERSION = '8.2.28';
+  const SUBMISSION_SCHEMA_VERSION = 1;
+  const PAYLOAD_SCHEMA_VERSION = 1;
+  const PROJECTION_SPEC_VERSION = 1;
+  const QUEUE_SCHEMA_VERSION = 1;
+  const MAX_FLUSH_LIMIT = 20;
+  const WRITE_GATE_HEADER = 'X-Cloud-Collab-Preview-Key';
+  const PREVIEW_ALLOWED_GROUP_ID = 'group_fixture';
+  const PREVIEW_ALLOWED_LIBRARY_ID = 'lib_receive_fixture';
+
+  class SubmissionClientError extends Error {
+    constructor(code, message, { status = 0, retryable = false, category = 'unknown', retryAfterMs = 0, details = null, cause = null } = {}) {
+      super(message || code || '云端提交失败');
+      this.name = 'SubmissionClientError';
+      this.code = code || 'SUBMISSION_CLIENT_ERROR';
+      this.status = Number(status) || 0;
+      this.retryable = Boolean(retryable);
+      this.category = category || 'unknown';
+      this.retryAfterMs = Math.max(0, Number(retryAfterMs) || 0);
+      this.details = details;
+      if (cause) this.cause = cause;
+    }
+  }
+
+  function normalizeBase(value, locationRef = typeof location !== 'undefined' ? location : null) {
+    const text = String(value || '').trim().replace(/\/+$/, '');
+    if (!text) return '';
+    try {
+      const fallback = locationRef?.href || 'https://local.invalid/';
+      const url = new URL(text, fallback);
+      if (!/^https?:$/.test(url.protocol)) return '';
+      if (url.origin === 'https://local.invalid') return '';
+      return url.href.replace(/\/$/, '');
+    } catch (_) { return ''; }
+  }
+
+  function readConfiguredBase({ documentRef = typeof document !== 'undefined' ? document : null, locationRef = typeof location !== 'undefined' ? location : null } = {}) {
+    const configured = documentRef?.querySelector?.('meta[name="cloud-collab-api-base"]')?.getAttribute?.('content') || '';
+    const explicit = normalizeBase(configured, locationRef);
+    if (explicit) return explicit;
+    return locationRef && /^https?:$/.test(locationRef.protocol) ? locationRef.origin : '';
+  }
+
+  function parseRetryAfter(response) {
+    const raw = String(response?.headers?.get?.('retry-after') || '').trim();
+    if (!raw) return 0;
+    if (/^\d+$/.test(raw)) return Math.min(60 * 60 * 1000, Number(raw) * 1000);
+    const at = Date.parse(raw);
+    return Number.isFinite(at) ? Math.max(0, Math.min(60 * 60 * 1000, at - Date.now())) : 0;
+  }
+
+  function classifyRemoteError(code, status, remoteRetryable = false) {
+    const value = String(code || '');
+    if (['PREVIEW_WRITE_DISABLED', 'BLOB_STORE_NOT_CONFIGURED', 'PREVIEW_ACCESS_KEY_NOT_CONFIGURED', 'RATE_LIMIT_SALT_NOT_CONFIGURED'].includes(value)) {
+      return { category: 'service_disabled', retryable: false };
+    }
+    if (status === 401 || ['DEVICE_AUTH_REQUIRED', 'INVALID_DEVICE_TOKEN', 'DEVICE_TOKEN_NOT_FOUND', 'DEVICE_TOKEN_EXPIRED', 'DEVICE_PROFILE_MISMATCH'].includes(value)) {
+      return { category: 'credential', retryable: false };
+    }
+    if (status === 403 || ['PREVIEW_ACCESS_DENIED', 'PREVIEW_SCOPE_FORBIDDEN', 'DEVICE_SCOPE_MISMATCH'].includes(value)) {
+      return { category: value === 'PREVIEW_ACCESS_DENIED' ? 'write_gate' : 'forbidden', retryable: false };
+    }
+    if (status === 409 || ['IDEMPOTENCY_CONFLICT', 'DEVICE_ALREADY_REGISTERED'].includes(value)) {
+      return { category: value === 'DEVICE_ALREADY_REGISTERED' ? 'credential_recovery' : 'conflict', retryable: false };
+    }
+    if (status === 408 || status === 429 || status >= 500 || remoteRetryable) {
+      return { category: status === 429 ? 'rate_limit' : 'transient', retryable: true };
+    }
+    return { category: status >= 400 && status < 500 ? 'validation' : 'unknown', retryable: false };
+  }
+
+  function isPreviewSubmissionScope(submission) {
+    return submission?.groupId === PREVIEW_ALLOWED_GROUP_ID
+      && submission?.libraryId === PREVIEW_ALLOWED_LIBRARY_ID
+      && submission?.dataType === 'exact_price'
+      && submission?.operation === 'upsert';
+  }
+
+  class SubmissionApiClient {
+    constructor({ baseUrl = '', fetchImpl = globalThis.fetch, timeoutMs = 10000, writeAccessProvider = null, locationRef = typeof location !== 'undefined' ? location : null } = {}) {
+      this.baseUrl = normalizeBase(baseUrl, locationRef) || (locationRef && /^https?:$/.test(locationRef.protocol) ? locationRef.origin : '');
+      this.fetchImpl = fetchImpl;
+      this.timeoutMs = Math.max(1000, Math.min(30000, Number(timeoutMs) || 10000));
+      this.writeAccessProvider = typeof writeAccessProvider === 'function' ? writeAccessProvider : () => '';
+    }
+
+    isConfigured() { return Boolean(this.baseUrl && typeof this.fetchImpl === 'function'); }
+    hasWriteAccess() { return Boolean(String(this.writeAccessProvider() || '').trim()); }
+
+    async request(path, { body, token = null } = {}) {
+      if (!this.isConfigured()) throw new SubmissionClientError('API_NOT_CONFIGURED', '提交接口尚未配置', { category: 'configuration' });
+      const writeAccess = String(this.writeAccessProvider() || '');
+      if (!writeAccess) throw new SubmissionClientError('WRITE_GATE_CLOSED', '候选上传运行时门禁未开启', { category: 'write_gate' });
+      const controller = typeof AbortController === 'function' ? new AbortController() : null;
+      const timer = controller ? setTimeout(() => controller.abort(), this.timeoutMs) : null;
+      try {
+        const headers = { 'Content-Type': 'application/json', Accept: 'application/json', [WRITE_GATE_HEADER]: writeAccess };
+        if (token) headers.Authorization = `Bearer ${token}`;
+        const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
+          method: 'POST',
+          credentials: 'omit',
+          cache: 'no-store',
+          redirect: 'error',
+          referrerPolicy: 'no-referrer',
+          headers,
+          body: JSON.stringify(body),
+          ...(controller ? { signal: controller.signal } : {}),
+        });
+        let payload = null;
+        try { payload = await response.json(); } catch (_) {}
+        if (!response.ok || !payload?.ok) {
+          const remote = payload?.error || {};
+          const code = remote.code || `HTTP_${response.status}`;
+          const classified = classifyRemoteError(code, response.status, Boolean(remote.retryable));
+          throw new SubmissionClientError(code, remote.message || '服务器拒绝提交', {
+            status: response.status,
+            retryable: classified.retryable,
+            category: classified.category,
+            retryAfterMs: parseRetryAfter(response),
+            details: remote.details || null,
+          });
+        }
+        const data = payload.data;
+        if (data?.publicMutationAllowed === true || data?.autoApprovalEnabled === true) {
+          throw new SubmissionClientError('UNSAFE_SERVER_CAPABILITY', '服务器返回了当前阶段禁止的公共写入能力', { category: 'protocol' });
+        }
+        return data;
+      } catch (error) {
+        if (error instanceof SubmissionClientError) throw error;
+        if (error?.name === 'AbortError') throw new SubmissionClientError('API_TIMEOUT', '提交请求超时', { retryable: true, category: 'network', cause: error });
+        throw new SubmissionClientError('API_UNREACHABLE', '无法连接提交接口', { retryable: true, category: 'network', cause: error });
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+    }
+
+    registerDevice({ deviceId, nickname = null, appVersion = APP_VERSION }) {
+      return this.request('/api/device/register', {
+        body: { schemaVersion: 1, deviceId, nickname, clientContext: { appVersion } },
+      });
+    }
+
+    submit(deviceToken, submission) {
+      return this.request('/api/submissions/create', { body: submission, token: deviceToken });
+    }
+  }
+
+  function toBase64Url(bytes) {
+    let binary = '';
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    if (typeof btoa === 'function') return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+    if (typeof Buffer !== 'undefined') return Buffer.from(bytes).toString('base64url');
+    throw new SubmissionClientError('BASE64_UNAVAILABLE', '当前环境无法生成提交Hash', { category: 'environment' });
+  }
+
+  const SHA256_K = Object.freeze([
+    0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+    0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+    0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+    0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+    0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+    0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+    0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+    0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2,
+  ]);
+  function rotr(value, shift) { return (value >>> shift) | (value << (32 - shift)); }
+  function sha256Fallback(bytes) {
+    const length = bytes.length, bitLength = length * 8, paddedLength = Math.ceil((length + 9) / 64) * 64;
+    const data = new Uint8Array(paddedLength); data.set(bytes); data[length] = 0x80;
+    const view = new DataView(data.buffer); view.setUint32(paddedLength - 8, Math.floor(bitLength / 0x100000000), false); view.setUint32(paddedLength - 4, bitLength >>> 0, false);
+    const h = new Uint32Array([0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19]);
+    const w = new Uint32Array(64);
+    for (let offset = 0; offset < paddedLength; offset += 64) {
+      for (let i = 0; i < 16; i++) w[i] = view.getUint32(offset + i * 4, false);
+      for (let i = 16; i < 64; i++) { const s0 = rotr(w[i-15],7)^rotr(w[i-15],18)^(w[i-15]>>>3); const s1 = rotr(w[i-2],17)^rotr(w[i-2],19)^(w[i-2]>>>10); w[i]=(w[i-16]+s0+w[i-7]+s1)>>>0; }
+      let [a,b,c,d,e,f,g,hh] = h;
+      for (let i=0;i<64;i++){const s1=rotr(e,6)^rotr(e,11)^rotr(e,25);const ch=(e&f)^(~e&g);const t1=(hh+s1+ch+SHA256_K[i]+w[i])>>>0;const s0=rotr(a,2)^rotr(a,13)^rotr(a,22);const maj=(a&b)^(a&c)^(b&c);const t2=(s0+maj)>>>0;hh=g;g=f;f=e;e=(d+t1)>>>0;d=c;c=b;b=a;a=(t1+t2)>>>0;}
+      h[0]=(h[0]+a)>>>0;h[1]=(h[1]+b)>>>0;h[2]=(h[2]+c)>>>0;h[3]=(h[3]+d)>>>0;h[4]=(h[4]+e)>>>0;h[5]=(h[5]+f)>>>0;h[6]=(h[6]+g)>>>0;h[7]=(h[7]+hh)>>>0;
+    }
+    const result = new Uint8Array(32), resultView = new DataView(result.buffer); h.forEach((value,index)=>resultView.setUint32(index*4,value,false)); return result;
+  }
+  async function sha256Base64Url(value) {
+    if (typeof TextEncoder !== 'function') throw new SubmissionClientError('TEXT_ENCODER_UNAVAILABLE', '当前环境无法生成提交Hash', { category: 'environment' });
+    const bytes = new TextEncoder().encode(value);
+    const subtle = globalThis.crypto?.subtle;
+    if (subtle) { try { return toBase64Url(new Uint8Array(await subtle.digest('SHA-256', bytes))); } catch (_) {} }
+    return toBase64Url(sha256Fallback(bytes));
+  }
+
+  async function buildIdempotencyKey(deviceId, submissionId, canonicalize) {
+    return `ik_v1_${await sha256Base64Url(canonicalize({ schemaVersion: 1, deviceId, submissionId }))}`;
+  }
+
+  async function buildExactPriceSubmission({ snapshotSync, deviceId, submissionId, groupId, libraryId, serviceName, settleType, unitPrice, origin = 'user', clientCreatedAt = Date.now(), appVersion = APP_VERSION } = {}) {
+    if (!snapshotSync?.computeExactPriceHashes || !snapshotSync?.canonicalize) throw new SubmissionClientError('HASH_MODULE_REQUIRED', '公共Hash模块不可用', { category: 'environment' });
+    const hashes = await snapshotSync.computeExactPriceHashes(groupId, libraryId, { serviceName, settleType, unitPrice });
+    const idempotencyKey = await buildIdempotencyKey(deviceId, submissionId, snapshotSync.canonicalize);
+    return Object.freeze({
+      schemaVersion: SUBMISSION_SCHEMA_VERSION,
+      payloadSchemaVersion: PAYLOAD_SCHEMA_VERSION,
+      submissionId,
+      deviceId,
+      groupId,
+      libraryId,
+      bossId: null,
+      dataType: 'exact_price',
+      operation: 'upsert',
+      origin,
+      clientCreatedAt: Math.max(0, Math.floor(Number(clientCreatedAt) || 0)),
+      businessKey: hashes.businessKey,
+      contentHash: hashes.contentHash,
+      idempotencyKey,
+      payload: hashes.payload,
+      clientContext: { appVersion, projectionSpecVersion: PROJECTION_SPEC_VERSION, queueSchemaVersion: QUEUE_SCHEMA_VERSION },
+    });
+  }
+
+  async function planInitialExactPriceSubmissions({ snapshotSync, deviceId, groupId, libraryId, localItems = [], baseHashes = {}, submissionIdFactory, now = () => Date.now(), appVersion = APP_VERSION } = {}) {
+    if (typeof submissionIdFactory !== 'function') throw new SubmissionClientError('SUBMISSION_ID_FACTORY_REQUIRED', '提交ID生成器不可用', { category: 'environment' });
+    const submissions = [], skipped = { alreadyPublic: 0, unsupported: 0, invalid: 0 };
+    const seen = new Set();
+    for (const item of Array.isArray(localItems) ? localItems : []) {
+      const settleType = String(item?.settleType || '').trim().toLowerCase();
+      if (!['round', 'hour'].includes(settleType)) { skipped.unsupported += 1; continue; }
+      try {
+        const hash = await snapshotSync.computeExactPriceHashes(groupId, libraryId, { serviceName: item?.serviceType, settleType, unitPrice: item?.unitPrice });
+        if (seen.has(hash.businessKey)) continue;
+        seen.add(hash.businessKey);
+        if (baseHashes?.[hash.businessKey] === hash.contentHash) { skipped.alreadyPublic += 1; continue; }
+        submissions.push(await buildExactPriceSubmission({
+          snapshotSync, deviceId, submissionId: submissionIdFactory(), groupId, libraryId,
+          serviceName: hash.payload.serviceName, settleType: hash.payload.settleType, unitPrice: hash.payload.unitPrice,
+          origin: 'initialBinding', clientCreatedAt: now(), appVersion,
+        }));
+      } catch (_) { skipped.invalid += 1; }
+    }
+    return Object.freeze({ submissions: Object.freeze(submissions), skipped: Object.freeze(skipped) });
+  }
+
+  function shouldRetry(error) { return Boolean(error?.retryable); }
+
+  class SubmissionDispatcher {
+    constructor({ apiClient, metaStore, credentialStore, queueStore, bindingStore = null, appVersion = APP_VERSION, now = () => Date.now(), isOnline = () => typeof navigator === 'undefined' || navigator.onLine !== false, onState = null } = {}) {
+      this.apiClient = apiClient;
+      this.metaStore = metaStore;
+      this.credentialStore = credentialStore;
+      this.queueStore = queueStore;
+      this.bindingStore = bindingStore;
+      this.appVersion = appVersion;
+      this.now = now;
+      this.isOnline = isOnline;
+      this.onState = typeof onState === 'function' ? onState : () => {};
+      this._flushPromise = null;
+    }
+
+    emit(state) { try { this.onState(Object.freeze({ at: this.now(), ...state })); } catch (_) {} }
+
+    hasCollaborativeBinding(submission) {
+      if (!this.bindingStore?.list) return false;
+      try {
+        return this.bindingStore.list().some(binding => binding?.mode === 'collaborate'
+          && binding.groupId === submission?.groupId
+          && binding.libraryId === submission?.libraryId);
+      } catch (_) { return false; }
+    }
+
+    async ensureCredential() {
+      const current = this.credentialStore?.getValid?.(this.now());
+      if (current) return current;
+      const credentialResult = this.credentialStore?.loadResult?.();
+      if (credentialResult?.ok && credentialResult?.exists) this.credentialStore.clear();
+      const metaResult = this.metaStore?.loadResult?.();
+      if (!metaResult?.ok || !metaResult?.exists || !metaResult.value?.deviceId) {
+        throw new SubmissionClientError('DEVICE_IDENTITY_REQUIRED', '请先创建云协作身份', { category: 'configuration' });
+      }
+      const data = await this.apiClient.registerDevice({ deviceId: metaResult.value.deviceId, nickname: metaResult.value.nickname, appVersion: this.appVersion });
+      if (!data?.deviceToken || data.deviceId !== metaResult.value.deviceId) {
+        throw new SubmissionClientError('INVALID_REGISTRATION_RESPONSE', '设备注册响应无效', { category: 'protocol' });
+      }
+      return this.credentialStore.save({ schemaVersion: 1, deviceId: data.deviceId, deviceToken: data.deviceToken, issuedAt: data.issuedAt, expiresAt: data.expiresAt, tokenVersion: data.tokenVersion });
+    }
+
+    flush({ limit = 10 } = {}) {
+      if (this._flushPromise) return this._flushPromise;
+      this._flushPromise = this._flush({ limit }).finally(() => { this._flushPromise = null; });
+      return this._flushPromise;
+    }
+
+    async _flush({ limit }) {
+      const summary = { status: 'idle', attempted: 0, acknowledged: 0, retryWait: 0, blocked: 0, skippedMode: 0, remaining: 0, errorCode: null, category: null };
+      if (!this.apiClient?.isConfigured?.()) return { ...summary, status: 'not_configured' };
+      if (!this.isOnline()) { this.emit({ status: 'offline' }); return { ...summary, status: 'offline' }; }
+      if (typeof this.apiClient.hasWriteAccess === 'function' && !this.apiClient.hasWriteAccess()) {
+        this.emit({ status: 'write_gate_closed', errorCode: 'WRITE_GATE_CLOSED', category: 'write_gate' });
+        return { ...summary, status: 'write_gate_closed', errorCode: 'WRITE_GATE_CLOSED', category: 'write_gate' };
+      }
+
+      const dueAll = this.queueStore.getDue(this.now(), Math.max(1, Math.min(MAX_FLUSH_LIMIT, Number(limit) || 10)));
+      if (!dueAll.length) return summary;
+      const due = [];
+      for (const item of dueAll) {
+        const submission = item?.submission;
+        if (!isPreviewSubmissionScope(submission)) {
+          this.queueStore.markBlocked(submission.submissionId, 'PREVIEW_SCOPE_CLIENT_BLOCKED');
+          summary.blocked += 1;
+          summary.errorCode = 'PREVIEW_SCOPE_CLIENT_BLOCKED';
+          summary.category = 'forbidden';
+          continue;
+        }
+        if (!this.hasCollaborativeBinding(submission)) {
+          summary.skippedMode += 1;
+          continue;
+        }
+        due.push(item);
+      }
+      if (!due.length) {
+        summary.remaining = this.queueStore.list().filter(item => item.deliveryState !== 'acknowledged').length;
+        summary.status = summary.blocked ? 'completed_with_blocked' : 'no_collaborative_due';
+        this.emit(summary);
+        return summary;
+      }
+
+      this.emit({ status: 'registering_or_sending', queued: due.length });
+      let credential;
+      try { credential = await this.ensureCredential(); }
+      catch (error) {
+        const retryable = shouldRetry(error);
+        if (!retryable) {
+          for (const item of due) {
+            try { this.queueStore.markBlocked(item.submission.submissionId, error.code || 'DEVICE_REGISTRATION_BLOCKED'); summary.blocked += 1; } catch (_) {}
+          }
+        }
+        const status = retryable ? 'credential_retry' : 'credential_blocked';
+        summary.status = status;
+        summary.remaining = this.queueStore.list().filter(item => item.deliveryState !== 'acknowledged').length;
+        summary.errorCode = error.code || 'DEVICE_REGISTRATION_FAILED';
+        summary.category = error.category || 'unknown';
+        this.emit(summary);
+        return summary;
+      }
+
+      const result = { ...summary, status: 'completed' };
+      for (const item of due) {
+        const id = item.submission.submissionId;
+        this.queueStore.markSending(id);
+        result.attempted += 1;
+        try {
+          await this.apiClient.submit(credential.deviceToken, item.submission);
+          this.queueStore.markAcknowledged(id);
+          result.acknowledged += 1;
+        } catch (error) {
+          result.errorCode = error.code || 'SUBMISSION_ERROR';
+          result.category = error.category || 'unknown';
+          if (error.category === 'credential') {
+            try { this.credentialStore.clear(); } catch (_) {}
+            this.queueStore.markBlocked(id, error.code || 'DEVICE_CREDENTIAL_INVALID');
+            result.blocked += 1;
+            break;
+          }
+          if (error.category === 'write_gate' || error.category === 'service_disabled') {
+            this.queueStore.markBlocked(id, error.code || 'WRITE_GATE_BLOCKED');
+            result.blocked += 1;
+            break;
+          }
+          if (shouldRetry(error)) {
+            this.queueStore.markRetry(id, error.code || 'SUBMISSION_RETRY');
+            result.retryWait += 1;
+            break;
+          }
+          this.queueStore.markBlocked(id, error.code || 'SUBMISSION_BLOCKED');
+          result.blocked += 1;
+        }
+      }
+      try { this.queueStore.pruneAcknowledged(); } catch (_) {}
+      result.remaining = this.queueStore.list().filter(item => item.deliveryState !== 'acknowledged').length;
+      if (result.blocked) result.status = 'completed_with_blocked';
+      else if (result.retryWait) result.status = 'completed_with_retry';
+      else if (result.skippedMode) result.status = 'completed_with_mode_skips';
+      this.emit(result);
+      return result;
+    }
+  }
+
+  function createConfiguredClient({ documentRef, locationRef, fetchImpl = globalThis.fetch, timeoutMs = 10000, writeAccessProvider = null } = {}) {
+    return new SubmissionApiClient({ baseUrl: readConfiguredBase({ documentRef, locationRef }), fetchImpl, timeoutMs, writeAccessProvider, locationRef });
+  }
+
+  return Object.freeze({
+    APP_VERSION,
+    WRITE_GATE_HEADER,
+    PREVIEW_ALLOWED_GROUP_ID,
+    PREVIEW_ALLOWED_LIBRARY_ID,
+    SubmissionClientError,
+    SubmissionApiClient,
+    SubmissionDispatcher,
+    classifyRemoteError,
+    isPreviewSubmissionScope,
+    shouldRetry,
+    buildIdempotencyKey,
+    buildExactPriceSubmission,
+    planInitialExactPriceSubmissions,
+    createConfiguredClient,
+    readConfiguredBase,
+  });
+});
+// ===== 公共协作数据库：隔离候选提交客户端结束 =====
+
+// ===== 公共协作数据库：普通名字与老板候选/同步客户端（阶段5G） =====
+(function(root, factory) {
+  const api = factory(root?.CloudCollabSubmission || null, root?.CloudCollabSnapshotSync || null);
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  if (root) root.CloudCollabOrdinaryTypes = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this, function(baseSubmission, snapshotSync) {
+  'use strict';
+
+  const APP_VERSION = '8.2.28-stage5g';
+  const SCHEMA_VERSION = 1;
+  const GROUP_ID_PATTERN = /^group_[a-z0-9][a-z0-9_]{2,47}$/;
+  const LIBRARY_ID_PATTERN = /^lib_[a-z0-9][a-z0-9_]{2,55}$/;
+  const DEVICE_ID_PATTERN = /^dev_[0-9A-HJKMNP-TV-Z]{26}$/;
+  const SUBMISSION_ID_PATTERN = /^sub_[0-9A-HJKMNP-TV-Z]{26}$/;
+  const BUSINESS_KEY_PATTERN = /^bk_v1_[A-Za-z0-9_-]{43}$/;
+  const CONTENT_HASH_PATTERN = /^ch_v1_[A-Za-z0-9_-]{43}$/;
+  const BOSS_ID_PATTERN = /^boss_v1_[A-Za-z0-9_-]{43}$/;
+  const CONTACT_PATTERN = /(?:https?:\/\/|www\.|[\p{L}\p{N}._%+-]+@[\p{L}\p{N}.-]+\.[A-Za-z]{2,}|(?:\+?\d[\d\s()-]{5,}\d)|(?:微信|微\s*信|wechat|(?:^|[^a-z])wx|(?:^|[^a-z])vx|v信|qq|企鹅|telegram|(?:^|[^a-z])tg|电话|手机|联系我|加我)\s*[:：_\-]?\s*[A-Za-z0-9_-]{4,})/iu;
+  const CONTROL_PATTERN = /[\u0000-\u001F\u007F]/;
+  const ORDINARY_TYPES = new Set(['playable_name', 'boss_profile']);
+
+  class OrdinaryClientError extends Error {
+    constructor(code, message, details = null) {
+      super(message || code || '普通共享客户端处理失败');
+      this.name = 'OrdinaryClientError';
+      this.code = code || 'ORDINARY_CLIENT_ERROR';
+      this.details = details;
+    }
+  }
+
+  function isPlainObject(value) {
+    return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+      && Object.prototype.toString.call(value) === '[object Object]';
+  }
+
+  function exactKeys(value, expected) {
+    if (!isPlainObject(value)) return false;
+    const actual = Object.keys(value).sort();
+    const wanted = [...expected].sort();
+    return actual.length === wanted.length && actual.every((key, index) => key === wanted[index]);
+  }
+
+  function canonicalize(value) {
+    if (snapshotSync?.canonicalize) return snapshotSync.canonicalize(value);
+    if (value === null || typeof value === 'string' || typeof value === 'boolean') return JSON.stringify(value);
+    if (typeof value === 'number') {
+      if (!Number.isFinite(value)) throw new OrdinaryClientError('INVALID_CANONICAL_NUMBER', '规范对象包含无效数字');
+      return JSON.stringify(value);
+    }
+    if (Array.isArray(value)) return `[${value.map(canonicalize).join(',')}]`;
+    if (!isPlainObject(value)) throw new OrdinaryClientError('INVALID_CANONICAL_VALUE', '规范对象包含不支持的值');
+    return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonicalize(value[key])}`).join(',')}}`;
+  }
+
+  function toBase64Url(bytes) {
+    let binary = '';
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    if (typeof btoa === 'function') return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+    if (typeof Buffer !== 'undefined') return Buffer.from(bytes).toString('base64url');
+    throw new OrdinaryClientError('BASE64_UNAVAILABLE', '当前环境无法生成普通共享Hash');
+  }
+
+  const SHA256_K = Object.freeze([
+    0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+    0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+    0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+    0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+    0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+    0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+    0x19a4c116,0x1e376c08,0x2748774c,0x34b0b5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+    0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2,
+  ]);
+  // Correct the compact constant above without changing the frozen public surface.
+  const SHA256_CONSTANTS = Object.freeze(SHA256_K.map((value, index) => index === 51 ? 0x34b0bcb5 : value));
+  function rotr(value, shift) { return (value >>> shift) | (value << (32 - shift)); }
+  function sha256Fallback(bytes) {
+    const length = bytes.length;
+    const bitLength = length * 8;
+    const paddedLength = Math.ceil((length + 9) / 64) * 64;
+    const data = new Uint8Array(paddedLength);
+    data.set(bytes);
+    data[length] = 0x80;
+    const view = new DataView(data.buffer);
+    view.setUint32(paddedLength - 8, Math.floor(bitLength / 0x100000000), false);
+    view.setUint32(paddedLength - 4, bitLength >>> 0, false);
+    const h = new Uint32Array([0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19]);
+    const w = new Uint32Array(64);
+    for (let offset = 0; offset < paddedLength; offset += 64) {
+      for (let i = 0; i < 16; i += 1) w[i] = view.getUint32(offset + i * 4, false);
+      for (let i = 16; i < 64; i += 1) {
+        const s0 = rotr(w[i - 15], 7) ^ rotr(w[i - 15], 18) ^ (w[i - 15] >>> 3);
+        const s1 = rotr(w[i - 2], 17) ^ rotr(w[i - 2], 19) ^ (w[i - 2] >>> 10);
+        w[i] = (w[i - 16] + s0 + w[i - 7] + s1) >>> 0;
+      }
+      let [a,b,c,d,e,f,g,hh] = h;
+      for (let i = 0; i < 64; i += 1) {
+        const s1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
+        const ch = (e & f) ^ (~e & g);
+        const t1 = (hh + s1 + ch + SHA256_CONSTANTS[i] + w[i]) >>> 0;
+        const s0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
+        const maj = (a & b) ^ (a & c) ^ (b & c);
+        const t2 = (s0 + maj) >>> 0;
+        hh = g; g = f; f = e; e = (d + t1) >>> 0; d = c; c = b; b = a; a = (t1 + t2) >>> 0;
+      }
+      h[0]=(h[0]+a)>>>0;h[1]=(h[1]+b)>>>0;h[2]=(h[2]+c)>>>0;h[3]=(h[3]+d)>>>0;
+      h[4]=(h[4]+e)>>>0;h[5]=(h[5]+f)>>>0;h[6]=(h[6]+g)>>>0;h[7]=(h[7]+hh)>>>0;
+    }
+    const result = new Uint8Array(32);
+    const resultView = new DataView(result.buffer);
+    h.forEach((value, index) => resultView.setUint32(index * 4, value, false));
+    return result;
+  }
+
+  async function sha256Base64Url(value) {
+    if (typeof TextEncoder !== 'function') throw new OrdinaryClientError('TEXT_ENCODER_UNAVAILABLE', '当前环境无法生成普通共享Hash');
+    const bytes = new TextEncoder().encode(value);
+    const subtle = globalThis.crypto?.subtle;
+    if (subtle) {
+      try { return toBase64Url(new Uint8Array(await subtle.digest('SHA-256', bytes))); } catch (_) {}
+    }
+    return toBase64Url(sha256Fallback(bytes));
+  }
+
+  function normalizeHumanText(value, label, maxLength, { allowEmpty = false } = {}) {
+    let text = String(value ?? '');
+    try { text = text.normalize('NFKC'); } catch (_) {}
+    if (CONTROL_PATTERN.test(text)) throw new OrdinaryClientError('ORDINARY_TEXT_CONTROL_CHARACTER', `${label}不能包含控制字符`);
+    text = text.replace(/\s+/gu, ' ').trim();
+    if ((!allowEmpty && !text) || text.length > maxLength) throw new OrdinaryClientError('ORDINARY_TEXT_LENGTH_INVALID', `${label}长度无效`);
+    if (text && CONTACT_PATTERN.test(text)) throw new OrdinaryClientError('ORDINARY_CONTACT_INFO_FORBIDDEN', `${label}不能包含链接、邮箱或联系方式`);
+    return text;
+  }
+
+  function normalizePlayableNamePayload(value) {
+    const raw = isPlainObject(value) && Object.prototype.hasOwnProperty.call(value, 'name') ? value.name : value;
+    return Object.freeze({ name: normalizeHumanText(raw, '陪玩名字', 30) });
+  }
+
+  function normalizeDiscount(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number) || number < 0.8 || number > 1) throw new OrdinaryClientError('INVALID_BOSS_DISCOUNT', '老板折数必须在0.8至1之间');
+    const rounded = Math.round(number * 10000) / 10000;
+    if (Math.abs(rounded - number) > 1e-10) throw new OrdinaryClientError('INVALID_BOSS_DISCOUNT', '老板折数最多保留4位小数');
+    return rounded;
+  }
+
+  function normalizeBossProfilePayload(value) {
+    if (!isPlainObject(value)) throw new OrdinaryClientError('INVALID_BOSS_PROFILE_FIELDS', '老板资料必须是对象');
+    const bossName = value.bossName ?? value.name;
+    return Object.freeze({
+      bossName: normalizeHumanText(bossName, '老板名', 30),
+      paiDan: normalizeHumanText(value.paiDan, '直属/派单', 30, { allowEmpty: true }),
+      discount: normalizeDiscount(value.discount),
+    });
+  }
+
+  function assertScope(groupId, libraryId) {
+    const group = String(groupId || '').trim().toLowerCase();
+    const library = String(libraryId || '').trim().toLowerCase();
+    if (!GROUP_ID_PATTERN.test(group) || !LIBRARY_ID_PATTERN.test(library)) throw new OrdinaryClientError('INVALID_PUBLIC_SCOPE', '普通共享作用域无效');
+    return { groupId: group, libraryId: library };
+  }
+
+  async function deriveBossId(groupId, bossName) {
+    const scope = assertScope(groupId, 'lib_fixture');
+    const normalizedBossName = normalizeHumanText(bossName, '老板名', 30).toLocaleLowerCase('und');
+    return `boss_v1_${await sha256Base64Url(canonicalize({ schemaVersion: 1, groupId: scope.groupId, normalizedBossName }))}`;
+  }
+
+  async function computeOrdinaryHashes(groupId, libraryId, dataType, rawPayload) {
+    const scope = assertScope(groupId, libraryId);
+    const type = String(dataType || '').trim().toLowerCase();
+    if (!ORDINARY_TYPES.has(type)) throw new OrdinaryClientError('UNSUPPORTED_ORDINARY_DATA_TYPE', '普通共享类型不受支持');
+    const payload = type === 'playable_name' ? normalizePlayableNamePayload(rawPayload) : normalizeBossProfilePayload(rawPayload);
+    const bossId = type === 'boss_profile' ? await deriveBossId(scope.groupId, payload.bossName) : null;
+    const identity = type === 'playable_name'
+      ? { groupId: scope.groupId, normalizedName: payload.name.toLocaleLowerCase('und'), dataType: type }
+      : { groupId: scope.groupId, bossId, dataType: type };
+    const content = { schemaVersion: 1, payloadSchemaVersion: 1, groupId: scope.groupId, bossId, dataType: type, operation: 'upsert', payload };
+    return Object.freeze({
+      groupId: scope.groupId,
+      libraryId: scope.libraryId,
+      bossId,
+      dataType: type,
+      payload,
+      businessKey: `bk_v1_${await sha256Base64Url(canonicalize(identity))}`,
+      contentHash: `ch_v1_${await sha256Base64Url(canonicalize(content))}`,
+    });
+  }
+
+  async function buildOrdinarySubmission({ deviceId, submissionId, groupId, libraryId, dataType, payload, origin = 'user', clientCreatedAt = Date.now(), appVersion = APP_VERSION } = {}) {
+    if (!DEVICE_ID_PATTERN.test(String(deviceId || '')) || !SUBMISSION_ID_PATTERN.test(String(submissionId || ''))) {
+      throw new OrdinaryClientError('INVALID_SUBMISSION_IDENTITY', '普通共享设备或提交ID无效');
+    }
+    if (!baseSubmission?.buildIdempotencyKey) throw new OrdinaryClientError('SUBMISSION_MODULE_REQUIRED', '提交客户端模块不可用');
+    const hashes = await computeOrdinaryHashes(groupId, libraryId, dataType, payload);
+    const idempotencyKey = await baseSubmission.buildIdempotencyKey(deviceId, submissionId, canonicalize);
+    return Object.freeze({
+      schemaVersion: 1,
+      payloadSchemaVersion: 1,
+      submissionId,
+      deviceId,
+      groupId: hashes.groupId,
+      libraryId: hashes.libraryId,
+      bossId: hashes.bossId,
+      dataType: hashes.dataType,
+      operation: 'upsert',
+      origin,
+      clientCreatedAt: Math.max(0, Math.floor(Number(clientCreatedAt) || 0)),
+      businessKey: hashes.businessKey,
+      contentHash: hashes.contentHash,
+      idempotencyKey,
+      payload: hashes.payload,
+      clientContext: Object.freeze({ appVersion, projectionSpecVersion: 1, queueSchemaVersion: 1 }),
+    });
+  }
+
+  async function planInitialOrdinarySubmissions({ deviceId, groupId, libraryId, confirmedNames = [], bossMemory = [], baseHashes = {}, submissionIdFactory, now = () => Date.now(), appVersion = APP_VERSION } = {}) {
+    if (typeof submissionIdFactory !== 'function') throw new OrdinaryClientError('SUBMISSION_ID_FACTORY_REQUIRED', '提交ID生成器不可用');
+    const submissions = [];
+    const skipped = { alreadyPublic: 0, duplicate: 0, invalid: 0 };
+    const seen = new Set();
+    const candidates = [
+      ...(Array.isArray(confirmedNames) ? confirmedNames : []).map(item => ({ dataType: 'playable_name', payload: { name: item?.name ?? item } })),
+      ...(Array.isArray(bossMemory) ? bossMemory : []).map(item => ({ dataType: 'boss_profile', payload: { bossName: item?.name ?? item?.bossName, paiDan: item?.paiDan, discount: item?.discount } })),
+    ];
+    for (const candidate of candidates) {
+      try {
+        const hashes = await computeOrdinaryHashes(groupId, libraryId, candidate.dataType, candidate.payload);
+        if (seen.has(hashes.businessKey)) { skipped.duplicate += 1; continue; }
+        seen.add(hashes.businessKey);
+        if (baseHashes?.[hashes.businessKey] === hashes.contentHash) { skipped.alreadyPublic += 1; continue; }
+        submissions.push(await buildOrdinarySubmission({
+          deviceId,
+          submissionId: submissionIdFactory(),
+          groupId,
+          libraryId,
+          dataType: candidate.dataType,
+          payload: hashes.payload,
+          origin: 'initialBinding',
+          clientCreatedAt: now(),
+          appVersion,
+        }));
+      } catch (_) { skipped.invalid += 1; }
+    }
+    return Object.freeze({ submissions: Object.freeze(submissions), skipped: Object.freeze(skipped) });
+  }
+
+  function normalizeRemoteRecord(value) {
+    if (!exactKeys(value, ['approvedVersion', 'businessKey', 'contentHash', 'dataType', 'operation', 'payload'])) throw new OrdinaryClientError('INVALID_SNAPSHOT_RECORD_FIELDS', '公共普通记录字段无效');
+    if (!ORDINARY_TYPES.has(value.dataType) || value.operation !== 'upsert') throw new OrdinaryClientError('UNSUPPORTED_SNAPSHOT_RECORD', '公共普通记录类型不受支持');
+    if (!BUSINESS_KEY_PATTERN.test(value.businessKey) || !CONTENT_HASH_PATTERN.test(value.contentHash)) throw new OrdinaryClientError('INVALID_SNAPSHOT_HASH', '公共普通记录Hash无效');
+    if (!Number.isInteger(value.approvedVersion) || value.approvedVersion < 1) throw new OrdinaryClientError('INVALID_APPROVED_VERSION', '公共普通记录版本无效');
+    const payload = value.dataType === 'playable_name' ? normalizePlayableNamePayload(value.payload) : normalizeBossProfilePayload(value.payload);
+    return Object.freeze({ ...value, payload });
+  }
+
+  async function verifyOrdinaryRecords(groupId, libraryId, records = []) {
+    const verified = [];
+    for (const raw of Array.isArray(records) ? records : []) {
+      if (!ORDINARY_TYPES.has(raw?.dataType)) continue;
+      const record = normalizeRemoteRecord(raw);
+      const hashes = await computeOrdinaryHashes(groupId, libraryId, record.dataType, record.payload);
+      if (hashes.businessKey !== record.businessKey || hashes.contentHash !== record.contentHash) {
+        throw new OrdinaryClientError('SNAPSHOT_HASH_MISMATCH', '公共普通记录Hash校验失败', { businessKey: record.businessKey });
+      }
+      verified.push(record);
+    }
+    return Object.freeze(verified);
+  }
+
+  function conflictId(businessKey, localHash, remoteHash) {
+    return `conf_${businessKey.slice(-12)}_${String(localHash || 'none').slice(-8)}_${String(remoteHash || 'none').slice(-8)}`.slice(0, 80);
+  }
+
+  async function projectLocalOrdinary(groupId, libraryId, confirmedNames = [], bossMemory = []) {
+    const map = new Map();
+    for (const item of Array.isArray(confirmedNames) ? confirmedNames : []) {
+      try {
+        const hashes = await computeOrdinaryHashes(groupId, libraryId, 'playable_name', { name: item?.name ?? item });
+        if (!map.has(hashes.businessKey)) map.set(hashes.businessKey, Object.freeze({ ...hashes, local: item }));
+      } catch (_) {}
+    }
+    for (const item of Array.isArray(bossMemory) ? bossMemory : []) {
+      try {
+        const hashes = await computeOrdinaryHashes(groupId, libraryId, 'boss_profile', { bossName: item?.name ?? item?.bossName, paiDan: item?.paiDan, discount: item?.discount });
+        if (!map.has(hashes.businessKey)) map.set(hashes.businessKey, Object.freeze({ ...hashes, local: item }));
+      } catch (_) {}
+    }
+    return map;
+  }
+
+  async function planOrdinaryMerge({ groupId, libraryId, records = [], confirmedNames = [], bossMemory = [], baseHashes = {} } = {}) {
+    const verified = await verifyOrdinaryRecords(groupId, libraryId, records);
+    const localMap = await projectLocalOrdinary(groupId, libraryId, confirmedNames, bossMemory);
+    const nextBaseHashes = { ...(isPlainObject(baseHashes) ? baseHashes : {}) };
+    const result = { upserts: [], unchanged: [], preserveLocal: [], conflicts: [], nextBaseHashes };
+    for (const record of verified) {
+      const local = localMap.get(record.businessKey) || null;
+      const localHash = local?.contentHash || null;
+      const baseHash = typeof baseHashes?.[record.businessKey] === 'string' ? baseHashes[record.businessKey] : null;
+      const remoteHash = record.contentHash;
+      if (localHash === remoteHash) {
+        result.unchanged.push({ record, local, baseHash, localHash, remoteHash });
+        nextBaseHashes[record.businessKey] = remoteHash;
+      } else if (baseHash === null && localHash === null) {
+        result.upserts.push({ record, local: null, baseHash, localHash, remoteHash });
+        nextBaseHashes[record.businessKey] = remoteHash;
+      } else if (baseHash !== null && localHash === baseHash) {
+        result.upserts.push({ record, local, baseHash, localHash, remoteHash });
+        nextBaseHashes[record.businessKey] = remoteHash;
+      } else if (baseHash !== null && remoteHash === baseHash) {
+        result.preserveLocal.push({ record, local, baseHash, localHash, remoteHash });
+      } else {
+        result.conflicts.push({
+          conflictId: conflictId(record.businessKey, localHash, remoteHash),
+          businessKey: record.businessKey,
+          dataType: record.dataType,
+          baseHash,
+          localHash,
+          remoteHash,
+          status: 'open',
+          record,
+        });
+      }
+    }
+    return Object.freeze({
+      records: verified,
+      ...result,
+      counts: Object.freeze({ upserts: result.upserts.length, unchanged: result.unchanged.length, preserveLocal: result.preserveLocal.length, conflicts: result.conflicts.length }),
+    });
+  }
+
+  function applyOrdinaryMergePlan({ confirmedNames = [], bossMemory = [], plan, now = Date.now() } = {}) {
+    const names = Array.isArray(confirmedNames) ? confirmedNames.map(item => ({ ...item })) : [];
+    const bosses = Array.isArray(bossMemory) ? bossMemory.map(item => ({ ...item })) : [];
+    let namesChanged = false;
+    let bossesChanged = false;
+    for (const entry of plan?.upserts || []) {
+      const record = entry.record;
+      if (record.dataType === 'playable_name') {
+        const key = record.payload.name.toLocaleLowerCase('und');
+        const index = names.findIndex(item => String(item?.name || '').trim().toLocaleLowerCase('und') === key);
+        const next = { name: record.payload.name, original: record.payload.name, timestamp: now, source: 'cloudPull' };
+        if (index >= 0) names[index] = next; else names.push(next);
+        namesChanged = true;
+      } else if (record.dataType === 'boss_profile') {
+        const key = record.payload.bossName.toLocaleLowerCase('und');
+        const index = bosses.findIndex(item => String(item?.name || '').trim().toLocaleLowerCase('und') === key);
+        const next = { name: record.payload.bossName, paiDan: record.payload.paiDan, discount: record.payload.discount };
+        if (index >= 0) bosses[index] = next; else bosses.push(next);
+        bossesChanged = true;
+      }
+    }
+    return Object.freeze({ confirmedNames: Object.freeze(names), bossMemory: Object.freeze(bosses), namesChanged, bossesChanged });
+  }
+
+  function isPreviewOrdinarySubmissionScope(submission) {
+    return submission?.groupId === baseSubmission?.PREVIEW_ALLOWED_GROUP_ID
+      && submission?.libraryId === baseSubmission?.PREVIEW_ALLOWED_LIBRARY_ID
+      && ['exact_price', 'playable_name', 'boss_profile'].includes(submission?.dataType)
+      && submission?.operation === 'upsert';
+  }
+
+  class OrdinarySubmissionDispatcher {
+    constructor({ apiClient, metaStore, credentialStore, queueStore, bindingStore = null, appVersion = APP_VERSION, now = () => Date.now(), isOnline = () => typeof navigator === 'undefined' || navigator.onLine !== false, onState = null } = {}) {
+      this.apiClient = apiClient;
+      this.metaStore = metaStore;
+      this.credentialStore = credentialStore;
+      this.queueStore = queueStore;
+      this.bindingStore = bindingStore;
+      this.appVersion = appVersion;
+      this.now = now;
+      this.isOnline = isOnline;
+      this.onState = typeof onState === 'function' ? onState : () => {};
+      this._flushPromise = null;
+    }
+
+    emit(state) { try { this.onState(Object.freeze({ at: this.now(), ...state })); } catch (_) {} }
+    hasCollaborativeBinding(submission) {
+      try {
+        return Boolean(this.bindingStore?.list?.().some(binding => binding?.mode === 'collaborate'
+          && binding.groupId === submission?.groupId && binding.libraryId === submission?.libraryId));
+      } catch (_) { return false; }
+    }
+    async ensureCredential() {
+      const current = this.credentialStore?.getValid?.(this.now());
+      if (current) return current;
+      const previous = this.credentialStore?.loadResult?.();
+      if (previous?.ok && previous?.exists) this.credentialStore.clear();
+      const meta = this.metaStore?.loadResult?.();
+      if (!meta?.ok || !meta?.exists || !meta.value?.deviceId) throw new OrdinaryClientError('DEVICE_IDENTITY_REQUIRED', '请先创建云协作身份');
+      const data = await this.apiClient.registerDevice({ deviceId: meta.value.deviceId, nickname: meta.value.nickname, appVersion: this.appVersion });
+      if (!data?.deviceToken || data.deviceId !== meta.value.deviceId) throw new OrdinaryClientError('INVALID_REGISTRATION_RESPONSE', '设备注册响应无效');
+      return this.credentialStore.save({ schemaVersion: 1, deviceId: data.deviceId, deviceToken: data.deviceToken, issuedAt: data.issuedAt, expiresAt: data.expiresAt, tokenVersion: data.tokenVersion });
+    }
+    flush({ limit = 10 } = {}) {
+      if (this._flushPromise) return this._flushPromise;
+      this._flushPromise = this._flush({ limit }).finally(() => { this._flushPromise = null; });
+      return this._flushPromise;
+    }
+    async _flush({ limit }) {
+      const summary = { status: 'idle', attempted: 0, acknowledged: 0, retryWait: 0, blocked: 0, skippedMode: 0, remaining: 0, errorCode: null, category: null };
+      if (!this.apiClient?.isConfigured?.()) return { ...summary, status: 'not_configured' };
+      if (!this.isOnline()) { this.emit({ status: 'offline' }); return { ...summary, status: 'offline' }; }
+      if (typeof this.apiClient.hasWriteAccess === 'function' && !this.apiClient.hasWriteAccess()) return { ...summary, status: 'write_gate_closed', errorCode: 'WRITE_GATE_CLOSED', category: 'write_gate' };
+      const dueAll = this.queueStore.getDue(this.now(), Math.max(1, Math.min(20, Number(limit) || 10)));
+      const due = [];
+      for (const item of dueAll) {
+        const submission = item?.submission;
+        if (!isPreviewOrdinarySubmissionScope(submission)) {
+          if (globalThis.CloudCollabSensitiveRules?.isPreviewSensitiveSubmissionScope?.(submission)) continue;
+          this.queueStore.markBlocked(submission.submissionId, 'PREVIEW_SCOPE_CLIENT_BLOCKED');
+          summary.blocked += 1;
+          summary.errorCode = 'PREVIEW_SCOPE_CLIENT_BLOCKED';
+          summary.category = 'forbidden';
+        } else if (!this.hasCollaborativeBinding(submission)) summary.skippedMode += 1;
+        else due.push(item);
+      }
+      if (!due.length) {
+        summary.remaining = this.queueStore.list().filter(item => item.deliveryState !== 'acknowledged').length;
+        summary.status = summary.blocked ? 'completed_with_blocked' : 'no_collaborative_due';
+        this.emit(summary);
+        return summary;
+      }
+      let credential;
+      try { credential = await this.ensureCredential(); }
+      catch (error) {
+        const retryable = Boolean(error?.retryable);
+        if (!retryable) for (const item of due) { try { this.queueStore.markBlocked(item.submission.submissionId, error.code || 'DEVICE_REGISTRATION_BLOCKED'); summary.blocked += 1; } catch (_) {} }
+        summary.status = retryable ? 'credential_retry' : 'credential_blocked';
+        summary.remaining = this.queueStore.list().filter(item => item.deliveryState !== 'acknowledged').length;
+        summary.errorCode = error.code || 'DEVICE_REGISTRATION_FAILED';
+        summary.category = error.category || 'unknown';
+        this.emit(summary);
+        return summary;
+      }
+      const result = { ...summary, status: 'completed' };
+      for (const item of due) {
+        const id = item.submission.submissionId;
+        this.queueStore.markSending(id);
+        result.attempted += 1;
+        try {
+          await this.apiClient.submit(credential.deviceToken, item.submission);
+          this.queueStore.markAcknowledged(id);
+          result.acknowledged += 1;
+        } catch (error) {
+          result.errorCode = error.code || 'SUBMISSION_ERROR';
+          result.category = error.category || 'unknown';
+          if (error.category === 'credential') { try { this.credentialStore.clear(); } catch (_) {} this.queueStore.markBlocked(id, result.errorCode); result.blocked += 1; break; }
+          if (error.category === 'write_gate' || error.category === 'service_disabled') { this.queueStore.markBlocked(id, result.errorCode); result.blocked += 1; break; }
+          if (error.retryable) { this.queueStore.markRetry(id, result.errorCode); result.retryWait += 1; break; }
+          this.queueStore.markBlocked(id, result.errorCode); result.blocked += 1;
+        }
+      }
+      try { this.queueStore.pruneAcknowledged(); } catch (_) {}
+      result.remaining = this.queueStore.list().filter(item => item.deliveryState !== 'acknowledged').length;
+      if (result.blocked) result.status = 'completed_with_blocked';
+      else if (result.retryWait) result.status = 'completed_with_retry';
+      else if (result.skippedMode) result.status = 'completed_with_mode_skips';
+      this.emit(result);
+      return result;
+    }
+  }
+
+  return Object.freeze({
+    APP_VERSION,
+    OrdinaryClientError,
+    normalizePlayableNamePayload,
+    normalizeBossProfilePayload,
+    deriveBossId,
+    computeOrdinaryHashes,
+    buildOrdinarySubmission,
+    planInitialOrdinarySubmissions,
+    verifyOrdinaryRecords,
+    planOrdinaryMerge,
+    applyOrdinaryMergePlan,
+    isPreviewOrdinarySubmissionScope,
+    OrdinarySubmissionDispatcher,
+  });
+});
+// ===== 公共协作数据库：阶段5G普通共享客户端结束 =====
+
+// ===== 公共协作数据库：阶段6B敏感规则候选客户端 =====
+(function(root, factory) {
+  const api = factory(
+    root?.CloudCollabSubmission || null,
+    root?.CloudCollabSnapshotSync || null,
+    root?.CloudCollabOrdinaryTypes || null,
+  );
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  if (root) root.CloudCollabSensitiveRules = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this, function(baseSubmission, snapshotSync, ordinaryTypes) {
+  'use strict';
+
+  const APP_VERSION = '8.2.31-stage6b';
+  const GROUP_ID_PATTERN = /^group_[a-z0-9][a-z0-9_]{2,47}$/;
+  const LIBRARY_ID_PATTERN = /^lib_[a-z0-9][a-z0-9_]{2,55}$/;
+  const DEVICE_ID_PATTERN = /^dev_[0-9A-HJKMNP-TV-Z]{26}$/;
+  const SUBMISSION_ID_PATTERN = /^sub_[0-9A-HJKMNP-TV-Z]{26}$/;
+  const BUSINESS_KEY_PATTERN = /^bk_v1_[A-Za-z0-9_-]{43}$/;
+  const CONTENT_HASH_PATTERN = /^ch_v1_[A-Za-z0-9_-]{43}$/;
+  const BOSS_ID_PATTERN = /^boss_v1_[A-Za-z0-9_-]{43}$/;
+  const CONTROL_PATTERN = /[\u0000-\u001F\u007F]/;
+  const CONTACT_PATTERN = /(?:https?:\/\/|www\.|[\p{L}\p{N}._%+-]+@[\p{L}\p{N}.-]+\.[A-Za-z]{2,}|(?:\+?\d[\d\s()-]{5,}\d)|(?:微信|微\s*信|wechat|(?:^|[^a-z])wx|(?:^|[^a-z])vx|v信|qq|企鹅|telegram|(?:^|[^a-z])tg|电话|手机|联系我|加我)\s*[:：_\-]?\s*[A-Za-z0-9_-]{4,})/iu;
+  const RULE_TYPES = new Set(['rank_range_rule', 'surcharge_rule', 'gift_rule']);
+  const DELETE_TYPES = new Set(['exact_price', 'playable_name', 'boss_profile', 'rank_range_rule', 'surcharge_rule', 'gift_rule']);
+
+  class SensitiveClientError extends Error {
+    constructor(code, message, details = null) {
+      super(message || code || '敏感规则客户端处理失败');
+      this.name = 'SensitiveClientError';
+      this.code = code || 'SENSITIVE_CLIENT_ERROR';
+      this.details = details;
+    }
+  }
+
+  function isPlainObject(value) {
+    return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+      && Object.prototype.toString.call(value) === '[object Object]';
+  }
+
+  function exactKeys(value, expected, code, message) {
+    if (!isPlainObject(value)) throw new SensitiveClientError(code, message);
+    const actual = Object.keys(value).sort();
+    const wanted = [...expected].sort();
+    if (actual.length !== wanted.length || actual.some((key, index) => key !== wanted[index])) {
+      throw new SensitiveClientError(code, message, { actual, expected: wanted });
+    }
+  }
+
+  function canonicalize(value) {
+    if (snapshotSync?.canonicalize) return snapshotSync.canonicalize(value);
+    if (value === null || typeof value === 'string' || typeof value === 'boolean') return JSON.stringify(value);
+    if (typeof value === 'number') {
+      if (!Number.isFinite(value)) throw new SensitiveClientError('INVALID_CANONICAL_NUMBER', '规范对象包含无效数字');
+      return JSON.stringify(value);
+    }
+    if (Array.isArray(value)) return `[${value.map(canonicalize).join(',')}]`;
+    if (!isPlainObject(value)) throw new SensitiveClientError('INVALID_CANONICAL_VALUE', '规范对象包含不支持的值');
+    return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonicalize(value[key])}`).join(',')}}`;
+  }
+
+  function toBase64Url(bytes) {
+    let binary = '';
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    if (typeof btoa === 'function') return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+    if (typeof Buffer !== 'undefined') return Buffer.from(bytes).toString('base64url');
+    throw new SensitiveClientError('BASE64_UNAVAILABLE', '当前环境无法生成敏感规则Hash');
+  }
+
+  const SHA256_K = Object.freeze([
+    0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+    0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+    0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+    0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+    0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+    0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+    0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+    0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2,
+  ]);
+  function rotr(value, shift) { return (value >>> shift) | (value << (32 - shift)); }
+  function sha256Fallback(bytes) {
+    const length = bytes.length;
+    const bitLength = length * 8;
+    const paddedLength = Math.ceil((length + 9) / 64) * 64;
+    const data = new Uint8Array(paddedLength);
+    data.set(bytes); data[length] = 0x80;
+    const view = new DataView(data.buffer);
+    view.setUint32(paddedLength - 8, Math.floor(bitLength / 0x100000000), false);
+    view.setUint32(paddedLength - 4, bitLength >>> 0, false);
+    const h = new Uint32Array([0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19]);
+    const w = new Uint32Array(64);
+    for (let offset = 0; offset < paddedLength; offset += 64) {
+      for (let i = 0; i < 16; i += 1) w[i] = view.getUint32(offset + i * 4, false);
+      for (let i = 16; i < 64; i += 1) {
+        const s0 = rotr(w[i - 15], 7) ^ rotr(w[i - 15], 18) ^ (w[i - 15] >>> 3);
+        const s1 = rotr(w[i - 2], 17) ^ rotr(w[i - 2], 19) ^ (w[i - 2] >>> 10);
+        w[i] = (w[i - 16] + s0 + w[i - 7] + s1) >>> 0;
+      }
+      let [a,b,c,d,e,f,g,hh] = h;
+      for (let i = 0; i < 64; i += 1) {
+        const s1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
+        const ch = (e & f) ^ (~e & g);
+        const t1 = (hh + s1 + ch + SHA256_K[i] + w[i]) >>> 0;
+        const s0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
+        const maj = (a & b) ^ (a & c) ^ (b & c);
+        const t2 = (s0 + maj) >>> 0;
+        hh=g;g=f;f=e;e=(d+t1)>>>0;d=c;c=b;b=a;a=(t1+t2)>>>0;
+      }
+      h[0]=(h[0]+a)>>>0;h[1]=(h[1]+b)>>>0;h[2]=(h[2]+c)>>>0;h[3]=(h[3]+d)>>>0;
+      h[4]=(h[4]+e)>>>0;h[5]=(h[5]+f)>>>0;h[6]=(h[6]+g)>>>0;h[7]=(h[7]+hh)>>>0;
+    }
+    const result = new Uint8Array(32);
+    const resultView = new DataView(result.buffer);
+    h.forEach((value, index) => resultView.setUint32(index * 4, value, false));
+    return result;
+  }
+
+  async function sha256Base64Url(value) {
+    if (typeof TextEncoder !== 'function') throw new SensitiveClientError('TEXT_ENCODER_UNAVAILABLE', '当前环境无法生成敏感规则Hash');
+    const bytes = new TextEncoder().encode(value);
+    const subtle = globalThis.crypto?.subtle;
+    if (subtle) {
+      try { return toBase64Url(new Uint8Array(await subtle.digest('SHA-256', bytes))); } catch (_) {}
+    }
+    return toBase64Url(sha256Fallback(bytes));
+  }
+
+  function normalizeText(value, label, maxLength, { allowEmpty = false } = {}) {
+    let text = String(value ?? '');
+    try { text = text.normalize('NFKC'); } catch (_) {}
+    if (CONTROL_PATTERN.test(text)) throw new SensitiveClientError('SENSITIVE_TEXT_CONTROL_CHARACTER', `${label}不能包含控制字符`);
+    text = text.replace(/[\s\u3000]+/gu, ' ').trim();
+    if ((!allowEmpty && !text) || text.length > maxLength) throw new SensitiveClientError('SENSITIVE_TEXT_LENGTH_INVALID', `${label}长度无效`);
+    if (text && CONTACT_PATTERN.test(text)) throw new SensitiveClientError('SENSITIVE_CONTACT_INFO_FORBIDDEN', `${label}不能包含链接、邮箱或联系方式`);
+    return text;
+  }
+
+  function normalizePrice(value, label, { allowNull = true } = {}) {
+    if (value === null && allowNull) return null;
+    const number = Number(value);
+    if (!Number.isFinite(number) || number <= 0 || number > 1000000) throw new SensitiveClientError('INVALID_SENSITIVE_RULE_PRICE', `${label}金额无效`);
+    const rounded = Math.round(number * 1000) / 1000;
+    if (Math.abs(rounded - number) > 1e-9) throw new SensitiveClientError('INVALID_SENSITIVE_RULE_PRICE', `${label}最多保留3位小数`);
+    return rounded;
+  }
+
+  function pricePair(value, label) {
+    exactKeys(value, ['round', 'hour'], 'INVALID_SENSITIVE_PRICE_FIELDS', `${label}价格字段无效`);
+    return Object.freeze({ round: normalizePrice(value.round, `${label}局数`), hour: normalizePrice(value.hour, `${label}小时`) });
+  }
+
+  function normalizeRankRangeRulePayload(value) {
+    exactKeys(value, ['rangeLabel', 'alias', 'rankType', 'minStar', 'maxStar', 'namedRanks', 'prices'], 'INVALID_RANK_RANGE_RULE_FIELDS', '区间规则字段无效');
+    const rankType = String(value.rankType || '').trim();
+    if (!['star', 'namedTier', 'lowerTier'].includes(rankType)) throw new SensitiveClientError('INVALID_RANK_TYPE', '区间规则类型无效');
+    let minStar = null, maxStar = null, namedRanks = [];
+    if (rankType === 'star') {
+      minStar = Number(value.minStar); maxStar = Number(value.maxStar);
+      if (!Number.isInteger(minStar) || !Number.isInteger(maxStar) || minStar < 0 || maxStar < minStar || maxStar > 100000) throw new SensitiveClientError('INVALID_STAR_RANGE', '星数区间无效');
+      if (!Array.isArray(value.namedRanks) || value.namedRanks.length) throw new SensitiveClientError('INVALID_STAR_NAMED_RANKS', '星数区间不能带命名段位');
+    } else {
+      if (value.minStar !== null || value.maxStar !== null || !Array.isArray(value.namedRanks) || !value.namedRanks.length || value.namedRanks.length > 20) throw new SensitiveClientError('INVALID_NAMED_RANKS', '命名段位区间无效');
+      const seen = new Set();
+      namedRanks = value.namedRanks.map(item => normalizeText(item, '命名段位', 24)).filter(item => {
+        const key = item.toLocaleLowerCase('und'); if (seen.has(key)) return false; seen.add(key); return true;
+      });
+    }
+    exactKeys(value.prices, ['normal', 'carry', 'starGuarantee'], 'INVALID_RANGE_PRICE_VARIANTS', '区间价格类型无效');
+    const prices = Object.freeze({ normal: pricePair(value.prices.normal, '普排'), carry: pricePair(value.prices.carry, '包C'), starGuarantee: pricePair(value.prices.starGuarantee, '包星') });
+    if (![...Object.values(prices)].some(pair => pair.round !== null || pair.hour !== null)) throw new SensitiveClientError('RANGE_PRICE_REQUIRED', '区间规则至少需要一个价格');
+    return Object.freeze({
+      rangeLabel: normalizeText(value.rangeLabel, '区间名称', 24),
+      alias: normalizeText(value.alias, '区间别名', 24, { allowEmpty: true }),
+      rankType, minStar, maxStar, namedRanks: Object.freeze(namedRanks), prices,
+    });
+  }
+
+  function normalizeSurchargeRulePayload(value) {
+    exactKeys(value, ['name', 'keywords', 'prices', 'enabled'], 'INVALID_SURCHARGE_RULE_FIELDS', '加价规则字段无效');
+    if (typeof value.enabled !== 'boolean' || !Array.isArray(value.keywords) || !value.keywords.length || value.keywords.length > 12) throw new SensitiveClientError('INVALID_SURCHARGE_RULE', '加价规则内容无效');
+    const seen = new Set();
+    const keywords = value.keywords.map(item => normalizeText(item, '加价关键词', 24)).filter(item => {
+      const key = item.toLocaleLowerCase('und'); if (seen.has(key)) return false; seen.add(key); return true;
+    });
+    const prices = pricePair(value.prices, '加价');
+    if (prices.round === null && prices.hour === null) throw new SensitiveClientError('SURCHARGE_PRICE_REQUIRED', '加价规则至少需要一个价格');
+    return Object.freeze({ name: normalizeText(value.name, '加价规则名称', 24), keywords: Object.freeze(keywords), prices, enabled: value.enabled });
+  }
+
+  function normalizeGiftRulePayload(value) {
+    exactKeys(value, ['serviceName', 'mode', 'unitPrice'], 'INVALID_GIFT_RULE_FIELDS', '礼物规则字段无效');
+    const mode = String(value.mode || '').trim().toLowerCase();
+    if (!['fixed', 'variable'].includes(mode)) throw new SensitiveClientError('INVALID_GIFT_MODE', '礼物金额模式无效');
+    if (mode === 'variable' && value.unitPrice !== null) throw new SensitiveClientError('VARIABLE_GIFT_PRICE_MUST_BE_NULL', '随机金额礼物不能带固定金额');
+    return Object.freeze({ serviceName: normalizeText(value.serviceName, '礼物名称', 60), mode, unitPrice: mode === 'fixed' ? normalizePrice(value.unitPrice, '礼物固定金额', { allowNull: false }) : null });
+  }
+
+  function normalizeRulePayload(dataType, payload) {
+    if (dataType === 'rank_range_rule') return normalizeRankRangeRulePayload(payload);
+    if (dataType === 'surcharge_rule') return normalizeSurchargeRulePayload(payload);
+    if (dataType === 'gift_rule') return normalizeGiftRulePayload(payload);
+    throw new SensitiveClientError('UNSUPPORTED_SENSITIVE_DATA_TYPE', '敏感规则类型不受支持');
+  }
+
+  function assertScope(groupId, libraryId) {
+    const group = String(groupId || '').trim().toLowerCase();
+    const library = String(libraryId || '').trim().toLowerCase();
+    if (!GROUP_ID_PATTERN.test(group) || !LIBRARY_ID_PATTERN.test(library)) throw new SensitiveClientError('INVALID_PUBLIC_SCOPE', '敏感规则作用域无效');
+    return { groupId: group, libraryId: library };
+  }
+
+  function ruleIdentity(scope, dataType, payload) {
+    if (dataType === 'rank_range_rule') {
+      const boundary = payload.rankType === 'star'
+        ? `${payload.minStar}-${payload.maxStar}`
+        : [...payload.namedRanks].map(item => item.toLocaleLowerCase('und')).sort().join('|');
+      return { groupId: scope.groupId, libraryId: scope.libraryId, dataType, rankType: payload.rankType, boundary, rangeLabel: payload.rangeLabel.toLocaleLowerCase('und') };
+    }
+    if (dataType === 'surcharge_rule') return { groupId: scope.groupId, libraryId: scope.libraryId, dataType, name: payload.name.toLocaleLowerCase('und'), keywords: [...payload.keywords].map(item => item.toLocaleLowerCase('und')).sort() };
+    return { groupId: scope.groupId, libraryId: scope.libraryId, dataType, serviceName: payload.serviceName.toLocaleLowerCase('und') };
+  }
+
+  async function buildSensitiveSubmission({
+    deviceId, submissionId, groupId, libraryId, dataType, operation = 'upsert', payload,
+    businessKey = null, bossId = null, origin = 'user', clientCreatedAt = Date.now(), appVersion = APP_VERSION,
+  } = {}) {
+    if (!DEVICE_ID_PATTERN.test(String(deviceId || '')) || !SUBMISSION_ID_PATTERN.test(String(submissionId || ''))) throw new SensitiveClientError('INVALID_SUBMISSION_IDENTITY', '敏感规则设备或提交ID无效');
+    if (!['user', 'initialBinding'].includes(origin)) throw new SensitiveClientError('INVALID_SUBMISSION_ORIGIN', '敏感规则只能来自明确用户操作');
+    const scope = assertScope(groupId, libraryId);
+    const type = String(dataType || '').trim().toLowerCase();
+    const op = String(operation || '').trim().toLowerCase();
+    if (type === 'boss_profile' && op === 'upsert') {
+      if (!ordinaryTypes?.buildOrdinarySubmission) throw new SensitiveClientError('ORDINARY_MODULE_REQUIRED', '老板敏感变更需要普通共享模块');
+      return ordinaryTypes.buildOrdinarySubmission({ deviceId, submissionId, groupId: scope.groupId, libraryId: scope.libraryId, dataType: type, payload, origin, clientCreatedAt, appVersion });
+    }
+    if (op === 'upsert' && !RULE_TYPES.has(type)) throw new SensitiveClientError('UNSUPPORTED_SENSITIVE_DATA_TYPE', '敏感upsert只允许区间、加价或礼物规则');
+    if (op === 'delete' && !DELETE_TYPES.has(type)) throw new SensitiveClientError('UNSUPPORTED_DELETE_DATA_TYPE', '敏感删除类型不受支持');
+    if (op === 'delete' && payload !== null) throw new SensitiveClientError('DELETE_PAYLOAD_MUST_BE_NULL', '敏感删除payload必须为null');
+    const normalizedPayload = op === 'delete' ? null : normalizeRulePayload(type, payload);
+    const normalizedBossId = type === 'boss_profile'
+      ? (() => { if (!BOSS_ID_PATTERN.test(String(bossId || ''))) throw new SensitiveClientError('INVALID_BOSS_ID', '老板身份无效'); return bossId; })()
+      : null;
+    const resolvedBusinessKey = op === 'delete'
+      ? (() => { if (!BUSINESS_KEY_PATTERN.test(String(businessKey || ''))) throw new SensitiveClientError('INVALID_BUSINESS_KEY', '删除目标业务键无效'); return businessKey; })()
+      : `bk_v1_${await sha256Base64Url(canonicalize(ruleIdentity(scope, type, normalizedPayload)))}`;
+    const content = {
+      schemaVersion: 1, payloadSchemaVersion: 1, groupId: scope.groupId, libraryId: scope.libraryId,
+      bossId: normalizedBossId, dataType: type, operation: op,
+      businessKey: op === 'delete' ? resolvedBusinessKey : null,
+      payload: normalizedPayload,
+    };
+    const contentHash = `ch_v1_${await sha256Base64Url(canonicalize(content))}`;
+    if (!baseSubmission?.buildIdempotencyKey) throw new SensitiveClientError('SUBMISSION_MODULE_REQUIRED', '提交模块不可用');
+    const idempotencyKey = await baseSubmission.buildIdempotencyKey(deviceId, submissionId, canonicalize);
+    return Object.freeze({
+      schemaVersion: 1, payloadSchemaVersion: 1, submissionId, deviceId,
+      groupId: scope.groupId, libraryId: scope.libraryId, bossId: normalizedBossId,
+      dataType: type, operation: op, origin,
+      clientCreatedAt: Math.max(0, Math.floor(Number(clientCreatedAt) || 0)),
+      businessKey: resolvedBusinessKey, contentHash, idempotencyKey,
+      payload: normalizedPayload,
+      clientContext: { appVersion, projectionSpecVersion: 1, queueSchemaVersion: 1 },
+    });
+  }
+
+  function isPreviewSensitiveSubmissionScope(submission) {
+    return submission?.groupId === baseSubmission?.PREVIEW_ALLOWED_GROUP_ID
+      && submission?.libraryId === baseSubmission?.PREVIEW_ALLOWED_LIBRARY_ID
+      && ((RULE_TYPES.has(submission?.dataType) && submission?.operation === 'upsert')
+        || (DELETE_TYPES.has(submission?.dataType) && submission?.operation === 'delete')
+        || (submission?.dataType === 'boss_profile' && submission?.operation === 'upsert'));
+  }
+
+  class SensitiveSubmissionApiClient {
+    constructor({ baseClient } = {}) { this.baseClient = baseClient; }
+    isConfigured() { return Boolean(this.baseClient?.isConfigured?.()); }
+    hasWriteAccess() { return Boolean(this.baseClient?.hasWriteAccess?.()); }
+    registerDevice(input) { return this.baseClient.registerDevice(input); }
+    submit(deviceToken, submission) {
+      if (!this.baseClient?.request) throw new SensitiveClientError('API_NOT_CONFIGURED', '敏感候选接口不可用');
+      return this.baseClient.request('/api/preview/sensitive-submissions/create', { body: submission, token: deviceToken });
+    }
+  }
+
+  class SensitiveSubmissionDispatcher {
+    constructor({ apiClient, metaStore, credentialStore, queueStore, bindingStore = null, appVersion = APP_VERSION, now = () => Date.now(), isOnline = () => typeof navigator === 'undefined' || navigator.onLine !== false, onState = null } = {}) {
+      this.apiClient = apiClient; this.metaStore = metaStore; this.credentialStore = credentialStore;
+      this.queueStore = queueStore; this.bindingStore = bindingStore; this.appVersion = appVersion;
+      this.now = now; this.isOnline = isOnline; this.onState = typeof onState === 'function' ? onState : () => {};
+      this._flushPromise = null;
+    }
+    emit(state) { try { this.onState(Object.freeze({ at: this.now(), ...state })); } catch (_) {} }
+    hasCollaborativeBinding(submission) {
+      try { return Boolean(this.bindingStore?.list?.().some(binding => binding?.mode === 'collaborate' && binding.groupId === submission?.groupId && binding.libraryId === submission?.libraryId)); }
+      catch (_) { return false; }
+    }
+    async ensureCredential() {
+      const current = this.credentialStore?.getValid?.(this.now()); if (current) return current;
+      const previous = this.credentialStore?.loadResult?.(); if (previous?.ok && previous?.exists) this.credentialStore.clear();
+      const meta = this.metaStore?.loadResult?.();
+      if (!meta?.ok || !meta?.exists || !meta.value?.deviceId) throw new SensitiveClientError('DEVICE_IDENTITY_REQUIRED', '请先创建云协作身份');
+      const data = await this.apiClient.registerDevice({ deviceId: meta.value.deviceId, nickname: meta.value.nickname, appVersion: this.appVersion });
+      if (!data?.deviceToken || data.deviceId !== meta.value.deviceId) throw new SensitiveClientError('INVALID_REGISTRATION_RESPONSE', '设备注册响应无效');
+      return this.credentialStore.save({ schemaVersion: 1, deviceId: data.deviceId, deviceToken: data.deviceToken, issuedAt: data.issuedAt, expiresAt: data.expiresAt, tokenVersion: data.tokenVersion });
+    }
+    flush({ limit = 10 } = {}) {
+      if (this._flushPromise) return this._flushPromise;
+      this._flushPromise = this._flush({ limit }).finally(() => { this._flushPromise = null; }); return this._flushPromise;
+    }
+    async _flush({ limit }) {
+      const summary = { status: 'idle', attempted: 0, acknowledged: 0, retryWait: 0, blocked: 0, skippedMode: 0, remaining: 0, errorCode: null, category: null };
+      if (!this.apiClient?.isConfigured?.()) return { ...summary, status: 'not_configured' };
+      if (!this.isOnline()) return { ...summary, status: 'offline' };
+      if (!this.apiClient.hasWriteAccess()) return { ...summary, status: 'write_gate_closed', errorCode: 'WRITE_GATE_CLOSED', category: 'write_gate' };
+      const due = [];
+      for (const item of this.queueStore.getDue(this.now(), Math.max(1, Math.min(20, Number(limit) || 10)))) {
+        const submission = item?.submission;
+        if (!isPreviewSensitiveSubmissionScope(submission)) continue;
+        if (!this.hasCollaborativeBinding(submission)) { summary.skippedMode += 1; continue; }
+        due.push(item);
+      }
+      if (!due.length) return { ...summary, status: 'no_sensitive_due' };
+      let credential;
+      try { credential = await this.ensureCredential(); }
+      catch (error) { return { ...summary, status: 'credential_blocked', errorCode: error.code || 'DEVICE_REGISTRATION_FAILED', category: error.category || 'unknown' }; }
+      const result = { ...summary, status: 'completed' };
+      for (const item of due) {
+        const id = item.submission.submissionId;
+        this.queueStore.markSending(id); result.attempted += 1;
+        try {
+          await this.apiClient.submit(credential.deviceToken, item.submission);
+          this.queueStore.markAcknowledged(id); result.acknowledged += 1;
+        } catch (error) {
+          result.errorCode = error.code || 'SENSITIVE_SUBMISSION_ERROR'; result.category = error.category || 'unknown';
+          if (error.retryable) { this.queueStore.markRetry(id, result.errorCode); result.retryWait += 1; break; }
+          this.queueStore.markBlocked(id, result.errorCode); result.blocked += 1;
+        }
+      }
+      try { this.queueStore.pruneAcknowledged(); } catch (_) {}
+      result.remaining = this.queueStore.list().filter(item => item.deliveryState !== 'acknowledged').length;
+      if (result.blocked) result.status = 'completed_with_blocked'; else if (result.retryWait) result.status = 'completed_with_retry';
+      this.emit(result); return result;
+    }
+  }
+
+  return Object.freeze({
+    APP_VERSION,
+    SensitiveClientError,
+    normalizeRankRangeRulePayload,
+    normalizeSurchargeRulePayload,
+    normalizeGiftRulePayload,
+    buildSensitiveSubmission,
+    isPreviewSensitiveSubmissionScope,
+    SensitiveSubmissionApiClient,
+    SensitiveSubmissionDispatcher,
+  });
+});
+// ===== 公共协作数据库：阶段6B敏感规则候选客户端结束 =====
+
+// ===== 公共协作数据库：阶段6B敏感规则与墓碑合并客户端 =====
+(function(root, factory) {
+  const api = factory(root?.CloudCollabSensitiveRules || null, root?.CloudCollabOrdinaryTypes || null);
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  if (root) root.CloudCollabSensitiveMerge = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this, function(sensitiveRules, ordinaryTypes) {
+  'use strict';
+
+  const RULE_TYPES = new Set(['rank_range_rule', 'surcharge_rule', 'gift_rule']);
+  const DELETE_TYPES = new Set(['playable_name', 'boss_profile', 'rank_range_rule', 'surcharge_rule', 'gift_rule']);
+  const DEVICE = 'dev_01JABCDEF0123456789XYZABCD';
+  const SUBMISSION = 'sub_01JABCDEF0123456789XYZABCD';
+
+  class SensitiveMergeError extends Error {
+    constructor(code, message, details = null) {
+      super(message || code || '敏感公共数据合并失败');
+      this.name = 'SensitiveMergeError';
+      this.code = code || 'SENSITIVE_MERGE_ERROR';
+      this.details = details;
+    }
+  }
+
+  function clone(value) { return JSON.parse(JSON.stringify(value)); }
+
+  function rangePayload(rule) {
+    return {
+      rangeLabel: rule?.rangeLabel,
+      alias: rule?.alias || '',
+      rankType: rule?.rankType,
+      minStar: rule?.rankType === 'star' ? Number(rule?.minStar) : null,
+      maxStar: rule?.rankType === 'star' ? Number(rule?.maxStar) : null,
+      namedRanks: rule?.rankType === 'star' ? [] : [...(rule?.namedRanks || [])],
+      prices: {
+        normal: { round: rule?.prices?.normal?.round ?? null, hour: rule?.prices?.normal?.hour ?? null },
+        carry: { round: rule?.prices?.carry?.round ?? null, hour: rule?.prices?.carry?.hour ?? null },
+        starGuarantee: { round: rule?.prices?.starGuarantee?.round ?? null, hour: rule?.prices?.starGuarantee?.hour ?? null },
+      },
+    };
+  }
+
+  function surchargePayload(rule) {
+    return {
+      name: rule?.name,
+      keywords: [...(rule?.keywords || [])],
+      prices: { round: rule?.prices?.round ?? null, hour: rule?.prices?.hour ?? null },
+      enabled: rule?.enabled !== false,
+    };
+  }
+
+  function giftPayload(item) {
+    return {
+      serviceName: item?.serviceType ?? item?.serviceName,
+      mode: item?.mode,
+      unitPrice: item?.mode === 'fixed' ? item?.unitPrice : null,
+    };
+  }
+
+  function payloadFor(dataType, item) {
+    if (dataType === 'rank_range_rule') return rangePayload(item);
+    if (dataType === 'surcharge_rule') return surchargePayload(item);
+    if (dataType === 'gift_rule') return giftPayload(item);
+    throw new SensitiveMergeError('UNSUPPORTED_LOCAL_RULE_TYPE', '本地敏感规则类型不受支持');
+  }
+
+  async function localRecord(groupId, libraryId, dataType, item) {
+    let submission;
+    if (RULE_TYPES.has(dataType)) {
+      submission = await sensitiveRules.buildSensitiveSubmission({
+        deviceId: DEVICE, submissionId: SUBMISSION, groupId, libraryId,
+        dataType, payload: payloadFor(dataType, item), origin: 'user', clientCreatedAt: 0,
+      });
+    } else if (dataType === 'playable_name') {
+      submission = await ordinaryTypes.buildOrdinarySubmission({
+        deviceId: DEVICE, submissionId: SUBMISSION, groupId, libraryId,
+        dataType, payload: { name: item?.name }, origin: 'user', clientCreatedAt: 0,
+      });
+    } else if (dataType === 'boss_profile') {
+      submission = await ordinaryTypes.buildOrdinarySubmission({
+        deviceId: DEVICE, submissionId: SUBMISSION, groupId, libraryId,
+        dataType, payload: { bossName: item?.name ?? item?.bossName, paiDan: item?.paiDan, discount: item?.discount },
+        origin: 'user', clientCreatedAt: 0,
+      });
+    } else throw new SensitiveMergeError('UNSUPPORTED_LOCAL_DATA_TYPE', '本地公共数据类型不受支持');
+    return { businessKey: submission.businessKey, contentHash: submission.contentHash, dataType, item };
+  }
+
+  async function buildLocalMap(input) {
+    const map = new Map();
+    async function add(dataType, item) {
+      try {
+        const record = await localRecord(input.groupId, input.libraryId, dataType, item);
+        if (!map.has(record.businessKey)) map.set(record.businessKey, record);
+      } catch (_) {}
+    }
+    for (const item of input.confirmedNames || []) await add('playable_name', item);
+    for (const item of input.bossMemory || []) await add('boss_profile', item);
+    for (const item of input.rangeRules || []) await add('rank_range_rule', item);
+    for (const item of input.surcharges || []) await add('surcharge_rule', item);
+    for (const item of input.gifts || []) await add('gift_rule', item);
+    return map;
+  }
+
+  function assertRemote(item, operation) {
+    if (!item || typeof item !== 'object' || item.operation !== operation
+        || typeof item.businessKey !== 'string' || typeof item.contentHash !== 'string'
+        || !Number.isSafeInteger(item.approvedVersion)) {
+      throw new SensitiveMergeError('INVALID_SENSITIVE_REMOTE_ITEM', '公共敏感记录或墓碑无效');
+    }
+    if (operation === 'upsert' && !RULE_TYPES.has(item.dataType)) {
+      throw new SensitiveMergeError('UNSUPPORTED_SENSITIVE_REMOTE_RECORD', '敏感规则记录类型不受支持');
+    }
+    if (operation === 'delete' && !DELETE_TYPES.has(item.dataType)) {
+      throw new SensitiveMergeError('UNSUPPORTED_SENSITIVE_TOMBSTONE', '敏感墓碑类型不受支持');
+    }
+  }
+
+  function conflict(item, baseHash, localHash) {
+    return Object.freeze({
+      conflictId: `sensitive:${item.businessKey}:${baseHash || 'none'}:${localHash || 'none'}:${item.contentHash}`,
+      businessKey: item.businessKey,
+      dataType: item.dataType,
+      baseHash,
+      localHash,
+      remoteHash: item.contentHash,
+    });
+  }
+
+  async function planSensitiveMerge({
+    groupId, libraryId, records = [], tombstones = [], confirmedNames = [], bossMemory = [],
+    rangeRules = [], surcharges = [], gifts = [], baseHashes = {},
+  } = {}) {
+    if (!sensitiveRules?.buildSensitiveSubmission || !ordinaryTypes?.buildOrdinarySubmission) {
+      throw new SensitiveMergeError('SENSITIVE_MERGE_MODULE_REQUIRED', '敏感合并依赖模块不可用');
+    }
+    records.forEach(item => assertRemote(item, 'upsert'));
+    tombstones.forEach(item => assertRemote(item, 'delete'));
+    const local = await buildLocalMap({ groupId, libraryId, confirmedNames, bossMemory, rangeRules, surcharges, gifts });
+    const operations = [];
+    const conflicts = [];
+    const nextBaseHashes = { ...baseHashes };
+    const counts = { upserts: 0, deletes: 0, unchanged: 0, preserveLocal: 0, conflicts: 0 };
+
+    for (const remote of records) {
+      const current = local.get(remote.businessKey) || null;
+      const baseHash = baseHashes?.[remote.businessKey] || null;
+      if (current?.contentHash === remote.contentHash) {
+        counts.unchanged += 1;
+        nextBaseHashes[remote.businessKey] = remote.contentHash;
+      } else if (!current || (baseHash && current.contentHash === baseHash)) {
+        operations.push(Object.freeze({ action: 'upsert', dataType: remote.dataType, businessKey: remote.businessKey, payload: clone(remote.payload) }));
+        counts.upserts += 1;
+        nextBaseHashes[remote.businessKey] = remote.contentHash;
+      } else if (!baseHash) counts.preserveLocal += 1;
+      else {
+        counts.conflicts += 1;
+        conflicts.push(conflict(remote, baseHash, current.contentHash));
+      }
+    }
+
+    for (const remote of tombstones) {
+      const current = local.get(remote.businessKey) || null;
+      const baseHash = baseHashes?.[remote.businessKey] || null;
+      if (!current) {
+        counts.unchanged += 1;
+        nextBaseHashes[remote.businessKey] = remote.contentHash;
+      } else if (baseHash && current.contentHash === baseHash) {
+        operations.push(Object.freeze({ action: 'delete', dataType: remote.dataType, businessKey: remote.businessKey, payload: null }));
+        counts.deletes += 1;
+        nextBaseHashes[remote.businessKey] = remote.contentHash;
+      } else if (!baseHash) counts.preserveLocal += 1;
+      else {
+        counts.conflicts += 1;
+        conflicts.push(conflict(remote, baseHash, current.contentHash));
+      }
+    }
+
+    return Object.freeze({
+      records: Object.freeze(records.map(clone)),
+      tombstones: Object.freeze(tombstones.map(clone)),
+      operations: Object.freeze(operations),
+      conflicts: Object.freeze(conflicts),
+      counts: Object.freeze(counts),
+      nextBaseHashes: Object.freeze(nextBaseHashes),
+    });
+  }
+
+  function cloudRange(payload, old, now, key) {
+    return { ...(old || {}), id: old?.id || `cloud_range_${key.slice(-12)}`, kind: 'rankRange',
+      rangeLabel: payload.rangeLabel, alias: payload.alias, rankType: payload.rankType,
+      minStar: payload.minStar, maxStar: payload.maxStar, namedRanks: [...payload.namedRanks],
+      prices: clone(payload.prices), source: 'cloudPull', createdAt: old?.createdAt || now, updatedAt: now };
+  }
+  function cloudSurcharge(payload, old, now, key) {
+    return { ...(old || {}), id: old?.id || `cloud_surcharge_${key.slice(-12)}`,
+      name: payload.name, keywords: [...payload.keywords], prices: clone(payload.prices), enabled: payload.enabled,
+      source: 'cloudPull', createdAt: old?.createdAt || now, updatedAt: now };
+  }
+  function cloudGift(payload, old, now, key) {
+    return { ...(old || {}), id: old?.id || `cloud_gift_${key.slice(-12)}`,
+      serviceType: payload.serviceName, mode: payload.mode, unitPrice: payload.unitPrice,
+      usageCount: old?.usageCount || 1, source: 'cloudPull', createdAt: old?.createdAt || now, updatedAt: now, lastUsed: old?.lastUsed || now };
+  }
+
+  async function applySensitiveMergePlan({
+    groupId, libraryId, confirmedNames = [], bossMemory = [], rangeRules = [], surcharges = [], gifts = [],
+    plan, now = Date.now(),
+  } = {}) {
+    const names = clone(confirmedNames), bosses = clone(bossMemory), ranges = clone(rangeRules), extras = clone(surcharges), giftList = clone(gifts);
+    const local = await buildLocalMap({ groupId, libraryId, confirmedNames: names, bossMemory: bosses, rangeRules: ranges, surcharges: extras, gifts: giftList });
+    function remove(list, key) {
+      const record = local.get(key); if (!record) return;
+      const index = list.findIndex(item => item?.id && item.id === record.item?.id);
+      if (index >= 0) list.splice(index, 1);
+      else {
+        const raw = list.indexOf(record.item); if (raw >= 0) list.splice(raw, 1);
+      }
+    }
+    for (const operation of plan.operations || []) {
+      const current = local.get(operation.businessKey) || null;
+      if (operation.action === 'delete') {
+        if (operation.dataType === 'playable_name') remove(names, operation.businessKey);
+        else if (operation.dataType === 'boss_profile') remove(bosses, operation.businessKey);
+        else if (operation.dataType === 'rank_range_rule') remove(ranges, operation.businessKey);
+        else if (operation.dataType === 'surcharge_rule') remove(extras, operation.businessKey);
+        else if (operation.dataType === 'gift_rule') remove(giftList, operation.businessKey);
+      } else if (operation.dataType === 'rank_range_rule') {
+        const next = cloudRange(operation.payload, current?.item, now, operation.businessKey);
+        if (current) Object.assign(current.item, next); else ranges.push(next);
+      } else if (operation.dataType === 'surcharge_rule') {
+        const next = cloudSurcharge(operation.payload, current?.item, now, operation.businessKey);
+        if (current) Object.assign(current.item, next); else extras.unshift(next);
+      } else if (operation.dataType === 'gift_rule') {
+        const next = cloudGift(operation.payload, current?.item, now, operation.businessKey);
+        if (current) Object.assign(current.item, next); else giftList.unshift(next);
+      }
+    }
+    return Object.freeze({
+      confirmedNames: Object.freeze(names), bossMemory: Object.freeze(bosses),
+      rangeRules: Object.freeze(ranges), surcharges: Object.freeze(extras), gifts: Object.freeze(giftList),
+      changed: Boolean(plan?.operations?.length),
+    });
+  }
+
+  return Object.freeze({
+    SensitiveMergeError, planSensitiveMerge, applySensitiveMergePlan,
+    rangePayload, surchargePayload, giftPayload,
+  });
+});
+// ===== 公共协作数据库：阶段6B敏感规则与墓碑合并客户端结束 =====
+
 
 class CloudCollabFeature {
- constructor(app, stores, apiClient) {
+ constructor(app, stores, apiClient, submissionApi, submissionDispatcher, submissionIdFactory) {
   this.app = app;
   this.stores = stores;
   this.apiClient = apiClient;
+  this.submissionApi = submissionApi;
+  this.submissionDispatcher = submissionDispatcher;
+  this.submissionIdFactory = submissionIdFactory;
   this._eventScope = new FeatureEventScope();
   this.selectedLocalLibraryId = '';
   this.lastError = null;
@@ -18107,6 +19658,10 @@ class CloudCollabFeature {
   this._readonlyCheckScheduled = false;
   this._receivePollTimer = null;
   this._syncLocks = new Set();
+  this._submissionDispatchScheduled = false;
+  this._uploadFlushTimer = null;
+  this._uploadPollTimer = null;
+  this._uploadOnlineHandler = null;
  }
 
  init() {
@@ -18120,6 +19675,7 @@ class CloudCollabFeature {
    this._eventScope.on(el.cloudCollabBtn, 'click', () => this.open());
    this._eventScope.on(el.cloudServerCheckBtn, 'click', () => this.checkServer({ interactive: true }));
    this._eventScope.on(el.cloudPublicVersionCheckBtn, 'click', () => this.checkSelectedPublicVersion());
+   this._eventScope.on(el.cloudUploadRetryBtn, 'click', () => this.retryRecoverableUploads());
    this._eventScope.on(el.cloudIdentitySaveBtn, 'click', () => this.saveIdentity());
    this._eventScope.on(el.cloudBindingSaveBtn, 'click', () => this.saveBinding());
    this._eventScope.on(el.cloudBindingRemoveBtn, 'click', () => this.removeBinding());
@@ -18211,7 +19767,11 @@ class CloudCollabFeature {
    serverStatus: previous.serverStatus || 'idle',
    serverProtocolVersion: previous.serverProtocolVersion ?? null,
    serverCheckedAt: previous.serverCheckedAt || null,
-   serverErrorCode: previous.serverErrorCode || null
+   serverErrorCode: previous.serverErrorCode || null,
+   uploadStatus: previous.uploadStatus || 'idle',
+   uploadErrorCode: previous.uploadErrorCode || null,
+   uploadErrorCategory: previous.uploadErrorCategory || null,
+   uploadCheckedAt: previous.uploadCheckedAt || null
   };
   return this.app.cloudCollabState;
  }
@@ -18261,6 +19821,7 @@ class CloudCollabFeature {
   this.loadLocalState();
   this.renderServerStatus();
   this.renderPublicVersionSummary();
+  this.renderUploadStatus();
   if (this.lastError) this.setStatus(this.formatError(this.lastError), 'error');
  }
 
@@ -18385,7 +19946,7 @@ scheduleReadonlyCheck() {
   const localVersion = scope?.publicVersion || 0;
   const openConflicts = scope?.conflicts?.filter(item => item.status === 'open').length || 0;
   const remoteText = remote && remote.groupId === binding.groupId && remote.libraryId === binding.libraryId ? `；服务器版本 ${remote.publicVersion}` : '';
-  target.textContent = `本地已处理公共版本 ${localVersion}${remoteText}；未解决冲突 ${openConflicts} 条。${binding.mode === 'local' ? '当前为本地模式，不会接收。' : '公共更新仅合并普通精确价格。'}`;
+  target.textContent = `本地已处理公共版本 ${localVersion}${remoteText}；未解决冲突 ${openConflicts} 条。${binding.mode === 'local' ? '当前为本地模式，不会接收。' : '公共更新会三方合并普通价格、陪玩名字、老板资料、区间、加价、礼物规则与人工批准的删除墓碑。'}`;
   target.classList.toggle('is-success', openConflicts === 0);
   target.classList.toggle('is-error', openConflicts > 0);
  }
@@ -18486,7 +20047,7 @@ scheduleReadonlyCheck() {
    if (!force && versionData.publicVersion <= scope.publicVersion) {
     this.stores.syncStore.markSuccessfulCheck(binding.groupId, binding.libraryId, { publicVersion: scope.publicVersion, cursor: scope.cursor, checkedAt: Date.now() });
     this.renderPublicVersionSummary();
-    if (interactive) this.setStatus(`公共版本 ${versionData.publicVersion} 已是最新；未修改本地价格。`, 'success');
+    if (interactive) this.setStatus(`公共版本 ${versionData.publicVersion} 已是最新；未修改本地数据。`, 'success');
     return { status: 'not_modified', versionData };
    }
    if (!versionData.snapshotAvailable) {
@@ -18498,19 +20059,19 @@ scheduleReadonlyCheck() {
      lastSuccessfulCheckAt: checkedAt
     }, { updateBindingVersion: true });
     this.renderPublicVersionSummary();
-    if (interactive) this.setStatus('公共库目前为空；本地价格未改变。', 'success');
+    if (interactive) this.setStatus('公共库目前为空；本地数据未改变。', 'success');
     return { status: 'snapshot_unavailable', versionData };
    }
    const rawSnapshot = await this.fetchSnapshotForBinding(binding, scope, versionData, { force });
    if (!rawSnapshot) {
     this.renderPublicVersionSummary();
-    if (interactive) this.setStatus('公共快照没有新变化；本地价格未改变。', 'success');
+    if (interactive) this.setStatus('公共快照没有新变化；本地数据未改变。', 'success');
     return { status: 'not_modified', versionData };
    }
    const targetLibrary = this.app.priceLibraryStore.normalizeData(this.app.priceLibraries)?.libraries?.find(item => item.id === binding.localLibraryId);
    if (!targetLibrary) throw new CloudCollabSnapshotSync.SnapshotSyncError('LOCAL_LIBRARY_NOT_FOUND', '绑定的本地价格库不存在');
-   const plan = await CloudCollabSnapshotSync.planExactPriceMerge({ snapshot: rawSnapshot, localItems: targetLibrary.items || [], baseHashes: scope.baseHashes || {} });
-   const result = this.commitExactPricePlan(binding, scope, plan);
+   const plans = await this.planStage5GMixedMerge(binding, scope, rawSnapshot, targetLibrary);
+    const result = await this.commitStage5GMixedPlan(binding, scope, plans);
    this.lastPublicVersion = versionData;
    this.renderPublicVersionSummary();
    this.refresh();
@@ -18525,7 +20086,7 @@ scheduleReadonlyCheck() {
     this.lastError = error;
     this.loadLocalState();
    }
-   if (interactive) this.setStatus(`接收公共更新失败：${error?.message || '处理失败'}${error?.code ? `（${error.code}）` : ''}。本地价格保持原状。`, 'error');
+   if (interactive) this.setStatus(`接收公共更新失败：${error?.message || '处理失败'}${error?.code ? `（${error.code}）` : ''}。本地数据保持原状。`, 'error');
    return null;
   } finally {
    this._syncLocks.delete(lockKey);
@@ -18635,6 +20196,823 @@ scheduleReadonlyCheck() {
   return { counts: plan.counts, publicVersion: plan.snapshot.publicVersion, changed: working.changed };
  }
 
+renderUploadStatus() {
+  const target = this.app.el.cloudUploadSummary;
+  if (!target) return;
+  const state = this.app.cloudCollabState || {};
+  let credential = null;
+  let queue = [];
+  try { credential = this.stores.credentialStore.getRedacted(); } catch (error) { appLogSilent(error); }
+  try { queue = this.stores.queueStore.list(); } catch (error) { appLogSilent(error); }
+  const active = queue.filter(item => item.deliveryState !== 'acknowledged');
+  const blocked = active.filter(item => item.deliveryState === 'blocked');
+  const retrying = active.filter(item => item.deliveryState === 'retry_wait');
+  const gateReady = Boolean(this.submissionApi?.hasWriteAccess?.());
+  const parts = [
+   `设备凭据：${credential ? '已在本机专用区保存' : '尚未注册'}`,
+   `待处理：${active.length}`,
+   `等待重试：${retrying.length}`,
+   `已阻断：${blocked.length}`,
+   `候选上传门禁：${gateReady ? '受控运行时已开启' : '关闭'}`
+  ];
+  const code = state.uploadErrorCode ? `；最近状态 ${state.uploadErrorCode}` : '';
+  target.textContent = `${parts.join('；')}${code}。设备令牌不会显示、不会进入队列或普通备份；页面不接受用户输入任何密钥。`;
+  const failed = blocked.length > 0 || ['credential_blocked', 'completed_with_blocked'].includes(state.uploadStatus);
+  target.classList.toggle('is-error', failed);
+  target.classList.toggle('is-success', !failed && active.length === 0 && Boolean(credential));
+  if (this.app.el.cloudUploadRetryBtn) this.app.el.cloudUploadRetryBtn.disabled = !active.length || !this.submissionApi?.isConfigured?.();
+ }
+
+ handleSubmissionState(state = {}) {
+  return this.updateUploadState({
+   uploadStatus: state.status || 'idle',
+   uploadErrorCode: state.errorCode || null,
+   uploadErrorCategory: state.category || null,
+   uploadCheckedAt: state.at || Date.now()
+  });
+ }
+
+ updateUploadState(patch = {}) {
+  this.app.cloudCollabState = { ...(this.app.cloudCollabState || {}), ...patch };
+  this.renderUploadStatus();
+  return this.app.cloudCollabState;
+ }
+
+ scheduleUploadFlush(delay = 6000) {
+  if (this._uploadFlushTimer) clearTimeout(this._uploadFlushTimer);
+  this._uploadFlushTimer = setTimeout(() => {
+   this._uploadFlushTimer = null;
+   this.flushPendingUploads({ interactive: false });
+  }, Math.max(0, Number(delay) || 0));
+  return true;
+ }
+
+ scheduleSubmissionDispatch() {
+  if (this._submissionDispatchScheduled) return false;
+  this._submissionDispatchScheduled = true;
+  this._uploadOnlineHandler = () => this.scheduleUploadFlush(400);
+  if (typeof window !== 'undefined') window.addEventListener('online', this._uploadOnlineHandler);
+  this.scheduleUploadFlush(6000);
+  this._uploadPollTimer = setInterval(() => {
+   if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+   this.flushPendingUploads({ interactive: false });
+  }, 60000);
+  return true;
+ }
+
+ async flushPendingUploads({ interactive = false } = {}) {
+  if (!this.submissionDispatcher) return null;
+  if (!this.submissionApi?.hasWriteAccess?.()) {
+   const result = { status: 'write_gate_closed', errorCode: 'WRITE_GATE_CLOSED', category: 'write_gate' };
+   this.updateUploadState({ uploadStatus: result.status, uploadErrorCode: result.errorCode, uploadErrorCategory: result.category, uploadCheckedAt: Date.now() });
+   if (interactive) this.setStatus('候选上传运行时门禁保持关闭；未发送网络请求，本地码单不受影响。', 'success');
+   return result;
+  }
+  this.updateUploadState({ uploadStatus: 'sending', uploadErrorCode: null, uploadCheckedAt: Date.now() });
+  const result = await this.submissionDispatcher.flush({ limit: 10 });
+  this.updateUploadState({
+   uploadStatus: result?.status || 'idle',
+   uploadErrorCode: result?.errorCode || null,
+   uploadErrorCategory: result?.category || null,
+   uploadCheckedAt: Date.now()
+  });
+  this.refresh();
+  if (interactive) {
+   if (result?.status === 'offline') this.setStatus('当前离线，待上传队列保持原状；正常码单不受影响。', 'success');
+   else if (result?.status === 'write_gate_closed') this.setStatus('候选上传运行时门禁关闭；队列保持本地，不影响正常码单。', 'success');
+   else if (result?.blocked) this.setStatus(`候选派发完成：成功 ${result.acknowledged || 0}，等待重试 ${result.retryWait || 0}，阻断 ${result.blocked}。`, 'error');
+   else this.setStatus(`候选派发完成：成功 ${result?.acknowledged || 0}，等待重试 ${result?.retryWait || 0}。`, 'success');
+  }
+  return result;
+ }
+
+ async retryRecoverableUploads() {
+  const recoverable = new Set(['PREVIEW_WRITE_DISABLED', 'API_TIMEOUT', 'API_UNREACHABLE', 'HTTP_500', 'HTTP_502', 'HTTP_503', 'HTTP_504']);
+  let requeued = 0;
+  try {
+   this.stores.queueStore.list().filter(item => item.deliveryState === 'blocked' && recoverable.has(item.lastErrorCode)).forEach(item => {
+    this.stores.queueStore.requeueBlocked(item.submission.submissionId);
+    requeued += 1;
+   });
+  } catch (error) { appLogError('cloudCollabUploadRequeue', error); }
+  if (requeued) this.refresh();
+  return this.flushPendingUploads({ interactive: true });
+ }
+
+ getBoundLocalLibrary(binding) {
+  const data = this.app.priceLibraryStore.normalizeData(this.app.priceLibraries);
+  return data?.libraries?.find(item => item.id === binding?.localLibraryId) || null;
+ }
+
+ isPreviewCollaborativeBinding(binding) {
+  return Boolean(binding && binding.mode === 'collaborate'
+   && binding.groupId === CloudCollabSubmission.PREVIEW_ALLOWED_GROUP_ID
+   && binding.libraryId === CloudCollabSubmission.PREVIEW_ALLOWED_LIBRARY_ID);
+ }
+
+ async enqueueInitialBindingSubmissions(localLibraryId) {
+  const binding = this.stores.bindingStore.getByLocalLibraryId(localLibraryId);
+  if (!binding || binding.mode !== 'collaborate') return { inserted: 0, skipped: 0, status: 'not_collaborative' };
+  if (!this.isPreviewCollaborativeBinding(binding)) return { inserted: 0, skipped: 0, status: 'preview_scope_only' };
+  const meta = this.stores.metaStore.loadResult();
+  if (!meta.ok || !meta.exists) return { inserted: 0, skipped: 0, status: 'identity_required' };
+  const library = this.getBoundLocalLibrary(binding);
+  if (!library) return { inserted: 0, skipped: 0, status: 'library_missing' };
+  const scope = this.stores.syncStore.getScope(binding.groupId, binding.libraryId);
+  const plan = await CloudCollabSubmission.planInitialExactPriceSubmissions({
+   snapshotSync: CloudCollabSnapshotSync,
+   deviceId: meta.value.deviceId,
+   groupId: binding.groupId,
+   libraryId: binding.libraryId,
+   localItems: library.items || [],
+   baseHashes: scope?.baseHashes || {},
+   submissionIdFactory: () => this.submissionIdFactory.submissionId(),
+   now: () => Date.now(),
+   appVersion: '8.2.28'
+  });
+  let inserted = 0;
+  for (const submission of plan.submissions) {
+   const result = this.stores.coordinator.enqueueSubmission(localLibraryId, submission);
+   if (result.inserted) inserted += 1;
+  }
+  this.refresh();
+  if (inserted) this.scheduleUploadFlush(6000);
+  return { inserted, skipped: plan.submissions.length - inserted, details: plan.skipped, status: 'queued' };
+ }
+
+ async enqueueExactPriceUserChange(localLibraryId, record) {
+  const binding = this.stores.bindingStore.getByLocalLibraryId(localLibraryId);
+  if (!binding || binding.mode !== 'collaborate') return { inserted: false, status: 'not_collaborative' };
+  if (!this.isPreviewCollaborativeBinding(binding)) return { inserted: false, status: 'preview_scope_only' };
+  const settleType = String(record?.settleType || '').trim().toLowerCase();
+  if (!['round', 'hour'].includes(settleType)) return { inserted: false, status: 'unsupported' };
+  const meta = this.stores.metaStore.loadResult();
+  if (!meta.ok || !meta.exists) return { inserted: false, status: 'identity_required' };
+  const hashes = await CloudCollabSnapshotSync.computeExactPriceHashes(binding.groupId, binding.libraryId, {
+   serviceName: record?.serviceType,
+   settleType,
+   unitPrice: record?.unitPrice
+  });
+  const scope = this.stores.syncStore.getScope(binding.groupId, binding.libraryId);
+  if (scope?.baseHashes?.[hashes.businessKey] === hashes.contentHash) return { inserted: false, status: 'already_public' };
+  const submission = await CloudCollabSubmission.buildExactPriceSubmission({
+   snapshotSync: CloudCollabSnapshotSync,
+   deviceId: meta.value.deviceId,
+   submissionId: this.submissionIdFactory.submissionId(),
+   groupId: binding.groupId,
+   libraryId: binding.libraryId,
+   serviceName: hashes.payload.serviceName,
+   settleType: hashes.payload.settleType,
+   unitPrice: hashes.payload.unitPrice,
+   origin: 'user',
+   clientCreatedAt: Date.now(),
+   appVersion: '8.2.28'
+  });
+  const result = this.stores.coordinator.enqueueSubmission(localLibraryId, submission);
+  this.refresh();
+  if (result.inserted) this.scheduleUploadFlush(6000);
+  return { inserted: Boolean(result.inserted), status: result.inserted ? 'queued' : 'duplicate' };
+ }
+
+getStage5GCollaborativeBinding(localLibraryId = '') {
+  const candidates = this.stores.bindingStore.list().filter(binding => this.isPreviewCollaborativeBinding(binding));
+  const requested = String(localLibraryId || '').trim();
+  if (requested) return candidates.find(binding => binding.localLibraryId === requested) || null;
+  const activeId = this.app.priceLibraryStore?.getActiveLibrary?.(this.app.priceLibraries)?.id || '';
+  if (activeId) {
+   const active = candidates.find(binding => binding.localLibraryId === activeId);
+   if (active) return active;
+  }
+  return candidates.length === 1 ? candidates[0] : null;
+ }
+
+ getStage5GDeviceIdentity() {
+  const meta = this.stores.metaStore.loadResult();
+  return meta?.ok && meta?.exists && meta.value?.deviceId ? meta.value : null;
+ }
+
+ enqueueStage5GSubmission(binding, submission) {
+  if (!binding || !submission) return { inserted: false, status: 'invalid' };
+  const result = this.stores.coordinator.enqueueSubmission(binding.localLibraryId, submission);
+  this.refresh();
+  if (result.inserted) this.scheduleUploadFlush(6000);
+  return { inserted: Boolean(result.inserted), status: result.inserted ? 'queued' : 'duplicate' };
+ }
+
+ async enqueuePlayableNameUserChange(name, localLibraryId = '') {
+  const binding = this.getStage5GCollaborativeBinding(localLibraryId);
+  if (!binding) return { inserted: false, status: 'collaborative_binding_required' };
+  const identity = this.getStage5GDeviceIdentity();
+  if (!identity) return { inserted: false, status: 'identity_required' };
+  const submission = await CloudCollabOrdinaryTypes.buildOrdinarySubmission({
+   deviceId: identity.deviceId,
+   submissionId: this.submissionIdFactory.submissionId(),
+   groupId: binding.groupId,
+   libraryId: binding.libraryId,
+   dataType: 'playable_name',
+   payload: { name },
+   origin: 'user',
+   clientCreatedAt: Date.now(),
+   appVersion: '8.2.29-stage5g'
+  });
+  return this.enqueueStage5GSubmission(binding, submission);
+ }
+
+ async enqueueBossProfileUserChange(record, localLibraryId = '') {
+  const binding = this.getStage5GCollaborativeBinding(localLibraryId);
+  if (!binding) return { inserted: false, status: 'collaborative_binding_required' };
+  const identity = this.getStage5GDeviceIdentity();
+  if (!identity) return { inserted: false, status: 'identity_required' };
+  const submission = await CloudCollabOrdinaryTypes.buildOrdinarySubmission({
+   deviceId: identity.deviceId,
+   submissionId: this.submissionIdFactory.submissionId(),
+   groupId: binding.groupId,
+   libraryId: binding.libraryId,
+   dataType: 'boss_profile',
+   payload: {
+    bossName: record?.name ?? record?.bossName,
+    paiDan: record?.paiDan,
+    discount: record?.discount
+   },
+   origin: 'user',
+   clientCreatedAt: Date.now(),
+   appVersion: '8.2.29-stage5g'
+  });
+  return this.enqueueStage5GSubmission(binding, submission);
+ }
+
+ async enqueueInitialOrdinarySubmissions(localLibraryId) {
+  const binding = this.getStage5GCollaborativeBinding(localLibraryId);
+  if (!binding) return { inserted: 0, skipped: 0, invalid: 0, status: 'collaborative_binding_required' };
+  const identity = this.getStage5GDeviceIdentity();
+  if (!identity) return { inserted: 0, skipped: 0, invalid: 0, status: 'identity_required' };
+  const confirmedNames = Array.isArray(this.app.enhancedExtractor?.data?.confirmedNames)
+   ? this.app.enhancedExtractor.data.confirmedNames
+   : [];
+  const bossMemory = Array.isArray(this.app.bossMemory) ? this.app.bossMemory : [];
+  const plan = await CloudCollabOrdinaryTypes.planInitialOrdinarySubmissions({
+   deviceId: identity.deviceId,
+   groupId: binding.groupId,
+   libraryId: binding.libraryId,
+   confirmedNames,
+   bossMemory,
+   baseHashes: {},
+   submissionIdFactory: () => this.submissionIdFactory.submissionId(),
+   now: () => Date.now(),
+   appVersion: '8.2.29-stage5g'
+  });
+  let inserted = 0;
+  let duplicate = 0;
+  for (const submission of plan.submissions) {
+   const result = this.stores.coordinator.enqueueSubmission(binding.localLibraryId, submission);
+   if (result.inserted) inserted += 1;
+   else duplicate += 1;
+  }
+  this.refresh();
+  if (inserted) this.scheduleUploadFlush(6000);
+  return {
+   inserted,
+   skipped: duplicate + Number(plan.skipped?.alreadyPublic || 0) + Number(plan.skipped?.duplicate || 0),
+   invalid: Number(plan.skipped?.invalid || 0),
+   status: 'queued'
+  };
+ }
+
+getStage6BSensitiveDispatcher() {
+  if (this._stage6bSensitiveDispatcher) return this._stage6bSensitiveDispatcher;
+  const apiClient = new CloudCollabSensitiveRules.SensitiveSubmissionApiClient({ baseClient: this.submissionApi });
+  this._stage6bSensitiveDispatcher = new CloudCollabSensitiveRules.SensitiveSubmissionDispatcher({
+   apiClient,
+   metaStore: this.stores.metaStore,
+   credentialStore: this.stores.credentialStore,
+   queueStore: this.stores.queueStore,
+   bindingStore: this.stores.bindingStore,
+   appVersion: '8.2.31-stage6b',
+   now: () => Date.now(),
+   onState: state => {
+    this.app.cloudCollabState = { ...(this.app.cloudCollabState || {}), sensitiveUploadStatus: state.status, sensitiveUploadErrorCode: state.errorCode || null };
+    this.refresh();
+   }
+  });
+  return this._stage6bSensitiveDispatcher;
+ }
+
+ scheduleStage6BSensitiveFlush(delay = 1200) {
+  clearTimeout(this._stage6bSensitiveFlushTimer);
+  this._stage6bSensitiveFlushTimer = setTimeout(() => {
+   this.getStage6BSensitiveDispatcher().flush({ limit: 10 }).catch(error => appLogSilent(error));
+  }, Math.max(0, Number(delay) || 0));
+ }
+
+ enqueueStage6BSensitiveSubmission(binding, submission) {
+  if (!binding || !submission) return { inserted: false, status: 'invalid' };
+  const result = this.stores.coordinator.enqueueSubmission(binding.localLibraryId, submission);
+  this.refresh();
+  if (result.inserted) this.scheduleStage6BSensitiveFlush();
+  return { inserted: Boolean(result.inserted), status: result.inserted ? 'queued' : 'duplicate' };
+ }
+
+ projectStage6BRulePayload(dataType, record) {
+  if (dataType === 'rank_range_rule') return CloudCollabSensitiveMerge.rangePayload(record);
+  if (dataType === 'surcharge_rule') return CloudCollabSensitiveMerge.surchargePayload(record);
+  if (dataType === 'gift_rule') return CloudCollabSensitiveMerge.giftPayload(record);
+  throw new Error('不支持的敏感规则类型');
+ }
+
+ async enqueueSensitiveRuleUserChange(dataType, record, localLibraryId = '') {
+  const binding = this.getStage5GCollaborativeBinding(localLibraryId);
+  if (!binding) return { inserted: false, status: 'collaborative_binding_required' };
+  const identity = this.getStage5GDeviceIdentity();
+  if (!identity) return { inserted: false, status: 'identity_required' };
+  const submission = await CloudCollabSensitiveRules.buildSensitiveSubmission({
+   deviceId: identity.deviceId,
+   submissionId: this.submissionIdFactory.submissionId(),
+   groupId: binding.groupId,
+   libraryId: binding.libraryId,
+   dataType,
+   operation: 'upsert',
+   payload: this.projectStage6BRulePayload(dataType, record),
+   origin: 'user',
+   clientCreatedAt: Date.now(),
+   appVersion: '8.2.31-stage6b'
+  });
+  return this.enqueueStage6BSensitiveSubmission(binding, submission);
+ }
+
+ isStage6BSensitiveBossChange(previous, next) {
+  if (!previous || !next) return false;
+  const oldName = String(previous.name ?? previous.bossName ?? '').normalize('NFKC').trim().toLocaleLowerCase('und');
+  const newName = String(next.name ?? next.bossName ?? '').normalize('NFKC').trim().toLocaleLowerCase('und');
+  const oldPaiDan = String(previous.paiDan ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim();
+  const newPaiDan = String(next.paiDan ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim();
+  const oldDiscount = Number(previous.discount);
+  const newDiscount = Number(next.discount);
+  if (!oldName || !newName || oldName !== newName || oldPaiDan !== newPaiDan) return true;
+  if (!Number.isFinite(oldDiscount) || !Number.isFinite(newDiscount)) return true;
+  if (newDiscount > oldDiscount) return true;
+  return Math.round((oldDiscount - newDiscount) * 10000) / 10000 > 0.05;
+ }
+
+ async enqueueSensitiveBossUserChange(record, localLibraryId = '') {
+  const binding = this.getStage5GCollaborativeBinding(localLibraryId);
+  if (!binding) return { inserted: false, status: 'collaborative_binding_required' };
+  const identity = this.getStage5GDeviceIdentity();
+  if (!identity) return { inserted: false, status: 'identity_required' };
+  const submission = await CloudCollabSensitiveRules.buildSensitiveSubmission({
+   deviceId: identity.deviceId,
+   submissionId: this.submissionIdFactory.submissionId(),
+   groupId: binding.groupId,
+   libraryId: binding.libraryId,
+   dataType: 'boss_profile',
+   operation: 'upsert',
+   payload: {
+    bossName: record?.name ?? record?.bossName,
+    paiDan: record?.paiDan,
+    discount: record?.discount
+   },
+   origin: 'user',
+   clientCreatedAt: Date.now(),
+   appVersion: '8.2.31-stage6b'
+  });
+  return this.enqueueStage6BSensitiveSubmission(binding, submission);
+ }
+
+ async buildStage6BIdentitySubmission(binding, identity, dataType, record) {
+  const common = {
+   deviceId: identity.deviceId,
+   submissionId: this.submissionIdFactory.submissionId(),
+   groupId: binding.groupId,
+   libraryId: binding.libraryId,
+   origin: 'user',
+   clientCreatedAt: Date.now(),
+   appVersion: '8.2.31-stage6b'
+  };
+  if (['rank_range_rule', 'surcharge_rule', 'gift_rule'].includes(dataType)) {
+   return CloudCollabSensitiveRules.buildSensitiveSubmission({
+    ...common,
+    dataType,
+    operation: 'upsert',
+    payload: this.projectStage6BRulePayload(dataType, record)
+   });
+  }
+  if (dataType === 'exact_price') {
+   return CloudCollabSubmission.buildExactPriceSubmission({
+    ...common,
+    snapshotSync: CloudCollabSnapshotSync,
+    serviceName: record?.serviceType ?? record?.serviceName,
+    settleType: record?.settleType,
+    unitPrice: record?.unitPrice
+   });
+  }
+  if (dataType === 'playable_name') {
+   return CloudCollabOrdinaryTypes.buildOrdinarySubmission({ ...common, dataType, payload: { name: record?.name ?? record } });
+  }
+  if (dataType === 'boss_profile') {
+   return CloudCollabOrdinaryTypes.buildOrdinarySubmission({
+    ...common,
+    dataType,
+    payload: { bossName: record?.name ?? record?.bossName, paiDan: record?.paiDan, discount: record?.discount }
+   });
+  }
+  throw new Error('不支持的显式删除类型');
+ }
+
+ async enqueueSensitiveDeleteUserChange(dataType, record, localLibraryId = '') {
+  const binding = this.getStage5GCollaborativeBinding(localLibraryId);
+  if (!binding) return { inserted: false, status: 'collaborative_binding_required' };
+  const identity = this.getStage5GDeviceIdentity();
+  if (!identity) return { inserted: false, status: 'identity_required' };
+  const identitySubmission = await this.buildStage6BIdentitySubmission(binding, identity, dataType, record);
+  const deletion = await CloudCollabSensitiveRules.buildSensitiveSubmission({
+   deviceId: identity.deviceId,
+   submissionId: this.submissionIdFactory.submissionId(),
+   groupId: binding.groupId,
+   libraryId: binding.libraryId,
+   dataType,
+   operation: 'delete',
+   payload: null,
+   businessKey: identitySubmission.businessKey,
+   bossId: identitySubmission.bossId,
+   origin: 'user',
+   clientCreatedAt: Date.now(),
+   appVersion: '8.2.31-stage6b'
+  });
+  return this.enqueueStage6BSensitiveSubmission(binding, deletion);
+ }
+
+ retrySensitiveUploads() {
+  return this.getStage6BSensitiveDispatcher().flush({ limit: 20 });
+ }
+
+splitStage5GPublicSnapshot(rawSnapshot) {
+  if (!rawSnapshot || typeof rawSnapshot !== 'object' || Array.isArray(rawSnapshot)
+   || !Array.isArray(rawSnapshot.records) || !Array.isArray(rawSnapshot.tombstones)) {
+   throw new CloudCollabSnapshotSync.SnapshotSyncError('INVALID_SNAPSHOT_FIELDS', '公共快照顶层字段无效');
+  }
+  const supported = new Set(['exact_price', 'playable_name', 'boss_profile']);
+  const records = rawSnapshot.records.map(record => ({ ...record }));
+  for (const record of records) {
+   if (!supported.has(record?.dataType) || record?.operation !== 'upsert') {
+    throw new CloudCollabSnapshotSync.SnapshotSyncError('UNSUPPORTED_SNAPSHOT_RECORD', '公共快照包含当前阶段不支持的数据类型或操作');
+   }
+  }
+  const tombstones = rawSnapshot.tombstones.map(item => ({ ...item }));
+  if (tombstones.some(item => item?.dataType !== 'exact_price')) {
+   throw new CloudCollabSnapshotSync.SnapshotSyncError('ORDINARY_DELETE_REQUIRES_STAGE6', '普通名字或老板删除必须等待阶段6人工审核支持');
+  }
+  return Object.freeze({
+   exactSnapshot: Object.freeze({
+    ...rawSnapshot,
+    records: Object.freeze(records.filter(item => item.dataType === 'exact_price')),
+    tombstones: Object.freeze(tombstones)
+   }),
+   ordinaryRecords: Object.freeze(records.filter(item => item.dataType === 'playable_name' || item.dataType === 'boss_profile'))
+  });
+ }
+
+ async planStage5GMixedMerge(binding, scope, rawSnapshot, targetLibrary) {
+  const split = this.splitStage5GPublicSnapshot(rawSnapshot);
+  const exactPlan = await CloudCollabSnapshotSync.planExactPriceMerge({
+   snapshot: split.exactSnapshot,
+   localItems: targetLibrary.items || [],
+   baseHashes: scope.baseHashes || {}
+  });
+  const ordinaryPlan = await CloudCollabOrdinaryTypes.planOrdinaryMerge({
+   groupId: binding.groupId,
+   libraryId: binding.libraryId,
+   records: split.ordinaryRecords,
+   confirmedNames: this.app.enhancedExtractor?.data?.confirmedNames || [],
+   bossMemory: this.app.bossMemory || [],
+   baseHashes: exactPlan.nextBaseHashes
+  });
+  return Object.freeze({ rawSnapshot, exactPlan, ordinaryPlan });
+ }
+
+ cloneStage5GValue(value) {
+  return JSON.parse(JSON.stringify(value));
+ }
+
+ buildStage5GConflictState(scope, plans, detectedAt) {
+  const processedKeys = new Set([
+   ...plans.exactPlan.snapshot.records.map(item => item.businessKey),
+   ...plans.exactPlan.snapshot.tombstones.map(item => item.businessKey),
+   ...plans.ordinaryPlan.records.map(item => item.businessKey)
+  ]);
+  const conflicts = (Array.isArray(scope.conflicts) ? scope.conflicts : [])
+   .filter(item => !processedKeys.has(item.businessKey));
+  for (const item of [...plans.exactPlan.conflicts, ...plans.ordinaryPlan.conflicts]) {
+   conflicts.push({
+    conflictId: item.conflictId,
+    businessKey: item.businessKey,
+    dataType: item.dataType,
+    baseHash: item.baseHash,
+    localHash: item.localHash,
+    remoteHash: item.remoteHash,
+    detectedAt,
+    status: 'open'
+   });
+  }
+  return conflicts;
+ }
+
+ commitStage5GMixedPlan(binding, scope, plans) {
+  const priceStore = this.app.priceLibraryStore;
+  const syncStore = this.stores.syncStore;
+  const bindingStore = this.stores.bindingStore;
+  const oldCanonical = this.cloneStage5GValue(this.app.priceLibraries);
+  const oldLegacy = this.cloneStage5GValue(this.app.priceMemory || []);
+  const oldExtractor = this.app.enhancedExtractor?.snapshotData?.() || this.cloneStage5GValue(this.app.enhancedExtractor?.data || {});
+  const oldBossMemory = this.cloneStage5GValue(this.app.bossMemory || []);
+  const oldSyncRaw = syncStore.readRaw();
+  const oldBindingsRaw = bindingStore.readRaw();
+  const exactWorking = this.buildWorkingPriceData(binding, plans.exactPlan);
+  const ordinaryWorking = CloudCollabOrdinaryTypes.applyOrdinaryMergePlan({
+   confirmedNames: this.app.enhancedExtractor?.data?.confirmedNames || [],
+   bossMemory: this.app.bossMemory || [],
+   plan: plans.ordinaryPlan,
+   now: Date.now()
+  });
+  let priceResult = { ok: true, data: oldCanonical, activeItems: oldLegacy };
+  try {
+   if (exactWorking.changed) {
+    priceResult = priceStore.persist(exactWorking.data, { previousCanonical: oldCanonical, previousLegacy: oldLegacy });
+    if (!priceResult.ok) throw new CloudCollabSnapshotSync.SnapshotSyncError('PRICE_LIBRARY_PERSIST_FAILED', '公共更新未能持久化到价格库');
+   }
+   if (ordinaryWorking.namesChanged) {
+    this.app.enhancedExtractor.data.confirmedNames = this.cloneStage5GValue(ordinaryWorking.confirmedNames);
+    this.app.enhancedExtractor.markLearningCollectionsDirty?.();
+    if (!this.app.enhancedExtractor.saveData()) {
+     throw new CloudCollabSnapshotSync.SnapshotSyncError('PLAYABLE_NAMES_PERSIST_FAILED', '公共陪玩名字未能持久化');
+    }
+   }
+   if (ordinaryWorking.bossesChanged) {
+    const nextBossMemory = this.cloneStage5GValue(ordinaryWorking.bossMemory);
+    if (!this.app.bossMemoryFeature?.save?.(nextBossMemory)) {
+     throw new CloudCollabSnapshotSync.SnapshotSyncError('BOSS_MEMORY_PERSIST_FAILED', '公共老板资料未能持久化');
+    }
+   }
+   const detectedAt = Date.now();
+   syncStore.upsertScope({
+    ...scope,
+    publicVersion: plans.rawSnapshot.publicVersion,
+    cursor: plans.rawSnapshot.cursor,
+    lastSuccessfulCheckAt: detectedAt,
+    baseHashes: plans.ordinaryPlan.nextBaseHashes,
+    conflicts: this.buildStage5GConflictState(scope, plans, detectedAt)
+   });
+   bindingStore.updateBasePublicVersion(binding.localLibraryId, plans.rawSnapshot.publicVersion);
+  } catch (error) {
+   const rollbackErrors = [];
+   try { this.restoreStoreRaw(bindingStore, oldBindingsRaw); } catch (rollbackError) { rollbackErrors.push(rollbackError); }
+   try { this.restoreStoreRaw(syncStore, oldSyncRaw); } catch (rollbackError) { rollbackErrors.push(rollbackError); }
+   if (ordinaryWorking.bossesChanged) {
+    try { if (!this.app.bossMemoryFeature?.save?.(oldBossMemory)) throw new Error('老板资料回滚失败'); }
+    catch (rollbackError) { rollbackErrors.push(rollbackError); }
+   }
+   if (ordinaryWorking.namesChanged) {
+    try { if (!this.app.enhancedExtractor.restoreData(oldExtractor)) throw new Error('陪玩名字回滚失败'); }
+    catch (rollbackError) { rollbackErrors.push(rollbackError); }
+   }
+   if (exactWorking.changed) {
+    try { if (!priceStore.restoreSnapshot(oldCanonical, oldLegacy)) throw new Error('价格库回滚失败'); }
+    catch (rollbackError) { rollbackErrors.push(rollbackError); }
+   }
+   if (rollbackErrors.length) {
+    throw new CloudCollabSnapshotSync.SnapshotSyncError('SYNC_ROLLBACK_INCOMPLETE', '公共更新失败且回滚不完整，云功能已停止', { cause: error?.code || error?.message });
+   }
+   throw error;
+  }
+  if (exactWorking.changed) {
+   this.app.priceLibraries = priceResult.data;
+   this.app.priceMemory = priceResult.activeItems;
+   this.app.priceMemoryFeature?.updatePriceMemoryUI?.({ forceName: true });
+   this.app.priceMemoryFeature?.refreshServicePriceMatchAfterLibraryChange?.();
+  }
+  if (ordinaryWorking.bossesChanged) this.app.bossMemoryFeature?.refresh?.();
+  const counts = Object.freeze({
+   upserts: plans.exactPlan.counts.upserts + plans.ordinaryPlan.counts.upserts,
+   deletes: plans.exactPlan.counts.deletes,
+   unchanged: plans.exactPlan.counts.unchanged + plans.ordinaryPlan.counts.unchanged,
+   preserveLocal: plans.exactPlan.counts.preserveLocal + plans.ordinaryPlan.counts.preserveLocal,
+   conflicts: plans.exactPlan.counts.conflicts + plans.ordinaryPlan.counts.conflicts,
+   exactPriceUpserts: plans.exactPlan.counts.upserts,
+   playableOrBossUpserts: plans.ordinaryPlan.counts.upserts
+  });
+  return {
+   counts,
+   publicVersion: plans.rawSnapshot.publicVersion,
+   changed: exactWorking.changed || ordinaryWorking.namesChanged || ordinaryWorking.bossesChanged,
+   ordinaryChanged: Object.freeze({
+    playableNames: ordinaryWorking.namesChanged,
+    bossProfiles: ordinaryWorking.bossesChanged
+   })
+  };
+ }
+
+splitStage5GPublicSnapshot(rawSnapshot) {
+  if (!rawSnapshot || typeof rawSnapshot !== 'object' || Array.isArray(rawSnapshot)
+   || !Array.isArray(rawSnapshot.records) || !Array.isArray(rawSnapshot.tombstones)) {
+   throw new CloudCollabSnapshotSync.SnapshotSyncError('INVALID_SNAPSHOT_FIELDS', '公共快照顶层字段无效');
+  }
+  const allTypes = new Set(['exact_price','playable_name','boss_profile','rank_range_rule','surcharge_rule','gift_rule']);
+  const records = rawSnapshot.records.map(record => ({ ...record }));
+  const tombstones = rawSnapshot.tombstones.map(item => ({ ...item }));
+  for (const record of records) {
+   if (!allTypes.has(record?.dataType) || record?.operation !== 'upsert') {
+    throw new CloudCollabSnapshotSync.SnapshotSyncError('UNSUPPORTED_SNAPSHOT_RECORD', '公共快照包含不支持的数据类型或操作');
+   }
+  }
+  for (const item of tombstones) {
+   if (!allTypes.has(item?.dataType) || item?.operation !== 'delete') {
+    throw new CloudCollabSnapshotSync.SnapshotSyncError('UNSUPPORTED_SNAPSHOT_TOMBSTONE', '公共快照包含不支持的墓碑类型或操作');
+   }
+  }
+  return Object.freeze({
+   exactSnapshot: Object.freeze({
+    ...rawSnapshot,
+    records: Object.freeze(records.filter(item => item.dataType === 'exact_price')),
+    tombstones: Object.freeze(tombstones.filter(item => item.dataType === 'exact_price'))
+   }),
+   ordinaryRecords: Object.freeze(records.filter(item => item.dataType === 'playable_name' || item.dataType === 'boss_profile')),
+   sensitiveRecords: Object.freeze(records.filter(item => ['rank_range_rule','surcharge_rule','gift_rule'].includes(item.dataType))),
+   sensitiveTombstones: Object.freeze(tombstones.filter(item => item.dataType !== 'exact_price'))
+  });
+ }
+
+ getStage6BGiftMemories() {
+  try { return this.app.giftMemoryFeature?.getMemories?.() || []; }
+  catch (_) { return []; }
+ }
+
+ async planStage5GMixedMerge(binding, scope, rawSnapshot, targetLibrary) {
+  const split = this.splitStage5GPublicSnapshot(rawSnapshot);
+  const exactPlan = await CloudCollabSnapshotSync.planExactPriceMerge({
+   snapshot: split.exactSnapshot,
+   localItems: targetLibrary.items || [],
+   baseHashes: scope.baseHashes || {}
+  });
+  const ordinaryPlan = await CloudCollabOrdinaryTypes.planOrdinaryMerge({
+   groupId: binding.groupId,
+   libraryId: binding.libraryId,
+   records: split.ordinaryRecords,
+   confirmedNames: this.app.enhancedExtractor?.data?.confirmedNames || [],
+   bossMemory: this.app.bossMemory || [],
+   baseHashes: exactPlan.nextBaseHashes
+  });
+  const sensitivePlan = await CloudCollabSensitiveMerge.planSensitiveMerge({
+   groupId: binding.groupId,
+   libraryId: binding.libraryId,
+   records: split.sensitiveRecords,
+   tombstones: split.sensitiveTombstones,
+   confirmedNames: this.app.enhancedExtractor?.data?.confirmedNames || [],
+   bossMemory: this.app.bossMemory || [],
+   rangeRules: targetLibrary.rules || [],
+   surcharges: targetLibrary.surcharges || [],
+   gifts: this.getStage6BGiftMemories(),
+   baseHashes: ordinaryPlan.nextBaseHashes
+  });
+  return Object.freeze({ rawSnapshot, exactPlan, ordinaryPlan, sensitivePlan });
+ }
+
+ buildStage5GConflictState(scope, plans, detectedAt) {
+  const processedKeys = new Set([
+   ...plans.exactPlan.snapshot.records.map(item => item.businessKey),
+   ...plans.exactPlan.snapshot.tombstones.map(item => item.businessKey),
+   ...plans.ordinaryPlan.records.map(item => item.businessKey),
+   ...plans.sensitivePlan.records.map(item => item.businessKey),
+   ...plans.sensitivePlan.tombstones.map(item => item.businessKey)
+  ]);
+  const conflicts = (Array.isArray(scope.conflicts) ? scope.conflicts : []).filter(item => !processedKeys.has(item.businessKey));
+  for (const item of [...plans.exactPlan.conflicts, ...plans.ordinaryPlan.conflicts, ...plans.sensitivePlan.conflicts]) {
+   conflicts.push({
+    conflictId: item.conflictId,
+    businessKey: item.businessKey,
+    dataType: item.dataType,
+    baseHash: item.baseHash,
+    localHash: item.localHash,
+    remoteHash: item.remoteHash,
+    detectedAt,
+    status: 'open'
+   });
+  }
+  return conflicts;
+ }
+
+ async commitStage5GMixedPlan(binding, scope, plans) {
+  const priceStore = this.app.priceLibraryStore;
+  const syncStore = this.stores.syncStore;
+  const bindingStore = this.stores.bindingStore;
+  const oldCanonical = this.cloneStage5GValue(this.app.priceLibraries);
+  const oldLegacy = this.cloneStage5GValue(this.app.priceMemory || []);
+  const oldExtractor = this.app.enhancedExtractor?.snapshotData?.() || this.cloneStage5GValue(this.app.enhancedExtractor?.data || {});
+  const oldBossMemory = this.cloneStage5GValue(this.app.bossMemory || []);
+  const oldGifts = this.cloneStage5GValue(this.getStage6BGiftMemories());
+  const oldSyncRaw = syncStore.readRaw();
+  const oldBindingsRaw = bindingStore.readRaw();
+  const exactWorking = this.buildWorkingPriceData(binding, plans.exactPlan);
+  const targetLibrary = exactWorking.data?.libraries?.find(item => item.id === binding.localLibraryId)
+   || exactWorking.data?.libraries?.find(item => item.id === exactWorking.data.activeLibraryId)
+   || exactWorking.data?.libraries?.[0];
+  if (!targetLibrary) throw new CloudCollabSnapshotSync.SnapshotSyncError('TARGET_LIBRARY_NOT_FOUND', '公共敏感更新找不到本地价格库');
+  const sensitiveWorking = await CloudCollabSensitiveMerge.applySensitiveMergePlan({
+   groupId: binding.groupId,
+   libraryId: binding.libraryId,
+   confirmedNames: this.app.enhancedExtractor?.data?.confirmedNames || [],
+   bossMemory: this.app.bossMemory || [],
+   rangeRules: targetLibrary.rules || [],
+   surcharges: targetLibrary.surcharges || [],
+   gifts: oldGifts,
+   plan: plans.sensitivePlan,
+   now: Date.now()
+  });
+  const ordinaryWorking = CloudCollabOrdinaryTypes.applyOrdinaryMergePlan({
+   confirmedNames: sensitiveWorking.confirmedNames,
+   bossMemory: sensitiveWorking.bossMemory,
+   plan: plans.ordinaryPlan,
+   now: Date.now()
+  });
+  const oldRulesText = JSON.stringify(targetLibrary.rules || []);
+  const oldSurchargesText = JSON.stringify(targetLibrary.surcharges || []);
+  targetLibrary.rules = this.cloneStage5GValue(sensitiveWorking.rangeRules);
+  targetLibrary.surcharges = this.cloneStage5GValue(sensitiveWorking.surcharges);
+  const ruleDataChanged = oldRulesText !== JSON.stringify(targetLibrary.rules) || oldSurchargesText !== JSON.stringify(targetLibrary.surcharges);
+  const priceChanged = exactWorking.changed || ruleDataChanged;
+  let priceResult = { ok: true, data: oldCanonical, activeItems: oldLegacy };
+  try {
+   if (priceChanged) {
+    priceResult = priceStore.persist(exactWorking.data, { previousCanonical: oldCanonical, previousLegacy: oldLegacy });
+    if (!priceResult.ok) throw new CloudCollabSnapshotSync.SnapshotSyncError('PRICE_LIBRARY_PERSIST_FAILED', '公共价格或规则更新未能持久化');
+   }
+   if (ordinaryWorking.namesChanged) {
+    this.app.enhancedExtractor.data.confirmedNames = this.cloneStage5GValue(ordinaryWorking.confirmedNames);
+    this.app.enhancedExtractor.markLearningCollectionsDirty?.();
+    if (!this.app.enhancedExtractor.saveData()) throw new CloudCollabSnapshotSync.SnapshotSyncError('PLAYABLE_NAMES_PERSIST_FAILED', '公共陪玩名字未能持久化');
+   }
+   if (ordinaryWorking.bossesChanged) {
+    if (!this.app.bossMemoryFeature?.save?.(this.cloneStage5GValue(ordinaryWorking.bossMemory))) {
+     throw new CloudCollabSnapshotSync.SnapshotSyncError('BOSS_MEMORY_PERSIST_FAILED', '公共老板资料未能持久化');
+    }
+   }
+   const giftsChanged = JSON.stringify(oldGifts) !== JSON.stringify(sensitiveWorking.gifts);
+   if (giftsChanged && !this.app.giftMemoryFeature?.persist?.(this.cloneStage5GValue(sensitiveWorking.gifts), { captureUndo: false })) {
+    throw new CloudCollabSnapshotSync.SnapshotSyncError('GIFT_MEMORY_PERSIST_FAILED', '公共礼物规则未能持久化');
+   }
+   const detectedAt = Date.now();
+   syncStore.upsertScope({
+    ...scope,
+    publicVersion: plans.rawSnapshot.publicVersion,
+    cursor: plans.rawSnapshot.cursor,
+    lastSuccessfulCheckAt: detectedAt,
+    baseHashes: plans.sensitivePlan.nextBaseHashes,
+    conflicts: this.buildStage5GConflictState(scope, plans, detectedAt)
+   });
+   bindingStore.updateBasePublicVersion(binding.localLibraryId, plans.rawSnapshot.publicVersion);
+  } catch (error) {
+   const rollbackErrors = [];
+   try { this.restoreStoreRaw(bindingStore, oldBindingsRaw); } catch (rollbackError) { rollbackErrors.push(rollbackError); }
+   try { this.restoreStoreRaw(syncStore, oldSyncRaw); } catch (rollbackError) { rollbackErrors.push(rollbackError); }
+   try { if (!this.app.giftMemoryFeature?.persist?.(oldGifts, { captureUndo: false })) throw new Error('礼物规则回滚失败'); } catch (rollbackError) { rollbackErrors.push(rollbackError); }
+   if (ordinaryWorking.bossesChanged) {
+    try { if (!this.app.bossMemoryFeature?.save?.(oldBossMemory)) throw new Error('老板资料回滚失败'); } catch (rollbackError) { rollbackErrors.push(rollbackError); }
+   }
+   if (ordinaryWorking.namesChanged) {
+    try { if (!this.app.enhancedExtractor.restoreData(oldExtractor)) throw new Error('陪玩名字回滚失败'); } catch (rollbackError) { rollbackErrors.push(rollbackError); }
+   }
+   if (priceChanged) {
+    try { if (!priceStore.restoreSnapshot(oldCanonical, oldLegacy)) throw new Error('价格库回滚失败'); } catch (rollbackError) { rollbackErrors.push(rollbackError); }
+   }
+   if (rollbackErrors.length) throw new CloudCollabSnapshotSync.SnapshotSyncError('SYNC_ROLLBACK_INCOMPLETE', '敏感公共更新失败且回滚不完整，云功能已停止', { cause: error?.code || error?.message });
+   throw error;
+  }
+  if (priceChanged) {
+   this.app.priceLibraries = priceResult.data;
+   this.app.priceMemory = priceResult.activeItems;
+   this.app.priceMemoryFeature?.updatePriceMemoryUI?.({ forceName: true });
+   this.app.priceMemoryFeature?.refreshServicePriceMatchAfterLibraryChange?.();
+   this.app.surchargeFeature?.updateUI?.();
+  }
+  if (ordinaryWorking.bossesChanged) this.app.bossMemoryFeature?.refresh?.();
+  this.app.giftMemoryFeature?.updateUI?.();
+  const counts = Object.freeze({
+   upserts: plans.exactPlan.counts.upserts + plans.ordinaryPlan.counts.upserts + plans.sensitivePlan.counts.upserts,
+   deletes: plans.exactPlan.counts.deletes + plans.sensitivePlan.counts.deletes,
+   unchanged: plans.exactPlan.counts.unchanged + plans.ordinaryPlan.counts.unchanged + plans.sensitivePlan.counts.unchanged,
+   preserveLocal: plans.exactPlan.counts.preserveLocal + plans.ordinaryPlan.counts.preserveLocal + plans.sensitivePlan.counts.preserveLocal,
+   conflicts: plans.exactPlan.counts.conflicts + plans.ordinaryPlan.counts.conflicts + plans.sensitivePlan.counts.conflicts,
+   exactPriceUpserts: plans.exactPlan.counts.upserts,
+   playableOrBossUpserts: plans.ordinaryPlan.counts.upserts,
+   sensitiveRuleUpserts: plans.sensitivePlan.counts.upserts,
+   sensitiveDeletes: plans.sensitivePlan.counts.deletes
+  });
+  return {
+   counts,
+   publicVersion: plans.rawSnapshot.publicVersion,
+   changed: priceChanged || ordinaryWorking.namesChanged || ordinaryWorking.bossesChanged || sensitiveWorking.changed,
+   ordinaryChanged: Object.freeze({ playableNames: ordinaryWorking.namesChanged, bossProfiles: ordinaryWorking.bossesChanged }),
+   sensitiveChanged: Object.freeze({ rules: plans.sensitivePlan.counts.upserts > 0, tombstones: plans.sensitivePlan.counts.deletes > 0 })
+  };
+ }
+
  getModeLabel(mode) {
   return ({ local: '本地模式', receive: '只接收更新', collaborate: '参与协作' })[mode] || mode;
  }
@@ -18654,7 +21032,7 @@ scheduleReadonlyCheck() {
   }
  }
 
- saveBinding() {
+ async saveBinding() {
   try {
    const localLibraryId = this.app.el.cloudLocalLibrarySelect?.value || '';
    const groupId = String(this.app.el.cloudGroupIdInput?.value || '').trim().toLowerCase();
@@ -18664,11 +21042,19 @@ scheduleReadonlyCheck() {
    const metaResult = this.stores.metaStore.loadResult();
    if (!metaResult.ok) throw metaResult.error;
    if (!metaResult.exists) this.stores.coordinator.initializeIdentity({ nickname: this.app.el.cloudNicknameInput?.value || '' });
+   const previousBinding = this.stores.bindingStore.getByLocalLibraryId(localLibraryId);
    const result = this.stores.coordinator.bindLibrary({ localLibraryId, groupId, libraryId, mode, basePublicVersion: 0 });
    if (!result.ok) throw result.error;
    this.refresh();
-   this.setStatus(`本地绑定已保存：${this.getModeLabel(mode)}。${mode === 'local' ? '不会接收公共更新。' : '将异步检查公共更新。'}`, 'success');
-   if (mode !== 'local') setTimeout(() => this.syncBinding(this.stores.bindingStore.getByLocalLibraryId(localLibraryId), { interactive: false, force: false, reason: 'binding' }), 0);
+   this.setStatus(`本地绑定已保存：${this.getModeLabel(mode)}。${mode === 'local' ? '不会接收或提交。' : mode === 'receive' ? '将异步接收公共更新，不会上传。' : '将先接收比较，再逐条生成白名单候选。'}`, 'success');
+   setTimeout(async () => {
+    const savedBinding = this.stores.bindingStore.getByLocalLibraryId(localLibraryId);
+    if (mode !== 'local') await this.syncBinding(savedBinding, { interactive: false, force: false, reason: 'binding' });
+    if (mode === 'collaborate' && previousBinding?.mode !== 'collaborate') {
+     await this.enqueueInitialBindingSubmissions(localLibraryId);
+     await this.enqueueInitialOrdinarySubmissions(localLibraryId);
+    }
+   }, 0);
   } catch (error) {
    appLogError('cloudCollabBinding', error);
    this.setStatus(this.formatError(error), 'error');
@@ -18706,6 +21092,27 @@ class OrderCalculator {
  this.priceLibraryStore = new PriceLibraryStore(storage, this.priceMemoryStore);
  this.cloudCollabStores = CloudCollabLocalStores.createCloudCollabStores(storage);
  this.cloudCollabApi = CloudCollabReadonly.createConfiguredClient({ documentRef: document, locationRef: window.location, timeoutMs: 3500 });
+ this.cloudCollabSubmissionApi = CloudCollabSubmission.createConfiguredClient({
+  documentRef: document,
+  locationRef: window.location,
+  timeoutMs: 8000,
+  writeAccessProvider: () => {
+   const provider = globalThis.CloudCollabPreviewRuntime?.getWriteAccess;
+   return typeof provider === 'function' ? String(provider() || '') : '';
+  }
+ });
+ this.cloudCollabSubmissionIdFactory = CloudCollabLocalStores.createIdFactory();
+ this.cloudCollabSubmissionDispatcher = new CloudCollabOrdinaryTypes.OrdinarySubmissionDispatcher({
+  apiClient: this.cloudCollabSubmissionApi,
+  metaStore: this.cloudCollabStores.metaStore,
+  credentialStore: this.cloudCollabStores.credentialStore,
+  queueStore: this.cloudCollabStores.queueStore,
+  bindingStore: this.cloudCollabStores.bindingStore,
+  appVersion: '8.2.28',
+  onState: state => {
+   try { this.cloudCollabFeature?.handleSubmissionState?.(state); } catch (error) { appLogSilent(error); }
+  }
+ });
  this.extractorService = new ExtractorService();
  this.enhancedExtractor = this.extractorService.enhancedExtractor;
  this.fieldProvenance = new FieldProvenanceRegistry(this);
@@ -18755,7 +21162,7 @@ class OrderCalculator {
  this.registerFeature('autoPriceFeature', new AutoPriceFeature(this));
  this.registerFeature('durationCalculatorFeature', new DurationCalculatorFeature(this));
  this.registerFeature('extractionFeature', new ExtractionFeature(this));
- this.registerFeature('cloudCollabFeature', new CloudCollabFeature(this, this.cloudCollabStores, this.cloudCollabApi));
+ this.registerFeature('cloudCollabFeature', new CloudCollabFeature(this, this.cloudCollabStores, this.cloudCollabApi, this.cloudCollabSubmissionApi, this.cloudCollabSubmissionDispatcher, this.cloudCollabSubmissionIdFactory));
  this.registerFeature('dataPortability', new DataPortabilityFeature(this));
  }
 
@@ -18822,7 +21229,7 @@ class OrderCalculator {
 
  // 名字学习撤销快照
  learningUndoSnapshot: null,
- cloudCollabState: { available: true, identityReady: false, bindingCount: 0, queuedCount: 0, conflictCount: 0, errorCode: null, serverStatus: 'idle', serverProtocolVersion: null, serverCheckedAt: null, serverErrorCode: null },
+ cloudCollabState: { available: true, identityReady: false, bindingCount: 0, queuedCount: 0, conflictCount: 0, errorCode: null, serverStatus: 'idle', serverProtocolVersion: null, serverCheckedAt: null, serverErrorCode: null, uploadStatus: 'idle', uploadErrorCode: null, uploadErrorCategory: null, uploadCheckedAt: null },
  hiddenModules: [],
  layoutTemplates: []
  };
@@ -19059,6 +21466,7 @@ class OrderCalculator {
  this.loadAllData({ deferHeavyUi: true });
  try { this.cloudCollabFeature.loadLocalState(); } catch (error) { appLogError('cloudCollabLocalInit', error); }
  try { this.cloudCollabFeature.scheduleReadonlyCheck(); } catch (error) { appLogError('cloudCollabReadonlySchedule', error); }
+ try { this.cloudCollabFeature.scheduleSubmissionDispatch(); } catch (error) { appLogError('cloudCollabSubmissionSchedule', error); }
  this.initClearButtons();
  this.updateModeButtonText();
  this.updateModeIndicator();
@@ -19104,7 +21512,7 @@ class OrderCalculator {
  'pmSurchargeManager', 'pmSurchargeToggleBtn', 'pmSurchargeCount', 'pmSurchargeBody', 'pmSurchargeName', 'pmSurchargeKeywords', 'pmSurchargeRound', 'pmSurchargeHour', 'pmSurchargeEnabled', 'pmSurchargeSaveBtn', 'pmSurchargeCancelBtn', 'pmSurchargeList',
  'pmGiftManager', 'pmGiftToggleBtn', 'pmGiftCount', 'pmGiftBody', 'pmGiftName', 'pmGiftMode', 'pmGiftPrice', 'pmGiftSaveBtn', 'pmGiftCancelBtn', 'pmGiftList', 'surchargeStatus',
  'pmUnitPrice', 'pmSettleType', 'pmServiceType', 'pmAddBtn', 'pmSearchInput', 'pmUndoBtn', 'pmList',
- 'cloudCollabBtn', 'cloudCollabModal', 'cloudServerBadge', 'cloudServerSummary', 'cloudServerCheckBtn', 'cloudNicknameInput', 'cloudIdentitySummary', 'cloudIdentitySaveBtn', 'cloudLocalLibrarySelect', 'cloudGroupIdInput', 'cloudLibraryIdInput', 'cloudBindingModeSelect', 'cloudBindingSummary', 'cloudBindingSaveBtn', 'cloudPublicVersionCheckBtn', 'cloudPublicVersionSummary', 'cloudBindingRemoveBtn', 'cloudBindingCount', 'cloudQueueCount', 'cloudConflictCount', 'cloudRefreshBtn', 'cloudOperationStatus',
+ 'cloudCollabBtn', 'cloudCollabModal', 'cloudServerBadge', 'cloudServerSummary', 'cloudServerCheckBtn', 'cloudNicknameInput', 'cloudIdentitySummary', 'cloudIdentitySaveBtn', 'cloudLocalLibrarySelect', 'cloudGroupIdInput', 'cloudLibraryIdInput', 'cloudBindingModeSelect', 'cloudBindingSummary', 'cloudBindingSaveBtn', 'cloudPublicVersionCheckBtn', 'cloudPublicVersionSummary', 'cloudBindingRemoveBtn', 'cloudUploadRetryBtn', 'cloudUploadSummary', 'cloudBindingCount', 'cloudQueueCount', 'cloudConflictCount', 'cloudRefreshBtn', 'cloudOperationStatus',
  'dataPortabilityBtn', 'dataPortabilityModal', 'dpExportWorkflow', 'dpImportWorkflow', 'dpExportOptions', 'dpExportModules', 'dpExportBtn', 'dpCopyBtn',
  'dpDownloadBtn', 'dpShareBtn', 'dpExportText', 'dpImportText', 'dpFileInput', 'dpImportMerge',
  'dpImportOverwrite', 'dpPreview', 'dpParseImportBtn', 'dpApplyImportBtn', 'dpUndoImportBtn',

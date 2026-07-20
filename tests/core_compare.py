@@ -1,11 +1,34 @@
-from pathlib import Path
+import argparse
 import json
+import os
+from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
-BASE = (ROOT/'src/码单器8.2.26_公共协作本地候选版.html').read_text(encoding='utf-8')
-CAND = (ROOT/'dist/index.html').read_text(encoding='utf-8')
-OUT = ROOT/'test-results/阶段4C_核心计算对比结果.json'
+
+parser = argparse.ArgumentParser(description='Compare core calculation behavior between a baseline and an explicit candidate HTML file.')
+parser.add_argument('--base-html', default='src/码单器8.2.26_公共协作本地候选版.html')
+parser.add_argument('--html', default='dist/index.html')
+parser.add_argument('--base-version', default='8.2.26')
+parser.add_argument('--expected-version')
+parser.add_argument('--output', default='test-results/阶段4C_核心计算对比结果.json')
+parser.add_argument('--chromium', default=os.environ.get('CHROMIUM_PATH', '/usr/bin/chromium'))
+args = parser.parse_args()
+
+def resolve(value):
+    path = Path(value)
+    return path if path.is_absolute() else ROOT / path
+
+ledger = json.loads((ROOT / 'release/release-closure-ledger-v1.json').read_text(encoding='utf-8'))
+expected_version = args.expected_version or ledger['currentCompatibleCandidateVersion']
+base_path = resolve(args.base_html)
+candidate_path = resolve(args.html)
+BASE = base_path.read_text(encoding='utf-8')
+CAND = candidate_path.read_text(encoding='utf-8')
+OUT = resolve(args.output)
+OUT.parent.mkdir(parents=True, exist_ok=True)
+if f'<title>码单器{expected_version}' not in CAND:
+    raise SystemExit(f'candidate title does not contain expected version {expected_version}: {candidate_path}')
 
 def run(browser, html):
     page = browser.new_page()
@@ -28,11 +51,11 @@ def run(browser, html):
     return data
 
 with sync_playwright() as p:
-    browser=p.chromium.launch(headless=True, executable_path='/usr/bin/chromium', args=['--no-sandbox'])
+    browser=p.chromium.launch(headless=True, executable_path=args.chromium, args=['--no-sandbox'])
     base=run(browser,BASE)
     cand=run(browser,CAND)
     browser.close()
-result={'baseVersion':'8.2.26','candidateVersion':'8.2.28','same':base==cand,'base':base,'candidate':cand}
+result={'baseVersion':args.base_version,'candidateVersion':expected_version,'candidateFile':str(candidate_path),'same':base==cand,'base':base,'candidate':cand}
 OUT.write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
 print(json.dumps({'same':result['same']},ensure_ascii=False))
 if not result['same']: raise SystemExit(1)

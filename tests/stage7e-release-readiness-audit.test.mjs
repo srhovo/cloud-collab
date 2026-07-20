@@ -37,7 +37,7 @@ function mutateJson(root, relativePath, mutate) {
   fs.writeFileSync(absolutePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 
-test('阶段7E审计冻结稳定元数据并准确列出发布决策项', () => {
+test('阶段7F审计冻结稳定元数据并准确列出剩余发布决策项', () => {
   const report = auditReleaseRepository({ root: ROOT });
   assert.equal(report.status, 'decision_required');
   assert.equal(report.stable.version, '8.2.25');
@@ -46,15 +46,16 @@ test('阶段7E审计冻结稳定元数据并准确列出发布决策项', () => 
   assert.equal(report.stable.sha256, 'd34a436d5910ab027ad466309c44c6607fc8b60d2b21cf4b1cc4bf5a188bd6d3');
   assert.equal(report.stable.bytes, 908220);
   assert.equal(report.stable.repositoryCopyExpected, false);
-  assert.equal(report.candidate.currentCompatibleVersion, '8.2.28');
+  assert.equal(report.candidate.currentCompatibleVersion, '8.2.30');
   assert.equal(report.candidate.recommendedVersionFromPlan, '8.2.30');
-  assert.equal(report.candidate.ownerDecision, null);
+  assert.equal(report.candidate.ownerDecision, '8.2.30');
+  assert.equal(report.candidate.ownerDecisionSource, 'owner_followed_recommended_plan_2026-07-21');
+  assert.equal(report.candidate.protocolCompatibilityVersion, '8.2.28');
   assert.equal(report.environment.allEnabledGatesDefaultOff, true);
   assert.equal(report.environment.examplePrivateValuesEmpty, true);
   assert.equal(report.evidence.temporaryResources.status, 'verified_destroyed');
   assert.equal(report.evidence.temporaryResources.evidenceSource, 'user_report');
   assert.deepEqual(report.blockers, [
-    'candidate_version_owner_decision',
     'real_device_final_rerun_exception_acceptance',
     'cleanup_exact_evidence_missing',
   ]);
@@ -116,11 +117,26 @@ test('稳定基线元数据无效时失败关闭', () => {
   }
 });
 
+test('候选版本决策与当前构建版本不一致时失败关闭', () => {
+  const root = copyFixture();
+  try {
+    mutateJson(root, 'release/release-closure-ledger-v1.json', ledger => {
+      ledger.candidateVersionDecision = '8.2.29';
+    });
+    assert.throws(
+      () => auditReleaseRepository({ root }),
+      error => error instanceof ReleaseReadinessAuditError
+        && error.code === 'RELEASE_CANDIDATE_DECISION_MISMATCH',
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('全部证据补齐后仍只进入独立晋升授权状态', () => {
   const root = copyFixture();
   try {
     mutateJson(root, 'release/release-closure-ledger-v1.json', ledger => {
-      ledger.candidateVersionDecision = '8.2.30';
       ledger.evidence.realDevice.finalCleanSnapshotAndTombstoneRerun = 'passed';
       ledger.evidence.cleanup.exactDeletionCountsRecorded = true;
       ledger.evidence.cleanup.independentZeroCountEvidenceRecorded = true;

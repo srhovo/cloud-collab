@@ -1,10 +1,16 @@
-name: Deploy dist to GitHub Pages
+name: Deploy verified backup to GitHub Pages
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
+    inputs:
+      candidate_version:
+        description: Candidate version to deploy
+        required: true
+        type: string
+      confirmation:
+        description: Type DEPLOY-8.2.30 to authorize this backup release
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -27,14 +33,42 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Validate separate release authorization
+        env:
+          CANDIDATE_VERSION: ${{ inputs.candidate_version }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          test "$CANDIDATE_VERSION" = "8.2.30"
+          test "$CONFIRMATION" = "DEPLOY-8.2.30"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build and run the full automated gate
+        run: npm run ci
+
+      - name: Prepare minimal public artifact
+        run: npm run pages:prepare -- --commit "$GITHUB_SHA"
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
-      - name: Upload dist
+      - name: Upload minimal public artifact
         uses: actions/upload-pages-artifact@v4
         with:
-          path: ./dist
+          path: ./.pages-artifact
 
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
+
+      - name: Verify deployed commit, title and SHA-256
+        env:
+          DEPLOYMENT_URL: ${{ steps.deployment.outputs.page_url }}
+        run: npm run pages:verify -- --url "$DEPLOYMENT_URL" --expected-commit "$GITHUB_SHA"

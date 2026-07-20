@@ -20,7 +20,7 @@ const activeBuildScript = buildCommand.includes('build-stage6b-compatible.mjs')
       ? 'scripts/build-stage6b.mjs'
       : (buildCommand.includes('build-stage5g.mjs') ? 'scripts/build-stage5g.mjs' : 'scripts/build.mjs')));`;
 const frozenShellCheck = `check('candidate retains the 8.2.28 shell and Stage4C compatibility', output.includes("const APP_VERSION = '8.2.28';") && output.includes('<title>码单器8.2.28（公共协作候选派发客户端）</title>'));`;
-const activeShellCheck = `check('candidate retains the 8.2.28 shell and Stage4C compatibility', output.includes("const APP_VERSION = '8.2.28';") && output.includes('<title>码单器8.2.28'));`;
+const activeShellCheck = `check('candidate uses the 8.2.30 release title and retains Stage4C protocol compatibility', output.includes("const APP_VERSION = '8.2.28';") && output.includes('<title>码单器8.2.30（公共协作完整候选版）</title>'));`;
 if (!original.includes(frozenBuildBlock)) throw new Error('阶段4C兼容验证器的活动构建锚点已变化');
 if (!original.includes(frozenShellCheck)) throw new Error('阶段4C兼容验证器的8.2.28外壳锚点已变化');
 const adapted = original

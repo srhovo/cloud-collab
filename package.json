@@ -1,5 +1,5 @@
 {
-  "name": "mdq-cloud-collab-preview-write-stage4b2",
+  "name": "mdq-cloud-collab",
   "version": "0.7.0",
   "private": true,
   "type": "module",
@@ -12,8 +12,13 @@
   "scripts": {
     "build": "node scripts/build-stage6b-compatible.mjs",
     "test": "node --test tests/*.test.mjs",
+    "audit:dependencies": "npm audit --omit=dev --audit-level=high",
+    "audit:repository": "node scripts/stage7f-repository-audit.mjs",
+    "edgeone:build": "npm run ci && npm run pages:prepare -- --channel edgeone-primary --output .edgeone-artifact",
     "release:audit": "node scripts/release-readiness-audit-v1.mjs",
-    "validate": "node scripts/build-stage6b-compatible.mjs && node scripts/validate-compatible-active.mjs && node scripts/validate-stage5f.mjs && node scripts/validate-stage5g-compatible-active.mjs && node scripts/validate-stage6a.mjs && node scripts/validate-stage6a-acceptance.mjs && node scripts/validate-stage6b.mjs && npm run release:audit",
-    "ci": "npm run build && npm test && npm run validate"
+    "pages:prepare": "node scripts/prepare-pages-artifact.mjs",
+    "pages:verify": "node scripts/verify-pages-deployment.mjs",
+    "validate": "node scripts/build-stage6b-compatible.mjs && node scripts/validate-compatible-active.mjs && node scripts/validate-stage5f.mjs && node scripts/validate-stage5g-compatible-active.mjs && node scripts/validate-stage6a.mjs && node scripts/validate-stage6a-acceptance.mjs && node scripts/validate-stage6b.mjs && npm run release:audit && npm run audit:repository",
+    "ci": "npm run build && npm test && npm run validate && npm run audit:dependencies"
   }
 }

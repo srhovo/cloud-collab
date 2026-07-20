@@ -1,10 +1,40 @@
 {
-  "version": "8.2.27",
+  "version": "8.2.30",
   "source": "src/码单器8.2.26_公共协作本地候选版.html",
   "output": "dist/index.html",
   "apiBase": "same-origin-or-disabled-for-file",
-  "stage": "3B-public-snapshot-receive",
-  "sha256": "204f307f10127d346d55ec7a9f8d50c03e6048579768bffc32620fdb90fe098e",
-  "bytes": 1022483,
-  "generatedAt": "2026-07-18T04:04:05.362Z"
+  "stage": "6B-sensitive-review-publish",
+  "publicMutationAllowed": false,
+  "autoApprovalEnabled": false,
+  "adminReviewEnabled": false,
+  "sha256": "c7da5f0a0acf0eb36d7efcf4df0ffa033b423ad5f4ba322c7525aca4d107ee24",
+  "bytes": 1154030,
+  "generatedAt": "2026-07-20T18:54:04.188Z",
+  "ordinaryTypesClientEnabled": true,
+  "ordinaryTypesReceiveEnabled": true,
+  "ordinaryTypes": [
+    "playable_name",
+    "boss_profile"
+  ],
+  "stage6SensitiveChangesEnabled": true,
+  "sensitiveCandidateClientEnabled": true,
+  "sensitiveAdminReviewEnabled": true,
+  "sensitivePublicEventsEnabled": true,
+  "sensitiveTombstonesEnabled": true,
+  "sensitiveReceiveMergeEnabled": true,
+  "sensitiveBossRoutingEnabled": true,
+  "sensitiveExplicitDeleteTypes": [
+    "exact_price",
+    "playable_name",
+    "boss_profile",
+    "rank_range_rule",
+    "surcharge_rule",
+    "gift_rule"
+  ],
+  "formalPublicWritesEnabled": false,
+  "candidateVersion": "8.2.30",
+  "protocolCompatibilityVersion": "8.2.28",
+  "releaseStage": "7F-release-consistency",
+  "compatibleShellRetained": true,
+  "adminFrameAncestorsHeaderOnly": true
 }

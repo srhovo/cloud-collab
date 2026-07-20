@@ -1,6 +1,6 @@
 {
-  "buildCommand": "npm run build",
-  "installCommand": "npm install --ignore-scripts",
-  "outputDirectory": "./dist",
+  "buildCommand": "npm run edgeone:build",
+  "installCommand": "npm ci --ignore-scripts",
+  "outputDirectory": "./.edgeone-artifact",
   "nodeVersion": "22.11.0"
 }

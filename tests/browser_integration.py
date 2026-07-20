@@ -1,12 +1,31 @@
-from pathlib import Path
+import argparse
 import json
+import os
+from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / 'test-results'
-OUT.mkdir(exist_ok=True)
-HTML = (ROOT/'dist/index.html').read_text(encoding='utf-8')
+
+parser = argparse.ArgumentParser(description='Run the read-only browser regression against an explicit candidate HTML file.')
+parser.add_argument('--html', default='dist/index.html')
+parser.add_argument('--expected-version')
+parser.add_argument('--output-dir', default='test-results')
+parser.add_argument('--chromium', default=os.environ.get('CHROMIUM_PATH', '/usr/bin/chromium'))
+args = parser.parse_args()
+
+def resolve(value):
+    path = Path(value)
+    return path if path.is_absolute() else ROOT / path
+
+ledger = json.loads((ROOT / 'release/release-closure-ledger-v1.json').read_text(encoding='utf-8'))
+expected_version = args.expected_version or ledger['currentCompatibleCandidateVersion']
+candidate_path = resolve(args.html)
+OUT = resolve(args.output_dir)
+OUT.mkdir(parents=True, exist_ok=True)
+HTML = candidate_path.read_text(encoding='utf-8')
+if f'<title>码单器{expected_version}' not in HTML:
+    raise SystemExit(f'candidate title does not contain expected version {expected_version}: {candidate_path}')
 TEST_HTML = HTML.replace('<meta name="cloud-collab-api-base" content="">', '<meta name="cloud-collab-api-base" content="https://api.test">')
 CLOUD_KEYS = ['cloudCollabMeta','cloudDeviceCredential','cloudLibraryBindings','cloudBossLinks','pendingCloudChanges','cloudSyncState']
 A_KEY = 'bk_v1_ja06mv-cCqOze_uiSIK4YjKoixcrewF-NIQXmAiTyTQ'
@@ -220,7 +239,7 @@ def degraded_case(browser, mode_name, expected, base_url):
     context.close(); return result
 
 with sync_playwright() as p:
-    browser=p.chromium.launch(headless=True, executable_path='/usr/bin/chromium', args=['--no-sandbox'])
+    browser=p.chromium.launch(headless=True, executable_path=args.chromium, args=['--no-sandbox'])
     results=[fresh_receive_case(browser, None), conflict_incremental_case(browser, None), metadata_rollback_case(browser, None), degraded_case(browser,'offline','offline',None), degraded_case(browser,'protocol2','protocol_mismatch',None)]
     browser.close()
 
@@ -237,7 +256,7 @@ checks={
     'onlyCredentialFreeGetRequests':all(r['onlyGetRequests'] for r in results),
     'noUnexpectedConsoleErrors':all(not [e for e in r['consoleErrors'] if not ignored(e)] for r in results),
 }
-report={'stage':'3B','total':len(checks),'passed':sum(checks.values()),'failed':len(checks)-sum(checks.values()),'checks':checks,'cases':results}
+report={'stage':'3B-regression','targetVersion':expected_version,'candidateFile':str(candidate_path),'total':len(checks),'passed':sum(checks.values()),'failed':len(checks)-sum(checks.values()),'checks':checks,'cases':results}
 (OUT/'阶段3B_Chromium只接收同步结果.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
 print(json.dumps({'total':report['total'],'passed':report['passed'],'failed':report['failed']},ensure_ascii=False))
 if report['failed']: raise SystemExit(1)
