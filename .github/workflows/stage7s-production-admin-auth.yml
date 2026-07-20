@@ -1,0 +1,61 @@
+name: stage7s-production-admin-auth
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'cloud-functions/api/admin/auth/login.js'
+      - 'cloud-functions/api/admin/auth/session.js'
+      - 'cloud-functions/api/admin/auth/logout.js'
+      - 'src/server/production_admin_auth_v1.js'
+      - 'src/server/production_admin_auth_http_v1.js'
+      - 'src/server/admin_auth_mode_dispatch_v1.js'
+      - 'src/server/admin_auth_v1.js'
+      - 'src/server/production_runtime_config_v1.js'
+      - 'tests/stage7s-production-admin-auth.test.mjs'
+      - '.github/workflows/stage7s-production-admin-auth.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production-admin-auth:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Run production and preview admin auth tests
+        run: >-
+          node --test
+          tests/stage7s-production-admin-auth.test.mjs
+          tests/stage5a-admin-auth.test.mjs
+          tests/stage7n-production-runtime-and-bootstrap.test.mjs
+
+      - name: Audit production admin auth boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! grep -R "CLOUD_PRODUCTION_.*=1\|CLOUD_ADMIN_PRODUCTION_ENABLED=1" config/production.env.template
+          grep -q "cloud-collab-admin-production-v1" src/server/production_runtime_config_v1.js
+          grep -q "admin-production-rate/login" src/server/production_admin_auth_v1.js
+          grep -q "cloud-collab-admin-production" src/server/production_admin_auth_v1.js
+          grep -q "dispatchAdminLoginRequest" cloud-functions/api/admin/auth/login.js
+          grep -q "dispatchAdminSessionRequest" cloud-functions/api/admin/auth/session.js
+          grep -q "dispatchAdminLogoutRequest" cloud-functions/api/admin/auth/logout.js
+          ! grep -R "stablePromotionAuthorized: true" src/server/production_admin_auth_v1.js src/server/production_admin_auth_http_v1.js src/server/admin_auth_mode_dispatch_v1.js
+          ! grep -R "Access-Control-Allow-Origin.*\*" src/server/production_admin_auth_http_v1.js
+          ! grep -R "CLOUD_ADMIN_PASSWORD=.*[^=]\|CLOUD_ADMIN_SESSION_SECRET=.*[^=]\|CLOUD_ADMIN_RATE_LIMIT_SALT=.*[^=]" src/server cloud-functions/api/admin config/production.env.template
+
+      - name: Confirm all Cloud Function imports resolve
+        run: node --test tests/cloud-functions-relative-imports.test.mjs
