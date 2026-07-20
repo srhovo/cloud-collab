@@ -64,3 +64,5 @@ jobs:
         run: python3 tests/stage5g_browser_admin_ordinary_reviews.py
       - name: Stage5G ordinary user candidate browser regression
         run: python3 tests/stage5g_browser_ordinary_client.py
+      - name: Stage6B sensitive user queue and tombstone browser regression
+        run: python3 tests/stage6b_browser_sensitive_client.py
