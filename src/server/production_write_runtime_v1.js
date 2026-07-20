@@ -8,6 +8,9 @@ import {
   putJSONOnlyIfNew,
 } from './blob_repository_v1.js';
 import { authenticateDevice, registerDevice } from './device_registration_v1.js';
+import { reviewOrdinaryCandidate } from './ordinary_public_engine_v1.js';
+import { acceptOrdinarySubmission } from './ordinary_submission_acceptance_v1.js';
+import { normalizeOrdinarySubmission } from './ordinary_types_policy_v1.js';
 import { acceptSubmission } from './submission_acceptance_v1.js';
 import { normalizeSubmission } from './submission_policy_v1.js';
 import {
@@ -18,6 +21,11 @@ import {
 export const PRODUCTION_WRITE_RUNTIME_VERSION = 1;
 export const PRODUCTION_REGISTRATION_RATE_SLOT_MS = 60_000;
 export const PRODUCTION_SUBMISSION_RATE_SLOT_MS = 5_000;
+export const PRODUCTION_ORDINARY_DATA_TYPES = Object.freeze([
+  'exact_price',
+  'playable_name',
+  'boss_profile',
+]);
 
 export class ProductionWriteRuntimeError extends Error {
   constructor(code, message, status = 400, details = null, cause = null) {
@@ -143,23 +151,33 @@ export async function registerProductionDevice({
   return register({ store, input, now });
 }
 
-export async function acceptProductionExactSubmission({
+function normalizeProductionSubmission(rawSubmission, normalize) {
+  try {
+    return normalize(rawSubmission);
+  } catch (error) {
+    throw new ProductionWriteRuntimeError(
+      error?.code || 'INVALID_SUBMISSION',
+      error?.message || '正式普通提交无效',
+      400,
+      error?.details || null,
+      error,
+    );
+  }
+}
+
+async function processProductionSubmission({
   store,
   authorization,
   rawSubmission,
   env,
-  now = Date.now(),
-  authenticate = authenticateDevice,
-  accept = acceptSubmission,
-  review = reviewExactPriceCandidate,
-} = {}) {
+  now,
+  authenticate,
+  normalize,
+  accept,
+  review,
+}) {
   const config = readProductionWriteConfig(env);
-  let submission;
-  try {
-    submission = normalizeSubmission(rawSubmission);
-  } catch (error) {
-    throw new ProductionWriteRuntimeError(error.code || 'INVALID_SUBMISSION', error.message, 400, error.details, error);
-  }
+  const submission = normalizeProductionSubmission(rawSubmission, normalize);
   assertProductionSubmissionScope(submission, config);
 
   const identity = await authenticate({ store, authorization, now });
@@ -206,6 +224,7 @@ export async function acceptProductionExactSubmission({
   const publicMutationApplied = autoApprovalResult?.publicMutationApplied === true;
   return Object.freeze({
     ...result,
+    dataType: submission.dataType,
     externalScope: config.externalScope,
     protocolScope: Object.freeze({ groupId: config.allowedGroupId, libraryId: config.allowedLibraryId }),
     ordinarySubmissionEnabled: true,
@@ -215,4 +234,64 @@ export async function acceptProductionExactSubmission({
     autoApprovalResult,
     stablePromotionAuthorized: false,
   });
+}
+
+export async function acceptProductionExactSubmission({
+  store,
+  authorization,
+  rawSubmission,
+  env,
+  now = Date.now(),
+  authenticate = authenticateDevice,
+  accept = acceptSubmission,
+  review = reviewExactPriceCandidate,
+} = {}) {
+  return processProductionSubmission({
+    store,
+    authorization,
+    rawSubmission,
+    env,
+    now,
+    authenticate,
+    normalize: normalizeSubmission,
+    accept,
+    review,
+  });
+}
+
+export async function acceptProductionOrdinarySubmission({
+  store,
+  authorization,
+  rawSubmission,
+  env,
+  now = Date.now(),
+  authenticate = authenticateDevice,
+  accept = acceptOrdinarySubmission,
+  review = reviewOrdinaryCandidate,
+} = {}) {
+  return processProductionSubmission({
+    store,
+    authorization,
+    rawSubmission,
+    env,
+    now,
+    authenticate,
+    normalize: normalizeOrdinarySubmission,
+    accept,
+    review,
+  });
+}
+
+export async function acceptProductionSubmission(options = {}) {
+  const dataType = String(options?.rawSubmission?.dataType || '').trim().toLowerCase();
+  if (dataType === 'exact_price') return acceptProductionExactSubmission(options);
+  if (dataType === 'playable_name' || dataType === 'boss_profile') {
+    return acceptProductionOrdinarySubmission(options);
+  }
+  throw new ProductionWriteRuntimeError(
+    'UNSUPPORTED_PRODUCTION_ORDINARY_DATA_TYPE',
+    '正式普通提交只支持exact_price、playable_name或boss_profile',
+    400,
+    { dataType: dataType || null, supportedDataTypes: PRODUCTION_ORDINARY_DATA_TYPES },
+  );
 }
