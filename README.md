@@ -1,6 +1,6 @@
 # 码单器公共协作数据库
 
-当前工程阶段为**阶段7P：正式设备注册与精确价格候选入队**。最终普通用户交付仍是单HTML。
+当前工程阶段为**阶段7Q：正式普通三类型与自动审核**。最终普通用户交付仍是单HTML。
 
 ## 当前发布状态
 
@@ -17,13 +17,14 @@ iPhone Safari冒烟：通过
 协议作用域：groupId=group_see，libraryId=lib_see_cz
 永久匿名主入口：等待负责人可控制的自定义域名
 正式只读API代码：完成，默认关闭
-正式设备注册和精确价格候选入队：完成，默认关闭
+正式设备注册：完成，默认关闭
+正式三类普通候选与自动审核：完成，默认关闭
 生产能力实际启用：否
 稳定版8.2.25未晋升
 正式公共写入保持关闭
 ```
 
-阶段7A至7K完成维护、发布证据、候选打包、EdgeOne候选部署和真实网络验收。阶段7L建立生产参数与零写入准备；阶段7M补齐作用域映射和GitHub Pages静态备用；阶段7N补齐生产运行时门禁和一次性初始化器；阶段7O接入正式只读API；阶段7P接入正式设备注册与精确价格候选入队。
+阶段7A至7K完成维护、发布证据、候选打包、EdgeOne候选部署和真实网络验收。阶段7L建立生产参数与零写入准备；阶段7M补齐作用域映射和GitHub Pages静态备用；阶段7N补齐生产运行时门禁和一次性初始化器；阶段7O接入正式只读API；阶段7P接入正式设备注册与精确价格候选入队；阶段7Q将普通三类型和既有自动审核引擎接入正式运行时。
 
 ## 阶段7J兼容规则
 
@@ -92,7 +93,7 @@ GET /api/public/changes
 
 生产或只读开关关闭时先返回503，不创建Blob Store；只允许GET、HEAD和受限OPTIONS；禁止通配CORS；没有`setJSON`或`delete`路径。
 
-## 阶段7P正式候选入队
+## 正式设备注册与普通候选
 
 继续使用现有客户端路径：
 
@@ -116,17 +117,24 @@ X-Cloud-Collab-Access-Key
 Authorization: Bearer <device-token>
 ```
 
-设备注册每个deviceId每60秒一个限流槽；新候选每台设备每5秒一个限流槽。限流Key仅保存加盐Hash，不包含设备ID或密钥。精确幂等重放不消耗新限流槽。
+设备注册每个deviceId每60秒一个限流槽；新候选每台设备每5秒一个限流槽。限流Key只保存加盐Hash，不包含设备ID或密钥；精确幂等重放不消耗新限流槽。
 
-正式提交只接受协议作用域`group_see / lib_see_cz`，核对Authorization设备与正文deviceId一致。阶段7P只把精确价格作为不可变候选入队：
+正式提交只接受协议作用域`group_see / lib_see_cz`，核对Authorization设备与正文deviceId一致。统一普通处理器支持：
+
+```text
+exact_price
+playable_name
+boss_profile
+```
+
+自动审核关闭时仅写入不可变候选。自动审核开启时复用阶段5G公共事件引擎：两台不同设备相同内容可批准，冲突或不满足规则的候选进入人工审核标记。敏感类型仍不得进入该路由。
+
+所有响应继续保持：
 
 ```text
 publicMutationAllowed=false
-autoApprovalEnabled=false
 stablePromotionAuthorized=false
 ```
-
-若提前开启普通自动审核，当前路由返回`PRODUCTION_AUTO_APPROVAL_HANDLER_REQUIRED`并在创建Store前失败，防止配置与实际处理器不一致。
 
 ## 生产模板与命令
 
@@ -150,7 +158,7 @@ npm run production:secrets:generate -- --output /安全路径/cloud-collab-produ
 | 免费静态备用 | GitHub Pages | 自动工作流已配置；仅承载冻结候选静态文件 |
 | 离线兜底 | `码单器8.2.31_候选.html` | 已冻结摘要 |
 
-EdgeOne项目域名在项目存在期间固定，但含中国大陆区域仍需要临时访问令牌。GitHub Pages只能作为本地模式静态备用，不能替代EdgeOne Cloud Functions和Blob。
+EdgeOne项目域名在项目存在期间固定并跟随生产分支最新成功部署；含中国大陆区域的官方文档仍要求通过临时预览令牌访问。GitHub Pages只能作为本地模式静态备用，不能替代EdgeOne Cloud Functions和Blob。
 
 ## 公开产物白名单
 
@@ -196,9 +204,9 @@ EdgeOne环境变量写入：0
 DNS修改：0
 正式只读API：代码完成，实际启用0
 正式设备注册：代码完成，实际启用0
-正式精确价格候选入队：代码完成，实际启用0
-正式普通自动审核：0
-正式敏感审核：0
+正式三类普通候选：代码完成，实际启用0
+正式普通自动审核：代码完成，实际启用0
+正式敏感提交与管理员审核：0
 稳定晋升：0
 GitHub Pages：仅冻结静态候选，不含后端能力
 正式公共写入保持关闭
@@ -206,6 +214,7 @@ GitHub Pages：仅冻结静态候选，不含后端能力
 
 详细方案见：
 
+- `docs/阶段7Q_正式普通三类型与自动审核.md`
 - `docs/阶段7P_正式设备注册与精确价格候选入队.md`
 - `docs/阶段7O_正式只读同步API.md`
 - `docs/阶段7N_生产运行时门禁与一次性初始化执行器.md`
