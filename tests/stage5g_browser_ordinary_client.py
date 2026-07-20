@@ -60,13 +60,12 @@ with sync_playwright() as playwright:
         lastUsed: 123
       }, localLibraryId);
       const records = app.cloudCollabStores.queueStore.list().map(item => item.submission);
-      const queueText = JSON.stringify(records);
       return {
         playable,
         boss,
         localLibraryId,
         records,
-        queueText,
+        queueText: JSON.stringify(records),
         binding: app.cloudCollabStores.bindingStore.getByLocalLibraryId(localLibraryId)
       };
     }""")
@@ -95,14 +94,14 @@ with sync_playwright() as playwright:
       app.cloudCollabStores.bindingStore.setMode(localLibraryId, 'receive');
       const before = app.cloudCollabStores.queueStore.list().length;
       const result = await app.cloudCollabFeature.enqueuePlayableNameUserChange('不应入队', localLibraryId);
-      const after = app.cloudCollabStores.queueStore.list().length;
-      return { before, after, result };
+      return { before, after: app.cloudCollabStores.queueStore.list().length, result };
     }""")
     assert receive_only['before'] == receive_only['after'] == 2
     assert receive_only['result']['status'] == 'collaborative_binding_required'
 
     merge_result = page.evaluate("""async () => {
       const api = window.CloudCollabOrdinaryTypes;
+      const app = window.orderCalculator;
       const deviceId = 'dev_01JABCDEF0123456789XYZABCD';
       const playable = await api.buildOrdinarySubmission({
         deviceId,
@@ -132,7 +131,7 @@ with sync_playwright() as playwright:
         operation: item.operation,
         payload: item.payload
       }));
-      const beforeQueue = window.orderCalculator.cloudCollabStores.queueStore.list().length;
+      const beforeQueue = app.cloudCollabStores.queueStore.list().length;
       const plan = await api.planOrdinaryMerge({
         groupId: 'group_fixture',
         libraryId: 'lib_receive_fixture',
@@ -147,10 +146,12 @@ with sync_playwright() as playwright:
         plan,
         now: 1784550000000
       });
-      const afterQueue = window.orderCalculator.cloudCollabStores.queueStore.list().length;
+      const afterQueue = app.cloudCollabStores.queueStore.list().length;
+      const stage6bActive = Boolean(window.CloudCollabSensitiveRules && window.CloudCollabSensitiveMerge);
       let tombstoneCode = null;
+      let tombstoneAccepted = false;
       try {
-        window.orderCalculator.cloudCollabFeature.splitStage5GPublicSnapshot({
+        const split = app.cloudCollabFeature.splitStage5GPublicSnapshot({
           schemaVersion: 1,
           payloadSchemaVersion: 1,
           groupId: 'group_fixture',
@@ -168,6 +169,8 @@ with sync_playwright() as playwright:
             operation: 'delete'
           }]
         });
+        tombstoneAccepted = Array.isArray(split?.sensitiveTombstones)
+          && split.sensitiveTombstones.length === 1;
       } catch (error) {
         tombstoneCode = error?.code || null;
       }
@@ -177,7 +180,9 @@ with sync_playwright() as playwright:
         bossMemory: applied.bossMemory,
         beforeQueue,
         afterQueue,
-        tombstoneCode
+        stage6bActive,
+        tombstoneCode,
+        tombstoneAccepted
       };
     }""")
 
@@ -190,7 +195,12 @@ with sync_playwright() as playwright:
     }]
     assert merge_result['bossMemory'] == [{'name': '云端老板', 'paiDan': '直属云', 'discount': 0.96}]
     assert merge_result['beforeQueue'] == merge_result['afterQueue'] == 2
-    assert merge_result['tombstoneCode'] == 'ORDINARY_DELETE_REQUIRES_STAGE6'
+    if merge_result['stage6bActive']:
+        assert merge_result['tombstoneCode'] is None, merge_result
+        assert merge_result['tombstoneAccepted'] is True, merge_result
+    else:
+        assert merge_result['tombstoneCode'] == 'ORDINARY_DELETE_REQUIRES_STAGE6', merge_result
+        assert merge_result['tombstoneAccepted'] is False, merge_result
 
     invalid_result = page.evaluate("""async () => {
       const app = window.orderCalculator;
@@ -217,13 +227,13 @@ with sync_playwright() as playwright:
     browser.close()
 
 print(json.dumps({
-    'stage': '5G',
+    'stage': '5G-compatible-successor',
     'ordinaryUserQueuePassed': True,
     'bossV1IdentityQueuePassed': True,
     'fixtureLibraryScopePassed': True,
     'receiveModeBlockedUpload': True,
     'strictProjectionPassed': True,
     'cloudPullDidNotEnqueue': True,
-    'ordinaryDeleteDeferredToStage6': True,
+    'ordinaryDeleteDeferredOrStage6BHandled': True,
     'browserConsoleClean': True,
 }, ensure_ascii=False))
