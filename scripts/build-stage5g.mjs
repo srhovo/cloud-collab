@@ -8,7 +8,7 @@ await import(`${new URL('./build.mjs', import.meta.url).href}?stage5g=${Date.now
 
 const outputPath = path.join(root, 'dist', 'index.html');
 const manifestPath = path.join(root, 'dist', 'build-manifest.json');
-const ordinaryClientSource = fs.readFileSync(path.join(root, 'src', 'cloud_collab_ordinary_submission_client.js'), 'utf8').trim();
+const ordinaryClientSource = fs.readFileSync(path.join(root, 'src', 'cloud_collab_ordinary_types_client.js'), 'utf8').trim();
 const ordinaryFeatureMethods = fs.readFileSync(path.join(root, 'src', 'cloud_collab_ordinary_feature_methods.fragment.js'), 'utf8').trim();
 const submissionFeatureMethods = fs.readFileSync(path.join(root, 'src', 'cloud_collab_submission_feature_methods.fragment.js'), 'utf8').trim();
 let html = fs.readFileSync(outputPath, 'utf8');
@@ -23,7 +23,7 @@ function replaceOnce(text, search, replacement, label) {
 html = replaceOnce(
   html,
   '// ===== 公共协作数据库：隔离候选提交客户端结束 =====\n\n\nclass CloudCollabFeature {',
-  `// ===== 公共协作数据库：隔离候选提交客户端结束 =====\n\n// ===== 公共协作数据库：普通名字与老板候选提交客户端（阶段5G） =====\n${ordinaryClientSource}\n// ===== 公共协作数据库：阶段5G普通候选客户端结束 =====\n\n\nclass CloudCollabFeature {`,
+  `// ===== 公共协作数据库：隔离候选提交客户端结束 =====\n\n// ===== 公共协作数据库：普通名字与老板候选/同步客户端（阶段5G） =====\n${ordinaryClientSource}\n// ===== 公共协作数据库：阶段5G普通共享客户端结束 =====\n\n\nclass CloudCollabFeature {`,
   'ordinary client insertion',
 );
 
@@ -37,7 +37,7 @@ html = replaceOnce(
 html = replaceOnce(
   html,
   'new CloudCollabSubmission.SubmissionDispatcher({',
-  'new CloudCollabOrdinarySubmission.SubmissionDispatcher({',
+  'new CloudCollabOrdinaryTypes.OrdinarySubmissionDispatcher({',
   'combined submission dispatcher',
 );
 
