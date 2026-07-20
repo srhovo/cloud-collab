@@ -31,7 +31,7 @@ const SAFE_PUBLIC_PATTERNS = Object.freeze([
   new RegExp(`^public/${STAGE5G6A6B_LIBRARY_ID}/events/${VERSION}\\.json$`),
   new RegExp(`^public/${STAGE5G6A6B_LIBRARY_ID}/snapshots/${VERSION}\\.json$`),
   new RegExp(`^public/${STAGE5G6A6B_LIBRARY_ID}/approvals/ap_v1_${HASH_43}\\.json$`),
-  new RegExp(`^public/${STAGE5G6A6B_LIBRARY_ID}/transitions/bk_v1_${HASH_43}/pv_${VERSION}\\.json$`),
+  new RegExp(`^public/${STAGE5G6A6B_LIBRARY_ID}/transitions/bk_v1_${HASH_43}/${VERSION}\\.json$`),
   new RegExp(`^public/${STAGE5G6A6B_LIBRARY_ID}/sensitive-events/${VERSION}\\.json$`),
   new RegExp(`^public/${STAGE5G6A6B_LIBRARY_ID}/sensitive-approvals/sap_v1_${HASH_43}\\.json$`),
   new RegExp(`^public/${STAGE5G6A6B_LIBRARY_ID}/sensitive-snapshots/${VERSION}\\.json$`),
