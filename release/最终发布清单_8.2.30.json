@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "kind": "candidate_release_package",
+  "releaseStatus": "candidate_packaged_not_promoted",
+  "stable": {
+    "version": "8.2.25",
+    "filename": "码单器8.2.25_现.html",
+    "title": "码单器8.2.25",
+    "sha256": "d34a436d5910ab027ad466309c44c6607fc8b60d2b21cf4b1cc4bf5a188bd6d3",
+    "bytes": 908220,
+    "unchanged": true,
+    "promotionAuthorized": false,
+    "promotionPerformed": false
+  },
+  "candidate": {
+    "version": "8.2.30",
+    "filename": "码单器8.2.30_候选.html",
+    "title": "码单器8.2.30（公共协作发布候选版）",
+    "sha256": "82bef41a655cd8528a138f7f2d7f7630b10bc391a95738704905c1e0647be89f",
+    "bytes": 1154030,
+    "buildOutput": "dist/index.html",
+    "buildManifestVerified": true,
+    "packagingAuthorized": true
+  },
+  "decisions": {
+    "candidateVersionApprovedByOwner": true,
+    "candidateVersionDecisionRecordedAt": "2026-07-21",
+    "finalCleanSnapshotAndTombstoneRerunWaiverAcceptedByOwner": true,
+    "cleanupExactEvidenceWaiverAcceptedByOwner": true,
+    "cleanupExactDeletionCountsRecorded": false,
+    "cleanupIndependentZeroCountEvidenceRecorded": false,
+    "stablePromotionAuthorized": false,
+    "stablePromotionPerformed": false,
+    "productionWriteEnablementAuthorized": false
+  },
+  "verification": {
+    "releaseAuditStatus": "promotion_authorization_required",
+    "releaseAuditBlockers": [],
+    "allPreviewCapabilitiesDefaultOff": true,
+    "examplePrivateValuesEmpty": true,
+    "deploymentOriginUnpinned": true,
+    "coreAndBrowserRegression": "passed"
+  },
+  "artifactFiles": [
+    "码单器8.2.30_候选.html",
+    "最终发布清单_8.2.30.json",
+    "发布审计_8.2.30.json"
+  ],
+  "nextStep": "separate_owner_authorization_required_for_stable_promotion"
+}

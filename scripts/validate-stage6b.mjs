@@ -22,7 +22,10 @@ function assert(condition, message) {
 }
 
 assert(manifest.stage === '6B-sensitive-review-publish', '构建清单阶段必须为6B');
-assert(manifest.compatibleShellRetained === true, '必须保留8.2.28兼容候选壳');
+assert(manifest.version === '8.2.30', '构建清单必须使用已批准候选版本8.2.30');
+assert(manifest.compatibleShellRetained === true, '必须保留兼容候选构建链');
+assert(manifest.candidateVersionApproved === true, '候选版本必须已获项目负责人批准');
+assert(manifest.stablePromotionPerformed === false, '候选构建不得执行稳定版晋升');
 assert(manifest.sensitiveCandidateClientEnabled === true, '敏感候选客户端必须启用');
 assert(manifest.sensitiveAdminReviewEnabled === true, '敏感管理员审核必须启用');
 assert(manifest.sensitivePublicEventsEnabled === true, '敏感公共事件必须启用');
@@ -31,8 +34,10 @@ assert(manifest.sensitiveReceiveMergeEnabled === true, '敏感三方合并必须
 assert(manifest.sensitiveBossRoutingEnabled === true, '老板敏感变化路由必须启用');
 assert(manifest.formalPublicWritesEnabled === false, '正式公共写入必须保持关闭');
 assert(Array.isArray(manifest.sensitiveExplicitDeleteTypes) && manifest.sensitiveExplicitDeleteTypes.length === 6, '显式删除类型必须完整冻结');
-assert(/码单器8\.2\.28（公共协作候选派发客户端）/.test(html), '页面必须保留8.2.28兼容候选壳');
-assert(!html.includes('码单器8.2.31（敏感候选人工审核协作版）'), '阶段号不得改写兼容壳标题');
+assert(/码单器8\.2\.30（公共协作发布候选版）/.test(html), '页面必须使用8.2.30发布候选壳');
+assert(html.includes("const APP_VERSION = '8.2.30';"), '页面APP_VERSION必须使用8.2.30');
+assert(!html.includes("const APP_VERSION = '8.2.28';"), '页面不得残留8.2.28 APP_VERSION');
+assert(!html.includes('码单器8.2.31（敏感候选人工审核协作版）'), '阶段号不得改写发布候选标题');
 assert(html.includes('CloudCollabSensitiveRules'), '页面必须内嵌敏感提交客户端');
 assert(html.includes('CloudCollabSensitiveMerge'), '页面必须内嵌敏感合并客户端');
 assert(html.includes('enqueueSensitiveRuleUserChange'), '页面必须包含敏感规则显式入队');
