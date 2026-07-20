@@ -8,9 +8,12 @@
     "sha256": "d34a436d5910ab027ad466309c44c6607fc8b60d2b21cf4b1cc4bf5a188bd6d3",
     "bytes": 908220
   },
-  "currentCompatibleCandidateVersion": "8.2.28",
+  "currentCompatibleCandidateVersion": "8.2.30",
+  "previousCompatibleCandidateVersion": "8.2.28",
   "recommendedCandidateVersionFromPlan": "8.2.30",
-  "candidateVersionDecision": null,
+  "candidateVersionDecision": "8.2.30",
+  "candidateVersionDecisionRecordedAt": "2026-07-21",
+  "candidateVersionDecisionSource": "project_owner_chat",
   "evidence": {
     "automated": {
       "stage7dMainCommit": "cf4149fb16575057f9fc9f823e178798034da5ac",
@@ -35,9 +38,13 @@
       "technicalCorroboration": "stage7e_full_ci_and_reused_real_chain_evidence"
     },
     "cleanup": {
-      "status": "user_reported_completed",
+      "status": "completed_with_accepted_evidence_gap",
       "exactDeletionCountsRecorded": false,
-      "independentZeroCountEvidenceRecorded": false
+      "independentZeroCountEvidenceRecorded": false,
+      "exactEvidenceMissingExceptionAcceptedByOwner": true,
+      "exceptionAcceptanceRecordedAt": "2026-07-21",
+      "exceptionAcceptanceSource": "project_owner_chat",
+      "reason": "temporary_edgeone_project_destroyed_before_exact_counts_were_preserved"
     },
     "temporaryResources": {
       "status": "verified_destroyed",
@@ -53,6 +60,7 @@
     "allPreviewCapabilitiesDefaultOff": true,
     "candidateVersionRequiresOwnerDecision": true,
     "promotionRequiresSeparateOwnerAuthorization": true,
-    "productionWriteEnablementIncluded": false
+    "productionWriteEnablementIncluded": false,
+    "stablePromotionAuthorized": false
   }
 }
