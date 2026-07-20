@@ -18,24 +18,28 @@ export function normalizeBlobStoreName(value) {
   if (!STORE_NAME_PATTERN.test(name)) {
     throw new EdgeOneBlobRuntimeError(
       'BLOB_STORE_NOT_CONFIGURED',
-      '预览写入Blob命名空间尚未正确配置',
+      'Blob命名空间尚未正确配置',
       503,
     );
   }
   return name;
 }
 
-export function createEdgeOneBlobStore(env = {}) {
-  const name = normalizeBlobStoreName(env.CLOUD_BLOB_STORE_NAME);
+export function createEdgeOneNamedBlobStore(name) {
+  const normalizedName = normalizeBlobStoreName(name);
   try {
-    return getStore({ name, consistency: 'strong' });
+    return getStore({ name: normalizedName, consistency: 'strong' });
   } catch (error) {
     throw new EdgeOneBlobRuntimeError(
       'BLOB_STORE_INIT_FAILED',
       'EdgeOne Blob Store初始化失败',
       503,
-      { name },
+      { name: normalizedName },
       error,
     );
   }
+}
+
+export function createEdgeOneBlobStore(env = {}) {
+  return createEdgeOneNamedBlobStore(env.CLOUD_BLOB_STORE_NAME);
 }

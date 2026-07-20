@@ -1,6 +1,6 @@
 # 码单器公共协作数据库
 
-当前工程阶段为**阶段7N：生产运行时门禁与一次性初始化执行器**。最终普通用户交付仍是单HTML。
+当前工程阶段为**阶段7O：正式只读同步API**。最终普通用户交付仍是单HTML。
 
 ## 当前发布状态
 
@@ -16,13 +16,13 @@ iPhone Safari冒烟：通过
 用户可见作用域：club=see，library=see_cz
 协议作用域：groupId=group_see，libraryId=lib_see_cz
 永久匿名主入口：等待负责人可控制的自定义域名
-生产能力授权：已记录
+正式只读API代码：完成，默认关闭
 生产能力实际启用：否
 稳定版8.2.25未晋升
 正式公共写入保持关闭
 ```
 
-阶段7A至7K已经完成维护能力、发布证据闭环、候选打包、双入口预演、EdgeOne真实部署、界面兼容修正和真实网络验收。阶段7L建立生产参数、环境变量模板、密钥生成规则和零写入初始化预演。阶段7M补齐用户可见ID到既有协议ID的稳定映射，并配置GitHub Pages免费静态备用工作流。阶段7N补齐生产运行时依赖门禁和可精确重放的一次性空库初始化执行器。
+阶段7A至7K已经完成维护能力、发布证据闭环、候选打包、双入口预演、EdgeOne真实部署、界面兼容修正和真实网络验收。阶段7L建立生产参数、环境变量模板、密钥生成规则和零写入初始化预演。阶段7M补齐用户可见ID到既有协议ID的稳定映射，并配置GitHub Pages免费静态备用工作流。阶段7N补齐生产运行时依赖门禁和一次性空库初始化执行器。阶段7O在相同门禁下接入正式版本、快照和增量只读API。
 
 ## 阶段7J兼容规则
 
@@ -75,13 +75,31 @@ club ID / library ID：仅支持小写英文字母、数字和下划线
 → 敏感提交
 ```
 
-任何越级开启、弱密钥、复用密钥、非HTTPS来源、错误Store或错误作用域都会失败关闭。一次性初始化必须在全部生产能力关闭时，使用确认词：
-
-```text
-INITIALIZE-see-see_cz-V1
-```
+任何越级开启、弱密钥、复用密钥、非HTTPS来源、错误Store或错误作用域都会失败关闭。一次性初始化必须在全部生产能力关闭时使用确认词`INITIALIZE-see-see_cz-V1`。
 
 `src/server/production_bootstrap_v1.js`冻结10个初始化资源，执行前全量预检，缺失对象使用`onlyIfNew`写入，执行后全量强一致复核；精确重放不产生新写入，冲突对象在任何新增写入前阻断。运行报告记录实际`get/setJSON/delete`次数。
+
+## 阶段7O正式只读API
+
+```text
+GET /api/public/version
+GET /api/public/snapshot
+GET /api/public/changes
+```
+
+三个路由复用阶段5G普通公共事件和阶段6B敏感事件、墓碑与统一快照引擎。请求可以使用`see / see_cz`，服务端以`group_see / lib_see_cz`读取，响应对外投影回用户可见ID。
+
+安全边界：
+
+- 生产或只读开关关闭时先返回503，不创建Blob Store；
+- 错误作用域返回403；
+- 快照或事件作用域不一致返回500；
+- 本地版本高于服务器返回409；
+- 增量单次最多100条；
+- 只允许GET、HEAD和受限OPTIONS；
+- 不允许通配CORS；
+- 路由没有`setJSON`或`delete`路径；
+- 稳定晋升授权始终为false。
 
 生产模板与命令：
 
@@ -93,7 +111,7 @@ npm run production:runtime:audit
 npm run production:secrets:generate -- --output /安全路径/cloud-collab-production-secrets.env
 ```
 
-所有生产开关默认保持`0`。阶段7N的CI只使用内存Store，不会创建或写入真实Blob。
+所有生产开关默认保持`0`。阶段7O的CI只使用内存Store，不会访问真实Blob。
 
 ## 发布入口策略
 
@@ -149,25 +167,18 @@ Node：22.11.0
 
 ## GitHub Pages免费静态备用
 
-`.github/workflows/pages-static-backup.yml`在`main`更新后：
-
-1. 运行完整CI；
-2. 重新生成冻结8.2.31三文件白名单；
-3. 核对稳定晋升、正式公共写入和管理员页面边界；
-4. 发布到GitHub Pages；
-5. 在线核对提交、标题、版本、SHA-256和字节数。
-
-原`.github/workflows/pages.yml`手动候选发布门禁继续保留，作为人工重发与故障恢复路径。
+`.github/workflows/pages-static-backup.yml`在`main`更新后运行完整CI、重新生成冻结三文件、核对安全边界、部署并在线验证。原`.github/workflows/pages.yml`手动候选发布门禁继续保留，作为人工重发与故障恢复路径。
 
 ## 阶段边界
 
 ```text
 EdgeOne新部署：0
 EdgeOne环境变量写入：0
-真实Blob创建或写入：0
+真实Blob创建或读写：0
 真实密钥生成：0
 DNS修改：0
-生产能力启用：0
+正式只读API：代码完成，实际启用0
+正式公共写入：0
 稳定晋升：0
 GitHub Pages：仅冻结静态候选，不含后端能力
 正式公共写入保持关闭
@@ -175,6 +186,7 @@ GitHub Pages：仅冻结静态候选，不含后端能力
 
 详细方案见：
 
+- `docs/阶段7O_正式只读同步API.md`
 - `docs/阶段7N_生产运行时门禁与一次性初始化执行器.md`
 - `docs/阶段7M_免费静态备用入口与正式作用域映射.md`
 - `docs/阶段7L_生产上线参数与安全初始化准备.md`
