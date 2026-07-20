@@ -14,7 +14,12 @@
     "test": "node --test tests/*.test.mjs",
     "release:audit": "node scripts/release-readiness-audit-v1.mjs",
     "release:package": "node scripts/package-release-candidate-v1.mjs",
-    "validate": "node scripts/build-stage6b-compatible.mjs && node scripts/validate-compatible-active.mjs && node scripts/validate-stage5f.mjs && node scripts/validate-stage5g-compatible-active.mjs && node scripts/validate-stage6a.mjs && node scripts/validate-stage6a-acceptance.mjs && node scripts/validate-stage6b.mjs && npm run release:audit",
+    "public:prepare": "node scripts/prepare-public-candidate-v1.mjs",
+    "public:verify": "node scripts/verify-public-deployment-v1.mjs",
+    "stage7h:audit": "node scripts/stage7h-release-rehearsal-v1.mjs --audit-only",
+    "release:rehearse": "npm run ci && node scripts/stage7h-release-rehearsal-v1.mjs",
+    "edgeone:build": "npm run ci && npm run public:prepare -- --channel edgeone-primary --output .edgeone-artifact",
+    "validate": "node scripts/build-stage6b-compatible.mjs && node scripts/validate-compatible-active.mjs && node scripts/validate-stage5f.mjs && node scripts/validate-stage5g-compatible-active.mjs && node scripts/validate-stage6a.mjs && node scripts/validate-stage6a-acceptance.mjs && node scripts/validate-stage6b.mjs && npm run release:audit && npm run stage7h:audit",
     "ci": "npm run build && npm test && npm run validate"
   }
 }

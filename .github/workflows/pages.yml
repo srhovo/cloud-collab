@@ -1,10 +1,16 @@
-name: Deploy dist to GitHub Pages
+name: Deploy verified candidate backup to GitHub Pages
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
+    inputs:
+      candidate_version:
+        description: Candidate version to deploy
+        required: true
+        type: string
+      confirmation:
+        description: Type DEPLOY-CANDIDATE-8.2.30 to authorize this candidate backup deployment
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -12,29 +18,57 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
-  cancel-in-progress: true
+  group: github-pages-candidate
+  cancel-in-progress: false
 
 jobs:
   deploy:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
+      - name: Checkout exact candidate source
         uses: actions/checkout@v6
 
-      - name: Setup Pages
+      - name: Validate separate candidate deployment authorization
+        env:
+          CANDIDATE_VERSION: ${{ inputs.candidate_version }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$CANDIDATE_VERSION" = "8.2.30"
+          test "$CONFIRMATION" = "DEPLOY-CANDIDATE-8.2.30"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Run complete automated gate
+        run: npm run ci
+
+      - name: Prepare three-file candidate backup artifact
+        run: npm run public:prepare -- --channel github-pages-backup --output .pages-artifact --commit "$GITHUB_SHA"
+
+      - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
-      - name: Upload dist
+      - name: Upload minimal candidate artifact
         uses: actions/upload-pages-artifact@v4
         with:
-          path: ./dist
+          path: ./.pages-artifact
 
-      - name: Deploy
+      - name: Deploy candidate backup
         id: deployment
         uses: actions/deploy-pages@v4
+
+      - name: Verify deployed commit, title, hash and public scope
+        env:
+          DEPLOYMENT_URL: ${{ steps.deployment.outputs.page_url }}
+        run: npm run public:verify -- --url "$DEPLOYMENT_URL" --expected-commit "$GITHUB_SHA" --expected-channel github-pages-backup

@@ -1,0 +1,70 @@
+name: stage7h-release-rehearsal
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/pages.yml'
+      - '.github/workflows/stage7h-release-rehearsal.yml'
+      - '.gitignore'
+      - 'README.md'
+      - 'docs/阶段7H_候选发布预演与大陆访问入口.md'
+      - 'edgeone.json'
+      - 'package.json'
+      - 'release/最终发布清单_8.2.30.json'
+      - 'scripts/prepare-public-candidate-v1.mjs'
+      - 'scripts/verify-public-deployment-v1.mjs'
+      - 'scripts/stage7h-release-rehearsal-v1.mjs'
+      - 'tests/stage7h-publication-rehearsal.test.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rehearse:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout candidate source
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Rehearse both public candidate channels without deployment
+        run: npm run release:rehearse
+
+      - name: Verify rehearsal output scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(find .pages-artifact -maxdepth 1 -type f | wc -l)" -eq 3
+          test "$(find .edgeone-artifact -maxdepth 1 -type f | wc -l)" -eq 3
+          test -f .pages-artifact/index.html
+          test -f .pages-artifact/build-manifest.json
+          test -f .pages-artifact/pages-release.json
+          test -f .edgeone-artifact/index.html
+          test -f .edgeone-artifact/build-manifest.json
+          test -f .edgeone-artifact/pages-release.json
+          test -f dist/stage7h-release-rehearsal.json
+          cmp .pages-artifact/index.html .edgeone-artifact/index.html
+          cmp .pages-artifact/build-manifest.json .edgeone-artifact/build-manifest.json
+          ! test -e .pages-artifact/admin-sensitive-reviews-preview.html
+          ! test -e .edgeone-artifact/admin-sensitive-reviews-preview.html
+
+      - name: Upload Stage7H rehearsal evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage7h-candidate-release-rehearsal
+          path: |
+            .pages-artifact/
+            .edgeone-artifact/
+            dist/stage7h-release-rehearsal.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30

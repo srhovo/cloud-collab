@@ -1,6 +1,29 @@
 {
-  "buildCommand": "npm run build",
-  "installCommand": "npm install --ignore-scripts",
-  "outputDirectory": "./dist",
-  "nodeVersion": "22.11.0"
+  "buildCommand": "npm run edgeone:build",
+  "installCommand": "npm ci --ignore-scripts",
+  "outputDirectory": "./.edgeone-artifact",
+  "nodeVersion": "22.11.0",
+  "headers": [
+    {
+      "source": "/*",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, max-age=0, must-revalidate"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "no-referrer"
+        }
+      ]
+    }
+  ]
 }
