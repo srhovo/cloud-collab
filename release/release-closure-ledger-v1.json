@@ -16,13 +16,23 @@
       "stage7dMainCommit": "cf4149fb16575057f9fc9f823e178798034da5ac",
       "stage7dWorkflowRunNumber": 1149,
       "stage7dWorkflowConclusion": "success",
+      "stage7ePullRequest": 39,
+      "stage7eHeadCommit": "6b7f1c83f0c67592263dff632b917b6c5e6f5237",
+      "stage7eWorkflowRunNumber": 1173,
+      "stage7eWorkflowConclusion": "success",
+      "nodeTestCount": 282,
+      "nodeTestFailures": 0,
       "coreAndBrowserRegression": "passed"
     },
     "realDevice": {
       "stage5aAuthenticationSessionLogout": "passed",
       "stage5gOrdinaryConflictAndReview": "passed",
       "stage6bSensitiveReviewActions": "passed",
-      "finalCleanSnapshotAndTombstoneRerun": "waived_due_to_manual_cost"
+      "finalCleanSnapshotAndTombstoneRerun": "waived_due_to_manual_cost",
+      "finalCleanSnapshotAndTombstoneRerunExceptionAcceptedByOwner": true,
+      "exceptionAcceptanceRecordedAt": "2026-07-21",
+      "exceptionAcceptanceSource": "project_owner_chat",
+      "technicalCorroboration": "stage7e_full_ci_and_reused_real_chain_evidence"
     },
     "cleanup": {
       "status": "user_reported_completed",
