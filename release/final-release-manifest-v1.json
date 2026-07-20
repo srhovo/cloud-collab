@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "releaseState": "candidate_ready_not_promoted",
+  "generatedAt": "2026-07-21",
+  "generationBasis": "owner_decision_and_reproducible_ci_build",
+  "sourceCommit": null,
+  "stable": {
+    "version": "8.2.25",
+    "source": "external_frozen_baseline",
+    "filename": "码单器8.2.25_现.html",
+    "title": "码单器8.2.25",
+    "sha256": "d34a436d5910ab027ad466309c44c6607fc8b60d2b21cf4b1cc4bf5a188bd6d3",
+    "bytes": 908220,
+    "unchanged": true,
+    "promotionPerformed": false
+  },
+  "candidate": {
+    "version": "8.2.30",
+    "filename": "码单器8.2.30_候选.html",
+    "repositoryPath": "release/candidates/码单器8.2.30_候选.html",
+    "buildOutput": "dist/index.html",
+    "title": "码单器8.2.30（公共协作完整候选版）",
+    "sha256": "e6d4a29421cca0ae7464f5773baf5ad01a44d437de92cc143954c4eff29d5729",
+    "bytes": 1154030,
+    "singleFileHtml": true
+  },
+  "evidence": {
+    "candidateVersionDecision": {
+      "accepted": true,
+      "recordedAt": "2026-07-21",
+      "source": "project_owner_chat"
+    },
+    "finalManualRerunWaiver": {
+      "accepted": true,
+      "state": "waived_due_to_manual_cost",
+      "recordedAt": "2026-07-21"
+    },
+    "cleanupExactEvidenceWaiver": {
+      "accepted": true,
+      "exactDeletionCountsRecorded": false,
+      "independentZeroCountEvidenceRecorded": false,
+      "recordedAt": "2026-07-21"
+    },
+    "temporaryResources": {
+      "status": "verified_destroyed",
+      "evidenceSource": "user_report",
+      "edgeOneTemporaryProjectDeleted": true,
+      "temporaryDeploymentsDeletedWithProject": true,
+      "projectEnvironmentVariablesDeletedWithProject": true,
+      "credentialsMustNotBeReused": true
+    }
+  },
+  "boundaries": {
+    "stablePromotionAuthorized": false,
+    "stablePromotionPerformed": false,
+    "productionWriteEnablementIncluded": false,
+    "edgeOneDeploymentPerformed": false,
+    "blobMutationsPerformed": false
+  },
+  "nextRequiredAuthorization": "stable_promotion_requires_separate_owner_authorization"
+}
