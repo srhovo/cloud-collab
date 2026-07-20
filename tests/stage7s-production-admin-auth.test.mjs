@@ -53,6 +53,9 @@ function env(overrides = {}) {
 
 class MemoryStore {
   constructor() { this.items = new Map(); }
+  async get(key) {
+    return this.items.has(key) ? structuredClone(this.items.get(key)) : null;
+  }
   async setJSON(key, value, options = {}) {
     if (options.onlyIfNew && this.items.has(key)) {
       const error = new Error('exists');
@@ -60,6 +63,9 @@ class MemoryStore {
       throw error;
     }
     this.items.set(key, structuredClone(value));
+  }
+  async delete(key) {
+    this.items.delete(key);
   }
 }
 
@@ -162,14 +168,15 @@ test('弱密钥、错误管理员Store和未开启生产管理员均失败关闭
   );
 });
 
-test('三个Cloud Function入口只依赖管理员模式分发器', () => {
+test('三个Cloud Function入口保留阶段5A名称并只依赖模式分发器', () => {
   for (const [name, handler] of [
-    ['login.js', 'handleAdminLoginByMode'],
-    ['session.js', 'handleAdminSessionByMode'],
-    ['logout.js', 'handleAdminLogoutByMode'],
+    ['login.js', 'handleAdminLoginRequest'],
+    ['session.js', 'handleAdminSessionRequest'],
+    ['logout.js', 'handleAdminLogoutRequest'],
   ]) {
     const source = fs.readFileSync(path.join(root, 'cloud-functions/api/admin/auth', name), 'utf8');
     assert.match(source, new RegExp(handler, 'u'));
+    assert.match(source, /admin_auth_mode_dispatch_v1/u);
     assert.doesNotMatch(source, /production_admin_auth_http_v1|admin_auth_http_v1/u);
   }
 });
