@@ -4,7 +4,8 @@
 
 - PR：#30
 - base：`main@2ce00ae85564d36dcf2b97f8837cc40302f034e1`
-- head：`5f0759667f5675993ff9bb12b879bb01032dc0c2`
+- 通过完整CI的实现证据head：`5f0759667f5675993ff9bb12b879bb01032dc0c2`
+- 后续仅允许追加证据记录；PR实时head以GitHub元数据为准
 - 状态：Open / Draft / 未合并 / mergeable
 
 ## 已完成能力
