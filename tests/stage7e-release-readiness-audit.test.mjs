@@ -51,11 +51,12 @@ test('阶段7E审计冻结稳定元数据并准确列出发布决策项', () => 
   assert.equal(report.candidate.ownerDecision, null);
   assert.equal(report.environment.allEnabledGatesDefaultOff, true);
   assert.equal(report.environment.examplePrivateValuesEmpty, true);
+  assert.equal(report.evidence.temporaryResources.status, 'verified_destroyed');
+  assert.equal(report.evidence.temporaryResources.evidenceSource, 'user_report');
   assert.deepEqual(report.blockers, [
     'candidate_version_owner_decision',
     'real_device_final_rerun_exception_acceptance',
     'cleanup_exact_evidence_missing',
-    'temporary_resource_teardown_verification',
   ]);
   assert.deepEqual(report.boundaries, {
     filesModifiedByAudit: 0,
