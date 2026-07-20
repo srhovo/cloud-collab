@@ -20,7 +20,7 @@ const REQUIRED_FILES = [
 ];
 
 function copyFixture() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'stage7g-release-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'stage7j-release-'));
   for (const relativePath of REQUIRED_FILES) {
     const source = path.join(ROOT, relativePath);
     const target = path.join(root, relativePath);
@@ -37,7 +37,7 @@ function mutateJson(root, relativePath, mutate) {
   fs.writeFileSync(absolutePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 
-test('阶段7G审计确认8.2.30候选可打包但不得自动晋升', () => {
+test('阶段7J审计确认8.2.31候选可打包但不得自动晋升', () => {
   const report = auditReleaseRepository({ root: ROOT });
   assert.equal(report.status, 'promotion_authorization_required');
   assert.equal(report.stable.version, '8.2.25');
@@ -48,16 +48,18 @@ test('阶段7G审计确认8.2.30候选可打包但不得自动晋升', () => {
   assert.equal(report.stable.repositoryCopyExpected, false);
   assert.equal(report.stable.promotionAuthorized, false);
   assert.equal(report.stable.promotionPerformed, false);
-  assert.equal(report.candidate.currentCompatibleVersion, '8.2.30');
+  assert.equal(report.candidate.currentCompatibleVersion, '8.2.31');
   assert.equal(report.candidate.recommendedVersionFromPlan, '8.2.30');
-  assert.equal(report.candidate.ownerDecision, '8.2.30');
+  assert.equal(report.candidate.ownerDecision, '8.2.31');
+  assert.equal(report.candidate.sha256, '79c443e16d2560c43921dad51bfdc0152c440254d450f57b96326fdd27b2ccea');
+  assert.equal(report.candidate.bytes, 1155499);
   assert.equal(report.candidate.packagingAuthorized, true);
   assert.equal(report.environment.allEnabledGatesDefaultOff, true);
   assert.equal(report.environment.examplePrivateValuesEmpty, true);
-  assert.equal(report.evidence.automated.stage7fWorkflowRunNumber, 1184);
-  assert.equal(report.evidence.automated.stage7fWorkflowConclusion, 'success');
-  assert.equal(report.evidence.automated.stage7fNodeTestCount, 284);
-  assert.equal(report.evidence.automated.stage7fNodeTestFailures, 0);
+  assert.equal(report.evidence.automated.stage7iMainCommit, '06d49b649f2d74ae6220da58658ed7bc427fb702');
+  assert.equal(report.evidence.automated.stage7iNodeTestCount, 297);
+  assert.equal(report.evidence.automated.stage7iNodeTestFailures, 0);
+  assert.equal(report.evidence.automated.stage7iEdgeOneCandidateDeployment, 'passed');
   assert.equal(report.evidence.realDevice.finalCleanSnapshotAndTombstoneRerun, 'waived_due_to_manual_cost');
   assert.equal(report.evidence.realDevice.finalCleanSnapshotAndTombstoneRerunExceptionAcceptedByOwner, true);
   assert.equal(report.evidence.cleanup.exactDeletionCountsRecorded, false);
