@@ -7,6 +7,10 @@ import {
   deriveBossId,
 } from '../src/server/ordinary_types_policy_v1.js';
 import {
+  buildIdempotencyKey,
+  computeSubmissionHashes,
+} from '../src/server/submission_policy_v1.js';
+import {
   ProductionWriteRuntimeError,
   acceptProductionCandidateSubmission,
   acceptProductionExactSubmission,
@@ -143,15 +147,33 @@ function boss(overrides = {}) {
   });
 }
 
-function exactStub(overrides = {}) {
-  return {
+function exactSubmission() {
+  const value = {
+    schemaVersion: 1,
+    payloadSchemaVersion: 1,
+    submissionId: 'sub_01JABCDEF0123456789XYZABCF',
+    deviceId: DEVICE_A,
+    groupId: 'group_see',
+    libraryId: 'lib_see_cz',
+    bossId: null,
     dataType: 'exact_price',
     operation: 'upsert',
-    ...overrides,
+    origin: 'user',
+    clientCreatedAt: NOW,
+    businessKey: `bk_v1_${'A'.repeat(43)}`,
+    contentHash: `ch_v1_${'B'.repeat(43)}`,
+    idempotencyKey: buildIdempotencyKey(DEVICE_A, 'sub_01JABCDEF0123456789XYZABCF'),
+    payload: { serviceName: '测试服务', settleType: 'round', unitPrice: 100 },
+    clientContext: { appVersion: '8.2.31', projectionSpecVersion: 1, queueSchemaVersion: 1 },
   };
+  const hashes = computeSubmissionHashes(value);
+  value.businessKey = hashes.businessKey;
+  value.contentHash = hashes.contentHash;
+  value.idempotencyKey = hashes.idempotencyKey;
+  return value;
 }
 
-function post(pathname, body, headers = {}) {
+function post(pathname, body) {
   return new Request(`https://app.example.invalid${pathname}`, {
     method: 'POST',
     headers: {
@@ -159,7 +181,6 @@ function post(pathname, body, headers = {}) {
       'X-Cloud-Collab-Access-Key': ACCESS_KEY,
       Authorization: 'Bearer dt_v1_stage7r',
       Origin: 'https://app.example.invalid',
-      ...headers,
     },
     body: JSON.stringify(body),
   });
@@ -215,22 +236,16 @@ test('陪玩名字真实接收器保存不可变候选并支持精确重放', as
   assert.equal(store.items.has(pendingSubmissionKey('lib_see_cz', submission.idempotencyKey)), true);
 });
 
-test('老板身份由正式协议groupId和老板名稳定派生', () => {
-  const submission = boss();
-  assert.equal(submission.bossId, deriveBossId('group_see', '测试老板'));
-  assert.match(submission.bossId, /^boss_v1_[A-Za-z0-9_-]{43}$/u);
-});
+test('老板身份、隐私、作用域和设备身份约束保持生效', async () => {
+  const bossSubmission = boss();
+  assert.equal(bossSubmission.bossId, deriveBossId('group_see', '测试老板'));
+  assert.match(bossSubmission.bossId, /^boss_v1_[A-Za-z0-9_-]{43}$/u);
 
-test('联系方式、错误作用域和设备身份漂移失败关闭', async () => {
   const unsafe = playable();
   unsafe.payload.name = '联系我wx_abcd1234';
   await assert.rejects(
     () => acceptProductionOrdinarySubmission({
-      store: new MemoryStore(),
-      authorization: 'Bearer token',
-      rawSubmission: unsafe,
-      env: env(),
-      now: NOW,
+      store: new MemoryStore(), authorization: 'Bearer token', rawSubmission: unsafe, env: env(), now: NOW,
     }),
     error => error instanceof ProductionWriteRuntimeError && error.status === 400,
   );
@@ -238,24 +253,15 @@ test('联系方式、错误作用域和设备身份漂移失败关闭', async ()
   const outside = playable({ groupId: 'group_other' });
   await assert.rejects(
     () => acceptProductionOrdinarySubmission({
-      store: new MemoryStore(),
-      authorization: 'Bearer token',
-      rawSubmission: outside,
-      env: env(),
-      now: NOW,
+      store: new MemoryStore(), authorization: 'Bearer token', rawSubmission: outside, env: env(), now: NOW,
       authenticate: async () => ({ deviceId: DEVICE_A, tokenVersion: 1 }),
     }),
     error => error instanceof ProductionWriteRuntimeError && error.code === 'PRODUCTION_SCOPE_FORBIDDEN',
   );
 
-  const valid = playable();
   await assert.rejects(
     () => acceptProductionOrdinarySubmission({
-      store: new MemoryStore(),
-      authorization: 'Bearer token',
-      rawSubmission: valid,
-      env: env(),
-      now: NOW,
+      store: new MemoryStore(), authorization: 'Bearer token', rawSubmission: playable(), env: env(), now: NOW,
       authenticate: async () => ({ deviceId: 'dev_01JABCDEF0123456789XYZABCE', tokenVersion: 1 }),
     }),
     error => error instanceof ProductionWriteRuntimeError && error.code === 'DEVICE_SCOPE_MISMATCH',
@@ -277,42 +283,21 @@ test('删除和敏感类型在读取生产配置前进入独立人工审核门�
   }
 });
 
-test('未知类型返回普通白名单', () => {
+test('未知类型返回三个普通类型白名单', () => {
   assert.throws(
     () => assertProductionCandidateHandlerAvailable({ dataType: 'unknown', operation: 'upsert' }),
     error => error instanceof ProductionWriteRuntimeError
       && error.code === 'UNSUPPORTED_PRODUCTION_DATA_TYPE'
-      && error.details.allowedDataTypes.includes('exact_price')
-      && error.details.allowedDataTypes.includes('playable_name')
-      && error.details.allowedDataTypes.includes('boss_profile'),
+      && error.details.allowedDataTypes.join(',') === 'exact_price,playable_name,boss_profile',
   );
 });
 
-test('精确价格在自动审核开启时仍由既有处理器执行', async () => {
+test('精确价格自动审核在合并后保持可执行', async () => {
+  const rawSubmission = exactSubmission();
   const config = readProductionWriteConfig(env({ CLOUD_PRODUCTION_AUTO_APPROVAL_ENABLED: '1' }));
-  assert.deepEqual(assertProductionCandidateHandlerAvailable(exactStub(), config), {
-    dataType: 'exact_price', operation: 'upsert',
-  });
+  assert.equal(assertProductionCandidateHandlerAvailable(rawSubmission, config).dataType, 'exact_price');
 
   const store = new MemoryStore();
-  const rawSubmission = {
-    schemaVersion: 1,
-    payloadSchemaVersion: 1,
-    submissionId: 'sub_01JABCDEF0123456789XYZABCF',
-    deviceId: DEVICE_A,
-    groupId: 'group_see',
-    libraryId: 'lib_see_cz',
-    bossId: null,
-    dataType: 'exact_price',
-    operation: 'upsert',
-    origin: 'user',
-    clientCreatedAt: NOW,
-    businessKey: `bk_v1_${'A'.repeat(43)}`,
-    contentHash: `ch_v1_${'B'.repeat(43)}`,
-    idempotencyKey: `ik_v1_${'C'.repeat(43)}`,
-    payload: { serviceName: '测试服务', settleType: 'round', unitPrice: 100 },
-    clientContext: { appVersion: '8.2.31', projectionSpecVersion: 1, queueSchemaVersion: 1 },
-  };
   const result = await acceptProductionExactSubmission({
     store,
     authorization: 'Bearer dt_v1_stage7r',
@@ -353,7 +338,7 @@ test('陪玩和老板在全局自动审核开启时于Store创建前失败关闭
   }
 });
 
-test('正式HTTP返回陪玩候选状态且设备注册声明能力分层', async () => {
+test('HTTP返回候选状态且设备注册声明能力分层', async () => {
   const submission = playable();
   const response = await handleProductionSubmissionCreateRequest({
     env: env(),
