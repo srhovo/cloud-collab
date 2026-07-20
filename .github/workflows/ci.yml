@@ -16,8 +16,29 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm install --ignore-scripts
-      - run: npm run ci
+      - name: Run npm install --ignore-scripts
+        run: npm install --ignore-scripts
+      - name: Run npm run ci
+        shell: bash
+        run: |
+          set +e
+          npm run ci > ci.log 2>&1
+          status=$?
+          if [ "$status" -eq 0 ]; then
+            tail -n 100 ci.log
+          else
+            echo "npm run ci failed; showing the final 260 log lines."
+            tail -n 260 ci.log
+          fi
+          exit "$status"
+      - name: Upload CI command log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-command-log
+          path: ci.log
+          if-no-files-found: error
+          retention-days: 7
       - name: Install browser test runtime
         run: |
           python3 -m pip install --disable-pip-version-check playwright
@@ -39,3 +60,7 @@ jobs:
         run: python3 tests/stage5e_browser_admin_rollback.py
       - name: Stage5F administrator export browser regression
         run: python3 tests/stage5f_browser_admin_export.py
+      - name: Stage5G ordinary administrator review browser regression
+        run: python3 tests/stage5g_browser_admin_ordinary_reviews.py
+      - name: Stage5G ordinary user candidate browser regression
+        run: python3 tests/stage5g_browser_ordinary_client.py

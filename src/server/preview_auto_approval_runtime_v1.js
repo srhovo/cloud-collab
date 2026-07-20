@@ -13,6 +13,16 @@ import {
 } from './preview_write_runtime_v1.js';
 import { readEffectiveDeviceGovernance } from './device_governance_v1.js';
 import { normalizeSubmission } from './submission_policy_v1.js';
+import {
+  buildOrdinaryPublicSnapshot,
+  listValidOrdinaryPublicEvents,
+  reviewOrdinaryCandidate,
+} from './ordinary_public_engine_v1.js';
+import { normalizeOrdinarySubmission } from './ordinary_types_policy_v1.js';
+import {
+  acceptPreviewOrdinarySubmission,
+  readOrdinaryTypesRuntimeConfig,
+} from './ordinary_types_preview_runtime_v1.js';
 
 export const PREVIEW_AUTO_APPROVAL_CONFIG_VERSION = 1;
 
@@ -31,6 +41,10 @@ function normalizeScopePart(value) {
   return String(value || '').trim().toLowerCase();
 }
 
+function ordinaryTypesGateEnabled(env = {}) {
+  return String(env.CLOUD_ORDINARY_TYPES_PREVIEW_ENABLED || '').trim() === '1';
+}
+
 export function readPreviewAutoApprovalConfig(env = {}) {
   const writeConfig = readPreviewWriteConfig(env);
   if (String(env.CLOUD_AUTO_APPROVAL_PREVIEW_ENABLED || '').trim() !== '1') {
@@ -40,10 +54,13 @@ export function readPreviewAutoApprovalConfig(env = {}) {
       503,
     );
   }
+  const ordinaryTypesEnabled = ordinaryTypesGateEnabled(env);
+  if (ordinaryTypesEnabled) readOrdinaryTypesRuntimeConfig(env);
   return Object.freeze({
     schemaVersion: PREVIEW_AUTO_APPROVAL_CONFIG_VERSION,
     ...writeConfig,
     previewAutoApprovalEnabled: true,
+    ...(ordinaryTypesEnabled ? { ordinaryTypesEnabled: true } : {}),
   });
 }
 
@@ -64,9 +81,11 @@ export function assertPreviewAutoApprovalScope(groupId, libraryId, config) {
   return Object.freeze({ groupId: group, libraryId: library });
 }
 
-function normalizeCandidateSubmission(rawSubmission) {
+function normalizeCandidateSubmission(rawSubmission, ordinaryTypesEnabled) {
   try {
-    return normalizeSubmission(rawSubmission);
+    return ordinaryTypesEnabled
+      ? normalizeOrdinarySubmission(rawSubmission)
+      : normalizeSubmission(rawSubmission);
   } catch (error) {
     throw new PreviewAutoApprovalError(
       error?.code || 'INVALID_SUBMISSION',
@@ -90,15 +109,23 @@ export async function acceptAndReviewPreviewSubmission({
   env,
   now = Date.now(),
   authenticate,
-  accept = acceptPreviewSubmission,
-  review = reviewExactPriceCandidate,
+  accept = null,
+  review = null,
   trustedDeviceResolver = governanceTrustedDeviceResolver,
 } = {}) {
   const config = readPreviewAutoApprovalConfig(env);
-  const submission = normalizeCandidateSubmission(rawSubmission);
+  const ordinaryTypesEnabled = config.ordinaryTypesEnabled === true;
+  const submission = normalizeCandidateSubmission(rawSubmission, ordinaryTypesEnabled);
   assertPreviewAutoApprovalScope(submission.groupId, submission.libraryId, config);
 
-  const acceptance = await accept({
+  const acceptOperation = accept || (ordinaryTypesEnabled
+    ? acceptPreviewOrdinarySubmission
+    : acceptPreviewSubmission);
+  const reviewOperation = review || (ordinaryTypesEnabled
+    ? reviewOrdinaryCandidate
+    : reviewExactPriceCandidate);
+
+  const acceptance = await acceptOperation({
     store,
     authorization,
     rawSubmission: submission,
@@ -118,7 +145,7 @@ export async function acceptAndReviewPreviewSubmission({
     );
   }
 
-  const reviewed = await review({
+  const reviewed = await reviewOperation({
     store,
     candidate,
     now,
@@ -144,6 +171,10 @@ export async function acceptAndReviewPreviewSubmission({
     previewMutationApplied: Boolean(reviewed.publicMutationApplied),
     previewDuplicateApproval: Boolean(reviewed.duplicateApproval),
     previewAutoApprovalEnabled: true,
+    ...(ordinaryTypesEnabled ? {
+      dataType: submission.dataType,
+      previewOrdinaryTypesEnabled: true,
+    } : {}),
     publicMutationAllowed: false,
     autoApprovalEnabled: false,
   });
@@ -158,7 +189,9 @@ export async function readPreviewPublicSnapshot({
 } = {}) {
   const config = readPreviewAutoApprovalConfig(env);
   const scope = assertPreviewAutoApprovalScope(groupId, libraryId, config);
-  return buildPublicSnapshot({ store, ...scope, now });
+  return config.ordinaryTypesEnabled
+    ? buildOrdinaryPublicSnapshot({ store, ...scope, now })
+    : buildPublicSnapshot({ store, ...scope, now });
 }
 
 export async function readPreviewPublicEvents({
@@ -169,7 +202,9 @@ export async function readPreviewPublicEvents({
 } = {}) {
   const config = readPreviewAutoApprovalConfig(env);
   const scope = assertPreviewAutoApprovalScope(groupId, libraryId, config);
-  const events = await listValidPublicEvents({ store, libraryId: scope.libraryId });
+  const events = config.ordinaryTypesEnabled
+    ? await listValidOrdinaryPublicEvents({ store, libraryId: scope.libraryId })
+    : await listValidPublicEvents({ store, libraryId: scope.libraryId });
   for (const event of events) {
     if (event.groupId !== scope.groupId || event.libraryId !== scope.libraryId) {
       throw new PreviewAutoApprovalError(
