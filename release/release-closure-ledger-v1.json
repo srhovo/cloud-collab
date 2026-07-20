@@ -8,11 +8,12 @@
     "sha256": "d34a436d5910ab027ad466309c44c6607fc8b60d2b21cf4b1cc4bf5a188bd6d3",
     "bytes": 908220
   },
-  "currentCompatibleCandidateVersion": "8.2.30",
+  "currentCompatibleCandidateVersion": "8.2.31",
   "recommendedCandidateVersionFromPlan": "8.2.30",
-  "candidateVersionDecision": "8.2.30",
+  "candidateVersionDecision": "8.2.31",
   "candidateVersionDecisionRecordedAt": "2026-07-21",
   "candidateVersionDecisionSource": "project_owner_chat",
+  "candidateRevisionReason": "club_display_compatibility_nickname_example_and_public_json_utf8_charset",
   "evidence": {
     "automated": {
       "stage7dMainCommit": "cf4149fb16575057f9fc9f823e178798034da5ac",
@@ -30,6 +31,12 @@
       "stage7fWorkflowConclusion": "success",
       "stage7fNodeTestCount": 284,
       "stage7fNodeTestFailures": 0,
+      "stage7iPullRequest": 45,
+      "stage7iMainCommit": "06d49b649f2d74ae6220da58658ed7bc427fb702",
+      "stage7iNodeTestCount": 297,
+      "stage7iNodeTestFailures": 0,
+      "stage7iEdgeOneCandidateDeployment": "passed",
+      "stage7iOnlineManifestAndAdminExposureCheck": "passed",
       "coreAndBrowserRegression": "passed"
     },
     "realDevice": {
@@ -40,7 +47,7 @@
       "finalCleanSnapshotAndTombstoneRerunExceptionAcceptedByOwner": true,
       "exceptionAcceptanceRecordedAt": "2026-07-21",
       "exceptionAcceptanceSource": "project_owner_chat",
-      "technicalCorroboration": "stage7e_and_stage7f_full_ci_and_reused_real_chain_evidence"
+      "technicalCorroboration": "stage7e_stage7f_stage7i_full_ci_and_reused_real_chain_evidence"
     },
     "cleanup": {
       "status": "user_reported_completed",

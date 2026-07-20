@@ -2,6 +2,8 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const CANDIDATE_VERSION = '8.2.31';
+
 export class PublicDeploymentVerificationError extends Error {
   constructor(code, message, details = null) {
     super(message || code);
@@ -48,10 +50,15 @@ async function responseBytes(response, label) {
   return Buffer.from(await response.arrayBuffer());
 }
 
-function assertContentType(response, expected, label) {
+function assertContentType(response, expected, label, { requireUtf8 = false } = {}) {
   const value = header(response, 'content-type').toLowerCase();
-  if (!value.includes(expected)) {
-    fail('PUBLIC_DEPLOYMENT_CONTENT_TYPE_INVALID', `${label} Content-Type无效`, { value, expected });
+  const utf8 = /charset\s*=\s*utf-?8\b/.test(value);
+  if (!value.includes(expected) || (requireUtf8 && !utf8)) {
+    fail('PUBLIC_DEPLOYMENT_CONTENT_TYPE_INVALID', `${label} Content-Type无效`, {
+      value,
+      expected,
+      requireUtf8,
+    });
   }
 }
 
@@ -83,7 +90,9 @@ async function verifyOnce({ base, expectedCommitSha, expectedChannel, fetchImpl,
     redirect: 'follow',
   });
   const releaseBytes = await responseBytes(releaseResponse, 'pages-release.json');
-  assertContentType(releaseResponse, 'application/json', 'pages-release.json');
+  assertContentType(releaseResponse, 'application/json', 'pages-release.json', {
+    requireUtf8: expectedChannel === 'edgeone-primary',
+  });
   if (expectedChannel === 'edgeone-primary') assertEdgeOneHeaders(releaseResponse, 'pages-release.json');
 
   let release;
@@ -97,7 +106,7 @@ async function verifyOnce({ base, expectedCommitSha, expectedChannel, fetchImpl,
       || release.deploymentStatus !== 'candidate_preview_not_stable'
       || release.channel !== expectedChannel
       || release.sourceCommit !== expectedCommitSha
-      || release.candidate?.version !== '8.2.30'
+      || release.candidate?.version !== CANDIDATE_VERSION
       || release.stable?.version !== '8.2.25'
       || release.stable?.promotionAuthorized !== false
       || release.stable?.promotionPerformed !== false
@@ -124,7 +133,7 @@ async function verifyOnce({ base, expectedCommitSha, expectedChannel, fetchImpl,
   const indexText = indexBytes.toString('utf8');
   const title = indexText.match(/<title>([^<]+)<\/title>/i)?.[1] || null;
   if (title !== release.candidate.title
-      || !indexText.includes("const APP_VERSION = '8.2.30';")) {
+      || !indexText.includes(`const APP_VERSION = '${CANDIDATE_VERSION}';`)) {
     fail('PUBLIC_DEPLOYMENT_HTML_IDENTITY_MISMATCH', '线上HTML标题或APP_VERSION不匹配', { title });
   }
 
@@ -133,7 +142,9 @@ async function verifyOnce({ base, expectedCommitSha, expectedChannel, fetchImpl,
     redirect: 'follow',
   });
   const buildManifestBytes = await responseBytes(buildManifestResponse, 'build-manifest.json');
-  assertContentType(buildManifestResponse, 'application/json', 'build-manifest.json');
+  assertContentType(buildManifestResponse, 'application/json', 'build-manifest.json', {
+    requireUtf8: expectedChannel === 'edgeone-primary',
+  });
   if (expectedChannel === 'edgeone-primary') assertEdgeOneHeaders(buildManifestResponse, 'build-manifest.json');
   let buildManifest;
   try {
@@ -164,6 +175,7 @@ async function verifyOnce({ base, expectedCommitSha, expectedChannel, fetchImpl,
     candidateVersion: release.candidate.version,
     sha256: release.candidate.sha256,
     bytes: release.candidate.bytes,
+    publicJsonUtf8Verified: expectedChannel === 'edgeone-primary',
     stablePromotionPerformed: false,
     productionWriteEnablementIncluded: false,
   });

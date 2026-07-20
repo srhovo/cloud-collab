@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       confirmation:
-        description: Type DEPLOY-CANDIDATE-8.2.30 to authorize this candidate backup deployment
+        description: Type DEPLOY-CANDIDATE-8.2.31 to authorize this candidate backup deployment
         required: true
         type: string
 
@@ -38,8 +38,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$CANDIDATE_VERSION" = "8.2.30"
-          test "$CONFIRMATION" = "DEPLOY-CANDIDATE-8.2.30"
+          test "$CANDIDATE_VERSION" = "8.2.31"
+          test "$CONFIRMATION" = "DEPLOY-CANDIDATE-8.2.31"
 
       - name: Set up Node.js
         uses: actions/setup-node@v4

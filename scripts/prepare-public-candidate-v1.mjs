@@ -16,8 +16,10 @@ export const PUBLIC_CANDIDATE_CHANNELS = Object.freeze([
   'github-pages-backup',
 ]);
 
+const CANDIDATE_VERSION = '8.2.31';
+const CANDIDATE_TITLE = '码单器8.2.31（公共协作发布候选版）';
+const FINAL_RELEASE_MANIFEST = 'release/最终发布清单_8.2.31.json';
 const ALLOWED_OUTPUT_DIRECTORIES = new Set(['.edgeone-artifact', '.pages-artifact']);
-const FINAL_RELEASE_MANIFEST = 'release/最终发布清单_8.2.30.json';
 
 export class PublicCandidateArtifactError extends Error {
   constructor(code, message, details = null) {
@@ -81,7 +83,7 @@ function assertReleaseBoundary(releaseAudit, finalManifest) {
     fail('PUBLIC_CANDIDATE_BOUNDARY_INVALID', '审计边界不允许生成候选预演产物');
   }
   if (finalManifest.releaseStatus !== 'candidate_packaged_not_promoted'
-      || finalManifest.candidate?.version !== '8.2.30'
+      || finalManifest.candidate?.version !== CANDIDATE_VERSION
       || finalManifest.stable?.version !== '8.2.25'
       || finalManifest.stable?.promotionAuthorized !== false
       || finalManifest.stable?.promotionPerformed !== false
@@ -91,7 +93,7 @@ function assertReleaseBoundary(releaseAudit, finalManifest) {
       || finalManifest.verification?.releaseAuditStatus !== 'promotion_authorization_required'
       || !Array.isArray(finalManifest.verification?.releaseAuditBlockers)
       || finalManifest.verification.releaseAuditBlockers.length !== 0) {
-    fail('PUBLIC_CANDIDATE_FINAL_MANIFEST_INVALID', '阶段7G最终发布清单边界无效');
+    fail('PUBLIC_CANDIDATE_FINAL_MANIFEST_INVALID', '阶段7J最终发布清单边界无效');
   }
 }
 
@@ -110,7 +112,7 @@ export function preparePublicCandidate({
 
   const releaseAudit = auditReleaseRepository({ root: repositoryRoot });
   const finalManifestPath = path.join(repositoryRoot, FINAL_RELEASE_MANIFEST);
-  const finalManifest = readJson(finalManifestPath, '阶段7G最终发布清单');
+  const finalManifest = readJson(finalManifestPath, '阶段7J最终发布清单');
   assertReleaseBoundary(releaseAudit, finalManifest);
 
   const indexPath = path.join(repositoryRoot, 'dist', 'index.html');
@@ -121,24 +123,24 @@ export function preparePublicCandidate({
   const indexSha256 = digest(indexBytes);
   const indexText = indexBytes.toString('utf8');
 
-  if (buildManifest.version !== '8.2.30'
+  if (buildManifest.version !== CANDIDATE_VERSION
       || buildManifest.output !== 'dist/index.html'
       || buildManifest.sha256 !== indexSha256
       || buildManifest.bytes !== indexBytes.length) {
-    fail('PUBLIC_CANDIDATE_BUILD_MANIFEST_MISMATCH', '构建清单与8.2.30候选HTML不一致');
+    fail('PUBLIC_CANDIDATE_BUILD_MANIFEST_MISMATCH', '构建清单与8.2.31候选HTML不一致');
   }
   if (finalManifest.candidate.sha256 !== indexSha256
       || finalManifest.candidate.bytes !== indexBytes.length
-      || finalManifest.candidate.title !== '码单器8.2.30（公共协作发布候选版）') {
-    fail('PUBLIC_CANDIDATE_FROZEN_HASH_MISMATCH', '重新构建的候选与阶段7G冻结候选不一致', {
+      || finalManifest.candidate.title !== CANDIDATE_TITLE) {
+    fail('PUBLIC_CANDIDATE_FROZEN_HASH_MISMATCH', '重新构建的候选与阶段7J冻结候选不一致', {
       expectedSha256: finalManifest.candidate.sha256,
       actualSha256: indexSha256,
       expectedBytes: finalManifest.candidate.bytes,
       actualBytes: indexBytes.length,
     });
   }
-  if (!indexText.includes('<title>码单器8.2.30（公共协作发布候选版）</title>')
-      || !indexText.includes("const APP_VERSION = '8.2.30';")) {
+  if (!indexText.includes(`<title>${CANDIDATE_TITLE}</title>`)
+      || !indexText.includes("const APP_VERSION = '8.2.31';")) {
     fail('PUBLIC_CANDIDATE_HTML_IDENTITY_INVALID', '候选HTML标题或APP_VERSION无效');
   }
 

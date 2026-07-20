@@ -1,4 +1,4 @@
-name: stage7h-release-rehearsal
+name: stage7j-release-rehearsal
 
 on:
   pull_request:
@@ -8,13 +8,15 @@ on:
       - '.gitignore'
       - 'README.md'
       - 'docs/阶段7H_候选发布预演与大陆访问入口.md'
+      - 'docs/阶段7J_候选8.2.31界面兼容与JSON字符集修复.md'
       - 'edgeone.json'
       - 'package.json'
-      - 'release/最终发布清单_8.2.30.json'
+      - 'release/最终发布清单_8.2.31.json'
       - 'scripts/prepare-public-candidate-v1.mjs'
       - 'scripts/verify-public-deployment-v1.mjs'
       - 'scripts/stage7h-release-rehearsal-v1.mjs'
       - 'tests/stage7h-publication-rehearsal.test.mjs'
+      - 'tests/stage7j-candidate-ui-charset.test.mjs'
   workflow_dispatch:
 
 permissions:
@@ -57,10 +59,10 @@ jobs:
           ! test -e .pages-artifact/admin-sensitive-reviews-preview.html
           ! test -e .edgeone-artifact/admin-sensitive-reviews-preview.html
 
-      - name: Upload Stage7H rehearsal evidence
+      - name: Upload Stage7J rehearsal evidence
         uses: actions/upload-artifact@v4
         with:
-          name: stage7h-candidate-release-rehearsal
+          name: stage7j-candidate-release-rehearsal
           path: |
             .pages-artifact/
             .edgeone-artifact/
