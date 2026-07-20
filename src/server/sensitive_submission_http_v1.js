@@ -85,13 +85,14 @@ async function readJson(request) {
 function readConfig(env) {
   const write = readPreviewWriteConfig(env);
   const sensitive = readSensitiveRulesPreviewConfig(env);
-  if (write.storeName !== sensitive.storeName
+  const writeStoreName = String(env.CLOUD_BLOB_STORE_NAME || '').trim();
+  if (writeStoreName !== sensitive.storeName
       || write.allowedGroupId !== sensitive.groupId
       || write.allowedLibraryId !== sensitive.libraryId) {
     const error = new Error('敏感候选必须与隔离写入使用同一合成作用域');
     error.code = 'SENSITIVE_SUBMISSION_SCOPE_INVALID'; error.status = 503; throw error;
   }
-  return Object.freeze({ write, sensitive });
+  return Object.freeze({ write: Object.freeze({ ...write, storeName: writeStoreName }), sensitive });
 }
 
 export async function handleSensitiveSubmissionRequest(context, dependencies = {}) {
