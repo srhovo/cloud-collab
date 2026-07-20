@@ -52,3 +52,5 @@ jobs:
         run: python3 tests/stage5e_browser_admin_rollback.py
       - name: Stage5F administrator export browser regression
         run: python3 tests/stage5f_browser_admin_export.py
+      - name: Stage5G ordinary administrator review browser regression
+        run: python3 tests/stage5g_browser_admin_ordinary_reviews.py
