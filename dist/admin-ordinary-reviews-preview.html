@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <title>阶段5G普通共享审核预览</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;color-scheme:light;--blue:#0969da;--green:#1a7f37;--red:#cf222e;--amber:#9a6700;--border:#d0d7de;--muted:#57606a;--bg:#f6f8fa}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#1f2328}main{width:min(960px,calc(100% - 24px));margin:24px auto}.card{margin-bottom:14px;padding:18px;border:1px solid var(--border);border-radius:14px;background:#fff;box-shadow:0 8px 24px rgba(31,35,40,.07)}h1,h2,h3{margin:0 0 8px}h1{font-size:24px}h2{font-size:20px}h3{font-size:17px}p{line-height:1.6}.muted{color:var(--muted);font-size:14px}.banner{padding:12px 14px;border-left:4px solid var(--amber);border-radius:8px;background:#fff8c5}.toolbar,.actions{display:flex;gap:9px;flex-wrap:wrap;margin:14px 0}.toolbar button,.actions button{min-height:42px;border:0;border-radius:8px;padding:9px 14px;background:var(--blue);color:#fff;font:750 15px system-ui;cursor:pointer}.toolbar .secondary,.actions .secondary{background:#57606a}.toolbar .danger,.actions .danger{background:var(--red)}button:disabled{opacity:.45;cursor:not-allowed}.status{padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg);font-weight:700;white-space:pre-wrap}.ok{color:var(--green)}.error{color:var(--red)}.review{margin-top:12px;padding:14px;border:1px solid var(--border);border-radius:10px;background:#fff}.review-head{display:flex;gap:8px;justify-content:space-between;align-items:flex-start}.pill{display:inline-block;padding:3px 8px;border-radius:999px;background:#fff8c5;color:#7d4e00;font-size:12px;font-weight:750}.summary{margin:9px 0;font-size:16px;font-weight:800;white-space:pre-wrap}.meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px 12px;color:var(--muted);font-size:13px}.edit-grid{display:grid;grid-template-columns:repeat(3,minmax(120px,1fr));gap:9px;margin-top:12px}.edit-grid input,.edit-grid select{min-height:42px;width:100%;border:1px solid var(--border);border-radius:8px;padding:8px;font:15px system-ui}.note{margin-top:10px;padding:9px;border-radius:8px;background:var(--bg);color:var(--muted);font-size:13px}.empty{padding:22px;text-align:center;color:var(--muted)}.hidden{display:none!important}@media(max-width:680px){main{margin-top:12px}.card{padding:15px}.meta,.edit-grid{grid-template-columns:1fr}.review-head{display:block}.actions button{width:100%}}
+  </style>
+</head>
+<body>
+<main>
+  <section class="card">
+    <h1>阶段5G：普通共享审核预览</h1>
+    <p class="muted">独立管理员入口 · 仅合成测试作用域 · 陪玩名字与老板资料</p>
+    <p class="banner"><strong>阶段6敏感边界仍然锁定。</strong>老板直属变化、折数升高、异常大幅降折、删除及规则类变更只能查看，不能在本页批准、拒绝或编辑后批准。</p>
+    <div class="toolbar">
+      <button id="loginBtn" type="button">前往安全登录</button>
+      <button id="refreshBtn" class="secondary" type="button">刷新普通共享队列</button>
+      <button id="logoutBtn" class="danger" type="button">退出并清除会话</button>
+    </div>
+    <div id="status" class="status" aria-live="polite">正在检查管理员会话……</div>
+    <p id="identity" class="muted">尚未验证管理员会话。</p>
+  </section>
+
+  <section id="queueCard" class="card hidden">
+    <h2>普通共享待审核 <span id="count" class="pill">0</span></h2>
+    <p id="scope" class="muted">尚未读取合成作用域。</p>
+    <div id="queue"></div>
+  </section>
+</main>
+<script>
+(() => {
+  'use strict';
+  const ids = ['loginBtn','refreshBtn','logoutBtn','status','identity','queueCard','count','scope','queue'];
+  const els = Object.fromEntries(ids.map(id => [id, document.getElementById(id)]));
+  const mutableReasons = new Set(['candidate_conflict','playable_name_public_conflict']);
+  let busy = false;
+
+  function setBusy(value) {
+    busy = value;
+    for (const button of document.querySelectorAll('button')) {
+      button.disabled = value || button.dataset.permanentDisabled === '1';
+    }
+    for (const input of document.querySelectorAll('input,select')) input.disabled = value;
+  }
+
+  function setStatus(message, kind = '') {
+    els.status.textContent = message;
+    els.status.className = `status ${kind}`.trim();
+  }
+
+  function clearQueue() {
+    els.queue.replaceChildren();
+    els.queueCard.classList.add('hidden');
+    els.count.textContent = '0';
+  }
+
+  async function api(path, init = {}) {
+    const response = await fetch(path, {
+      credentials: 'same-origin',
+      cache: 'no-store',
+      redirect: 'error',
+      referrerPolicy: 'no-referrer',
+      ...init,
+    });
+    if (response.status === 204) return null;
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || !payload?.ok) {
+      const error = new Error(payload?.error?.message || `管理员普通共享接口失败（HTTP ${response.status}）`);
+      error.code = payload?.error?.code || `HTTP_${response.status}`;
+      throw error;
+    }
+    return payload.data;
+  }
+
+  function reasonLabel(reason) {
+    const labels = {
+      candidate_conflict: '候选值冲突',
+      playable_name_public_conflict: '名字规范冲突',
+      boss_name_change_sensitive: '老板身份变化（阶段6）',
+      boss_direct_report_change_sensitive: '直属变化（阶段6）',
+      boss_discount_increase_sensitive: '折数升高（阶段6）',
+      boss_discount_drop_abnormal: '降折幅度异常（阶段6）',
+      baseline_transition_conflict: '公共基线冲突',
+      stale_public_baseline: '公共基线已过期',
+      price_change_exceeds_limit: '普通单价请使用阶段5C',
+    };
+    return labels[reason] || '需要人工审核';
+  }
+
+  function typeLabel(type) {
+    return type === 'playable_name' ? '陪玩名字' : type === 'boss_profile' ? '老板资料' : '普通单价';
+  }
+
+  function payloadSummary(type, payload) {
+    if (!payload) return '无公共基线';
+    if (type === 'playable_name') return `名字：${payload.name}`;
+    if (type === 'boss_profile') return `老板：${payload.bossName}\n直属/派单：${payload.paiDan || '未填写'}\n折数：${payload.discount}`;
+    return `${payload.serviceName} · ${payload.unitPrice} 元/${payload.settleType === 'round' ? '局' : '小时'}`;
+  }
+
+  function addMeta(container, label, value) {
+    const span = document.createElement('span');
+    span.textContent = `${label}：${value}`;
+    container.append(span);
+  }
+
+  function assertReadCapabilities(data) {
+    const caps = data?.capabilities || {};
+    if (caps.reviewQueueRead !== true || caps.reviewDetailRead !== true
+        || caps.reviewMutation !== false || caps.publicMutationAllowed !== false
+        || caps.syntheticFixtureOnly !== true) {
+      throw new Error('服务器未保持阶段5G只读投影权限边界。');
+    }
+    if (data?.scope?.syntheticFixtureOnly !== true) throw new Error('审核队列不是合成测试作用域。');
+  }
+
+  function assertMutationCapabilities(data) {
+    const caps = data?.capabilities || {};
+    if (caps.reviewMutation !== true || caps.reviewApprove !== true
+        || caps.reviewReject !== true || caps.reviewEditAndApprove !== true
+        || caps.publicMutationAllowed !== true || caps.syntheticFixtureOnly !== true
+        || caps.stage6SensitiveChangesBlocked !== true) {
+      throw new Error('服务器未保持阶段5G普通共享写入边界。');
+    }
+  }
+
+  async function mutate(path, body, successLabel) {
+    if (busy) return;
+    setBusy(true);
+    setStatus('正在写入不可变决策、公共事件与审计记录……');
+    try {
+      const data = await api(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      assertMutationCapabilities(data);
+      const result = data.result;
+      setStatus(`${successLabel}：${result.status}；公共版本 ${result.publicVersion}；审计 …${result.auditId.slice(-8)}。`, 'ok');
+      setBusy(false);
+      await loadQueue({ preserveStatus: true });
+    } catch (error) {
+      setStatus(error?.message || '管理员普通共享审核动作失败。', 'error');
+      setBusy(false);
+    }
+  }
+
+  function editControls(item) {
+    const grid = document.createElement('div');
+    grid.className = 'edit-grid';
+    const inputs = {};
+    if (item.dataType === 'playable_name') {
+      const name = document.createElement('input');
+      name.value = item.payload.name;
+      name.maxLength = 30;
+      name.setAttribute('aria-label', '编辑陪玩名字');
+      grid.append(name);
+      inputs.payload = () => ({ name: name.value });
+    } else if (item.dataType === 'boss_profile') {
+      const bossName = document.createElement('input');
+      bossName.value = item.payload.bossName;
+      bossName.maxLength = 30;
+      bossName.setAttribute('aria-label', '编辑老板名');
+      const paiDan = document.createElement('input');
+      paiDan.value = item.payload.paiDan;
+      paiDan.maxLength = 30;
+      paiDan.setAttribute('aria-label', '编辑直属或派单');
+      const discount = document.createElement('input');
+      discount.type = 'number';
+      discount.min = '0.8';
+      discount.max = '1';
+      discount.step = '0.0001';
+      discount.value = String(item.payload.discount);
+      discount.setAttribute('aria-label', '编辑老板折数');
+      grid.append(bossName, paiDan, discount);
+      inputs.payload = () => ({
+        bossName: bossName.value,
+        paiDan: paiDan.value,
+        discount: Number(discount.value),
+      });
+    } else {
+      const note = document.createElement('div');
+      note.className = 'note';
+      note.textContent = '普通单价继续使用阶段5C审核页面。';
+      grid.append(note);
+      inputs.payload = () => null;
+    }
+    const rejectReason = document.createElement('select');
+    rejectReason.setAttribute('aria-label', '普通共享拒绝原因');
+    for (const [value, label] of [
+      ['invalid_data','数据无效'],
+      ['insufficient_evidence','证据不足'],
+      ['conflicting_candidates','候选冲突'],
+      ['unsupported_change','不支持的变更'],
+    ]) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = label;
+      rejectReason.append(option);
+    }
+    grid.append(rejectReason);
+    inputs.rejectReason = rejectReason;
+    return { grid, inputs };
+  }
+
+  function reviewNode(item) {
+    const article = document.createElement('article');
+    article.className = 'review';
+    const head = document.createElement('div');
+    head.className = 'review-head';
+    const title = document.createElement('h3');
+    title.textContent = `${typeLabel(item.dataType)} · …${item.reviewId.slice(-8)}`;
+    const pill = document.createElement('span');
+    pill.className = 'pill';
+    pill.textContent = reasonLabel(item.reason);
+    head.append(title, pill);
+
+    const summary = document.createElement('div');
+    summary.className = 'summary';
+    summary.textContent = `公共基线\n${payloadSummary(item.baseline.dataType, item.baseline.payload)}\n\n候选值\n${payloadSummary(item.dataType, item.payload)}`;
+
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    addMeta(meta, '设备证据', `${item.distinctDeviceCount} 台`);
+    addMeta(meta, '基线状态', item.baseline.stillCurrent ? '当前有效' : '已过期');
+    addMeta(meta, '收到时间', new Date(item.receivedAt).toLocaleString());
+    addMeta(meta, '数据类型', item.dataType);
+
+    const { grid, inputs } = editControls(item);
+    const allowed = item.baseline.stillCurrent
+      && item.dataType !== 'exact_price'
+      && mutableReasons.has(item.reason);
+    const note = document.createElement('div');
+    note.className = 'note';
+    note.textContent = allowed
+      ? '此项目属于阶段5G可处理范围；服务器仍会重新校验业务身份、基线与降折边界。'
+      : '此项目仅供查看；任何写入都会被服务器以稳定错误码拒绝。';
+
+    const actions = document.createElement('div');
+    actions.className = 'actions';
+    const approve = document.createElement('button');
+    approve.type = 'button';
+    approve.textContent = '批准候选值';
+    approve.disabled = !allowed;
+    if (!allowed) approve.dataset.permanentDisabled = '1';
+    approve.addEventListener('click', () => {
+      if (!window.confirm(`确认批准此${typeLabel(item.dataType)}候选？`)) return;
+      mutate('/api/admin/ordinary-reviews/approve', {
+        reviewId: item.reviewId,
+        confirmation: 'APPROVE_ORDINARY',
+      }, '批准完成');
+    });
+
+    const reject = document.createElement('button');
+    reject.type = 'button';
+    reject.className = 'danger';
+    reject.textContent = '拒绝此候选';
+    reject.disabled = !allowed;
+    if (!allowed) reject.dataset.permanentDisabled = '1';
+    reject.addEventListener('click', () => {
+      if (!window.confirm(`确认拒绝此${typeLabel(item.dataType)}候选？`)) return;
+      mutate('/api/admin/ordinary-reviews/reject', {
+        reviewId: item.reviewId,
+        confirmation: 'REJECT_ORDINARY',
+        reasonCode: inputs.rejectReason.value,
+      }, '拒绝完成');
+    });
+
+    const editApprove = document.createElement('button');
+    editApprove.type = 'button';
+    editApprove.className = 'secondary';
+    editApprove.textContent = '按输入内容批准';
+    editApprove.disabled = !allowed;
+    if (!allowed) editApprove.dataset.permanentDisabled = '1';
+    editApprove.addEventListener('click', () => {
+      const payload = inputs.payload();
+      if (!payload) return;
+      if (!window.confirm(`确认按输入内容修改并批准此${typeLabel(item.dataType)}？`)) return;
+      mutate('/api/admin/ordinary-reviews/edit-and-approve', {
+        reviewId: item.reviewId,
+        confirmation: 'EDIT_AND_APPROVE_ORDINARY',
+        payload,
+      }, '编辑后批准完成');
+    });
+    actions.append(approve, reject, editApprove);
+    article.append(head, summary, meta, grid, note, actions);
+    return article;
+  }
+
+  function renderQueue(data) {
+    assertReadCapabilities(data);
+    els.count.textContent = String(data.total);
+    els.scope.textContent = `合成作用域：${data.scope.groupId} / ${data.scope.libraryId}`;
+    els.queue.replaceChildren();
+    if (!Array.isArray(data.items) || data.items.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'empty';
+      empty.textContent = '当前没有普通共享待审核项目。';
+      els.queue.append(empty);
+    } else {
+      for (const item of data.items) els.queue.append(reviewNode(item));
+    }
+    els.queueCard.classList.remove('hidden');
+  }
+
+  async function loadQueue({ preserveStatus = false } = {}) {
+    if (busy) return;
+    setBusy(true);
+    if (!preserveStatus) setStatus('正在强一致读取普通共享审核队列……');
+    try {
+      const data = await api('/api/admin/ordinary-reviews');
+      renderQueue(data);
+      if (!preserveStatus) setStatus(`普通共享审核队列已加载：${data.total} 项。`, 'ok');
+    } catch (error) {
+      clearQueue();
+      setStatus(error?.message || '普通共享审核队列加载失败。', 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function initialize() {
+    setBusy(true);
+    try {
+      const session = await api('/api/admin/auth/session');
+      if (!session?.authenticated) throw new Error('管理员会话无效。');
+      els.identity.textContent = `${session.username} · 会话…${session.sessionIdSuffix} · 到期 ${new Date(session.expiresAt).toLocaleString()}`;
+      setBusy(false);
+      await loadQueue();
+    } catch (error) {
+      clearQueue();
+      els.identity.textContent = '没有有效管理员会话；请先前往独立安全登录页。';
+      const expected = ['ADMIN_SESSION_MISSING','ADMIN_SESSION_INVALID','ADMIN_SESSION_EXPIRED','ADMIN_PREVIEW_DISABLED'].includes(error?.code);
+      setStatus(expected ? '请先完成管理员安全登录。' : (error?.message || '会话检查失败。'), expected ? '' : 'error');
+      setBusy(false);
+    }
+  }
+
+  els.loginBtn.addEventListener('click', () => { window.location.href = '/admin-preview.html'; });
+  els.refreshBtn.addEventListener('click', () => loadQueue());
+  els.logoutBtn.addEventListener('click', async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await api('/api/admin/auth/logout', { method: 'POST' });
+      clearQueue();
+      els.identity.textContent = '管理员会话已清除。';
+      setStatus('已退出；普通共享审核内容已从页面清除。', 'ok');
+    } catch (error) {
+      setStatus(error?.message || '退出失败。', 'error');
+    } finally {
+      setBusy(false);
+    }
+  });
+
+  window.addEventListener('pagehide', clearQueue);
+  initialize();
+})();
+</script>
+</body>
+</html>
