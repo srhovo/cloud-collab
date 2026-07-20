@@ -4,7 +4,7 @@ import {
   cleanupStage5g6a6bObjects,
   inspectStage5g6a6bObjects,
   readStage5g6a6bCleanupConfig,
-} from './stage5g6a6b_cleanup_v1.js';
+} from './stage5g6a6b_cleanup_exact_v1.js';
 
 const SERVICE_ID = 'stage5g6a6b-joint-cleanup';
 const API_VERSION = '2026-07-20-stage5g6a6b';
