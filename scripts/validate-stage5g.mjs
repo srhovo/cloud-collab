@@ -33,9 +33,21 @@ const packageBuildCommand = String(packageJson?.scripts?.build || '');
 const packageValidateCommand = String(packageJson?.scripts?.validate || '');
 const activeBuildScriptMatch = /^node\s+(scripts\/[A-Za-z0-9._-]+\.mjs)$/.exec(packageBuildCommand.trim());
 const activeBuildScript = activeBuildScriptMatch?.[1] || '';
+
+function buildChainReachesStage5G(script, visited = new Set()) {
+  if (!script || visited.has(script) || !fs.existsSync(path.join(root, script))) return false;
+  if (script === 'scripts/build-stage5g.mjs') return true;
+  visited.add(script);
+  const source = read(script);
+  const imports = [...source.matchAll(/["'`](\.\/build-[A-Za-z0-9._-]+\.mjs)["'`]/g)]
+    .map(match => path.posix.join('scripts', match[1].replace(/^\.\//, '')));
+  return imports.some(item => buildChainReachesStage5G(item, visited));
+}
+
 const activeBuildSource = activeBuildScript && fs.existsSync(path.join(root, activeBuildScript))
   ? read(activeBuildScript)
   : '';
+const activeBuildRetainsStage5G = buildChainReachesStage5G(activeBuildScript);
 
 check('Stage5G gate defaults closed', env.includes('CLOUD_ORDINARY_TYPES_PREVIEW_ENABLED=0'));
 check('Stage5G Blob and fixture scope are explicit', [
@@ -110,10 +122,6 @@ check('Stage5G administrator page uses dedicated routes and confirmations', [
 check('Stage5G administrator page visibly locks Stage6-sensitive actions', adminPage.includes('stage6SensitiveChangesBlocked')
   && adminPage.includes('mutableReasons')
   && adminPage.includes('任何写入都会被服务器'));
-
-const activeBuildRetainsStage5G = activeBuildScript === 'scripts/build-stage5g.mjs'
-  || activeBuildSource.includes("'./build-stage5g.mjs'")
-  || activeBuildSource.includes('"./build-stage5g.mjs"');
 check('Stage5G package builds and validates the active generated candidate', Boolean(activeBuildScript)
   && packageValidateCommand.startsWith(`node ${activeBuildScript}`)
   && activeBuildRetainsStage5G, {
