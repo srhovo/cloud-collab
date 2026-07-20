@@ -29,6 +29,10 @@ DEVICES = [
         'expiresAt': 1_793_000_000_000,
     },
 ]
+AUTHORIZATION_BY_DEVICE = {
+    item['deviceId']: f"Bearer {item['deviceToken']}"
+    for item in DEVICES
+}
 
 SURCHARGE_RECORD = {
     'businessKey': 'bk_v1_' + ('C' * 43),
@@ -68,6 +72,7 @@ def route_handler(route, request):
         'body': body,
         'acceptance': request.headers.get('x-cloud-stage5g6a6b-acceptance-key'),
         'preview': request.headers.get('x-cloud-collab-preview-key'),
+        'authorization': request.headers.get('authorization'),
     })
 
     if parsed.path == '/stage5g6a6b-acceptance.html':
@@ -77,6 +82,16 @@ def route_handler(route, request):
     assert 'eo_token=test-token' in parsed.query
     assert 'eo_time=1785000000' in parsed.query
     assert request.headers.get('x-cloud-stage5g6a6b-acceptance-key') == ACCEPTANCE_KEY
+
+    mutation_paths = {
+        '/api/stage5g6a6b/acceptance/ordinary-submissions-create',
+        '/api/stage5g6a6b/acceptance/sensitive-submissions-create',
+    }
+    if parsed.path in mutation_paths:
+        assert body and body['deviceId'] in AUTHORIZATION_BY_DEVICE
+        assert request.headers.get('authorization') == AUTHORIZATION_BY_DEVICE[body['deviceId']]
+    else:
+        assert request.headers.get('authorization') is None
 
     if parsed.path == '/api/stage5g6a6b/acceptance/seed':
         assert request.method == 'POST'
@@ -262,6 +277,7 @@ print(json.dumps({
     'sensitiveManualReviewPassed': True,
     'explicitDeletePassed': True,
     'unifiedReadPassed': True,
+    'deviceAuthorizationForwardingPassed': True,
     'previewTokenForwardingPassed': True,
     'browserStorageEmpty': True,
     'memoryClearPassed': True,
