@@ -63,8 +63,28 @@ jobs:
       - name: Stage5G ordinary administrator review browser regression
         run: python3 tests/stage5g_browser_admin_ordinary_reviews.py
       - name: Stage5G ordinary user candidate browser regression
-        run: python3 tests/stage5g_browser_ordinary_client.py
+        shell: bash
+        run: |
+          mkdir -p test-results
+          set -o pipefail
+          python3 tests/stage5g_browser_ordinary_client.py 2>&1 | tee test-results/stage5g-browser.log
       - name: Stage6B sensitive user queue and tombstone browser regression
-        run: python3 tests/stage6b_browser_sensitive_client.py
+        shell: bash
+        run: |
+          mkdir -p test-results
+          set -o pipefail
+          python3 tests/stage6b_browser_sensitive_client.py 2>&1 | tee test-results/stage6b-user-browser.log
       - name: Stage6B sensitive administrator review browser regression
-        run: python3 tests/stage6b_browser_admin_sensitive_reviews.py
+        shell: bash
+        run: |
+          mkdir -p test-results
+          set -o pipefail
+          python3 tests/stage6b_browser_admin_sensitive_reviews.py 2>&1 | tee test-results/stage6b-admin-browser.log
+      - name: Upload browser regression logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-regression-logs
+          path: test-results/*browser*.log
+          if-no-files-found: warn
+          retention-days: 7
