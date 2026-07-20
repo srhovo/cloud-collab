@@ -16,6 +16,7 @@ const fail = (code, message, details = null) => {
   throw new ReleaseReadinessAuditError(code, message, details);
 };
 const digest = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
+const semver = value => /^\d+\.\d+\.\d+$/.test(String(value || ''));
 
 function read(root, relativePath) {
   const absolutePath = path.join(root, relativePath);
@@ -78,8 +79,16 @@ function titleOf(html, version) {
 function ledgerOf(value) {
   if (!value || value.schemaVersion !== 1) fail('RELEASE_LEDGER_INVALID', '证据账本无效');
   for (const key of ['stableVersion', 'currentCompatibleCandidateVersion', 'recommendedCandidateVersionFromPlan']) {
-    if (!/^\d+\.\d+\.\d+$/.test(String(value[key] || ''))) fail('RELEASE_LEDGER_VERSION_INVALID', '证据账本版本无效', { key });
+    if (!semver(value[key])) fail('RELEASE_LEDGER_VERSION_INVALID', '证据账本版本无效', { key });
   }
+  if (value.candidateVersionDecision !== null && !semver(value.candidateVersionDecision)) {
+    fail('RELEASE_LEDGER_VERSION_INVALID', '候选版本决策无效', { key: 'candidateVersionDecision' });
+  }
+  if (value.candidateVersionDecision !== null
+      && value.candidateVersionDecision !== value.currentCompatibleCandidateVersion) {
+    fail('RELEASE_CANDIDATE_DECISION_MISMATCH', '候选构建版本与项目负责人决策不一致');
+  }
+
   const stable = value.stableArtifact;
   if (!stable || stable.source !== 'external_frozen_baseline'
       || stable.filename !== '码单器8.2.25_现.html'
@@ -88,24 +97,44 @@ function ledgerOf(value) {
       || !Number.isSafeInteger(stable.bytes) || stable.bytes <= 0) {
     fail('RELEASE_STABLE_METADATA_INVALID', '外部冻结稳定基线元数据无效');
   }
+
   const automated = value.evidence?.automated;
   if (automated?.stage7dWorkflowConclusion !== 'success'
       || automated?.stage7eWorkflowConclusion !== 'success'
+      || automated?.stage7fWorkflowConclusion !== 'success'
       || automated?.coreAndBrowserRegression !== 'passed'
       || !Number.isSafeInteger(automated?.stage7eNodeTestCount) || automated.stage7eNodeTestCount <= 0
-      || automated?.stage7eNodeTestFailures !== 0) {
+      || automated?.stage7eNodeTestFailures !== 0
+      || !Number.isSafeInteger(automated?.stage7fNodeTestCount) || automated.stage7fNodeTestCount <= 0
+      || automated?.stage7fNodeTestFailures !== 0) {
     fail('RELEASE_AUTOMATED_EVIDENCE_FAILED', '自动化证据未通过');
   }
+
   const realDevice = value.evidence?.realDevice;
   const rerunState = realDevice?.finalCleanSnapshotAndTombstoneRerun;
   if (!['passed', 'waived_due_to_manual_cost'].includes(rerunState)) {
     fail('RELEASE_REAL_DEVICE_EVIDENCE_INVALID', '最终实机证据状态无效');
   }
+
+  const cleanup = value.evidence?.cleanup;
+  if (!cleanup || cleanup.status !== 'user_reported_completed'
+      || typeof cleanup.exactDeletionCountsRecorded !== 'boolean'
+      || typeof cleanup.independentZeroCountEvidenceRecorded !== 'boolean') {
+    fail('RELEASE_CLEANUP_EVIDENCE_INVALID', '清理证据状态无效');
+  }
+  if (cleanup.exactEvidenceWaiverAcceptedByOwner === true
+      && (!cleanup.waiverAcceptedAt || !cleanup.waiverSource || !cleanup.waiverReason)) {
+    fail('RELEASE_CLEANUP_WAIVER_INVALID', '清理精确证据豁免记录不完整');
+  }
+
   const policy = value.releasePolicy || {};
   if (policy.stableBaselineMustRemainUnchanged !== true
       || policy.allPreviewCapabilitiesDefaultOff !== true
       || policy.candidateVersionRequiresOwnerDecision !== true
+      || policy.candidatePackagingAuthorized !== true
       || policy.promotionRequiresSeparateOwnerAuthorization !== true
+      || policy.stablePromotionAuthorized !== false
+      || policy.stablePromotionPerformed !== false
       || policy.productionWriteEnablementIncluded !== false) {
     fail('RELEASE_POLICY_INVALID', '发布策略边界无效');
   }
@@ -115,15 +144,21 @@ function ledgerOf(value) {
 function blockersOf(ledger) {
   const blockers = [];
   if (ledger.candidateVersionDecision === null) blockers.push('candidate_version_owner_decision');
+
   const realDevice = ledger.evidence.realDevice;
   const rerunSatisfied = realDevice.finalCleanSnapshotAndTombstoneRerun === 'passed'
     || (realDevice.finalCleanSnapshotAndTombstoneRerun === 'waived_due_to_manual_cost'
       && realDevice.finalCleanSnapshotAndTombstoneRerunExceptionAcceptedByOwner === true);
   if (!rerunSatisfied) blockers.push('real_device_final_rerun_exception_acceptance');
-  if (!ledger.evidence.cleanup.exactDeletionCountsRecorded
-      || !ledger.evidence.cleanup.independentZeroCountEvidenceRecorded) {
+
+  const cleanup = ledger.evidence.cleanup;
+  const cleanupExactEvidenceComplete = cleanup.exactDeletionCountsRecorded === true
+    && cleanup.independentZeroCountEvidenceRecorded === true;
+  const cleanupWaiverAccepted = cleanup.exactEvidenceWaiverAcceptedByOwner === true;
+  if (!cleanupExactEvidenceComplete && !cleanupWaiverAccepted) {
     blockers.push('cleanup_exact_evidence_missing');
   }
+
   if (ledger.evidence.temporaryResources.status !== 'verified_destroyed') {
     blockers.push('temporary_resource_teardown_verification');
   }
@@ -149,8 +184,10 @@ export function auditReleaseRepository({ root } = {}) {
     fail('RELEASE_MANIFEST_HASH_MISMATCH', '构建清单与候选摘要不一致');
   }
   if (!buildScript.includes(`manifest.version = '${ledger.currentCompatibleCandidateVersion}'`)
-      || !buildScript.includes('compatibleShellRetained = true')) {
-    fail('RELEASE_BUILD_CONTRACT_INVALID', '兼容候选构建契约无效');
+      || !buildScript.includes(`const APP_VERSION = '${ledger.currentCompatibleCandidateVersion}';`)
+      || !buildScript.includes('compatibleShellRetained = true')
+      || !buildScript.includes('stablePromotionPerformed = false')) {
+    fail('RELEASE_BUILD_CONTRACT_INVALID', '候选构建契约无效');
   }
   if (ledger.stableArtifact.sha256 === candidateSha256) {
     fail('RELEASE_STABLE_CANDIDATE_IDENTICAL', '稳定基线与候选摘要相同');
@@ -166,15 +203,19 @@ export function auditReleaseRepository({ root } = {}) {
       verifiedBy: 'frozen_external_metadata',
       repositoryCopyExpected: false,
       unchangedByAudit: true,
+      promotionAuthorized: false,
+      promotionPerformed: false,
     }),
     candidate: Object.freeze({
       currentCompatibleVersion: ledger.currentCompatibleCandidateVersion,
       recommendedVersionFromPlan: ledger.recommendedCandidateVersionFromPlan,
       ownerDecision: ledger.candidateVersionDecision,
+      ownerDecisionRecordedAt: ledger.candidateVersionDecisionRecordedAt,
       title: titleOf(candidate.toString('utf8'), ledger.currentCompatibleCandidateVersion),
       sha256: candidateSha256,
       bytes: candidate.length,
       buildManifestVerified: true,
+      packagingAuthorized: ledger.releasePolicy.candidatePackagingAuthorized,
     }),
     environment: auditEnv(envMap(read(repositoryRoot, '.env.example').toString('utf8'))),
     evidence: ledger.evidence,
@@ -184,6 +225,8 @@ export function auditReleaseRepository({ root } = {}) {
       deploymentsPerformed: 0,
       blobMutationsPerformed: 0,
       productionWriteEnablementIncluded: false,
+      stablePromotionAuthorized: false,
+      stablePromotionPerformed: false,
       promotionPerformed: false,
     }),
   });
