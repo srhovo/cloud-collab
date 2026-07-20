@@ -84,12 +84,18 @@ function runtimeEnv(overrides = {}) {
   });
 }
 
-function request(path, { method = 'GET', body = null, key = secrets.acceptance } = {}) {
+function request(path, {
+  method = 'GET',
+  body = null,
+  key = secrets.acceptance,
+  origin = 'https://acceptance.example.test',
+  fetchSite = 'same-origin',
+} = {}) {
   const headers = new Headers({
-    Origin: 'https://acceptance.example.test',
-    'Sec-Fetch-Site': 'same-origin',
     [STAGE5G6A6B_ACCEPTANCE_HEADER]: key,
   });
+  if (origin) headers.set('Origin', origin);
+  if (fetchSite) headers.set('Sec-Fetch-Site', fetchSite);
   if (body !== null) headers.set('Content-Type', 'application/json');
   return new Request(`https://acceptance.example.test${path}`, {
     method,
@@ -159,21 +165,35 @@ test('HTTP种子和状态要求同源验收密钥、关闭正式写入并支持�
   }, dependencies);
   assert.equal(replayResponse.status, 200);
 
+  // 浏览器同源GET通常不携带Origin；仍应依赖URL、Sec-Fetch-Site和验收密钥通过。
   const statusResponse = await handleStage5g6a6bStatusRequest({
-    request: request('/api/stage5g6a6b/acceptance/status'),
+    request: request('/api/stage5g6a6b/acceptance/status', { origin: '' }),
     env: runtimeEnv(),
   }, dependencies);
   assert.equal(statusResponse.status, 200);
   assert.equal((await statusResponse.json()).data.registeredDeviceCount, 2);
 
   const denied = await handleStage5g6a6bStatusRequest({
-    request: request('/api/stage5g6a6b/acceptance/status', { key: 'wrong-key'.padEnd(40, 'x') }),
+    request: request('/api/stage5g6a6b/acceptance/status', {
+      key: 'wrong-key'.padEnd(40, 'x'),
+      origin: '',
+    }),
     env: runtimeEnv(),
   }, dependencies);
   assert.equal(denied.status, 403);
 
+  const crossSite = await handleStage5g6a6bStatusRequest({
+    request: request('/api/stage5g6a6b/acceptance/status', {
+      origin: '',
+      fetchSite: 'cross-site',
+    }),
+    env: runtimeEnv(),
+  }, dependencies);
+  assert.equal(crossSite.status, 403);
+  assert.equal((await crossSite.json()).error.code, 'ADMIN_REQUEST_ORIGIN_INVALID');
+
   const unsafe = await handleStage5g6a6bStatusRequest({
-    request: request('/api/stage5g6a6b/acceptance/status'),
+    request: request('/api/stage5g6a6b/acceptance/status', { origin: '' }),
     env: runtimeEnv({ CLOUD_WRITE_PREVIEW_ENABLED: '1' }),
   }, dependencies);
   assert.equal(unsafe.status, 503);
