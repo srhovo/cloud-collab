@@ -20,7 +20,7 @@ const REQUIRED_FILES = [
 ];
 
 function copyFixture() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'stage7e-release-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'stage7g-release-'));
   for (const relativePath of REQUIRED_FILES) {
     const source = path.join(ROOT, relativePath);
     const target = path.join(root, relativePath);
@@ -37,37 +37,41 @@ function mutateJson(root, relativePath, mutate) {
   fs.writeFileSync(absolutePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 
-test('阶段7F审计记录已接受豁免并准确列出剩余发布决策项', () => {
+test('阶段7G审计确认8.2.30候选可打包但不得自动晋升', () => {
   const report = auditReleaseRepository({ root: ROOT });
-  assert.equal(report.status, 'decision_required');
+  assert.equal(report.status, 'promotion_authorization_required');
   assert.equal(report.stable.version, '8.2.25');
   assert.equal(report.stable.source, 'external_frozen_baseline');
   assert.equal(report.stable.filename, '码单器8.2.25_现.html');
   assert.equal(report.stable.sha256, 'd34a436d5910ab027ad466309c44c6607fc8b60d2b21cf4b1cc4bf5a188bd6d3');
   assert.equal(report.stable.bytes, 908220);
   assert.equal(report.stable.repositoryCopyExpected, false);
-  assert.equal(report.candidate.currentCompatibleVersion, '8.2.28');
+  assert.equal(report.stable.promotionAuthorized, false);
+  assert.equal(report.stable.promotionPerformed, false);
+  assert.equal(report.candidate.currentCompatibleVersion, '8.2.30');
   assert.equal(report.candidate.recommendedVersionFromPlan, '8.2.30');
-  assert.equal(report.candidate.ownerDecision, null);
+  assert.equal(report.candidate.ownerDecision, '8.2.30');
+  assert.equal(report.candidate.packagingAuthorized, true);
   assert.equal(report.environment.allEnabledGatesDefaultOff, true);
   assert.equal(report.environment.examplePrivateValuesEmpty, true);
-  assert.equal(report.evidence.automated.stage7eWorkflowRunNumber, 1173);
-  assert.equal(report.evidence.automated.stage7eWorkflowConclusion, 'success');
-  assert.equal(report.evidence.automated.stage7eNodeTestCount, 282);
-  assert.equal(report.evidence.automated.stage7eNodeTestFailures, 0);
+  assert.equal(report.evidence.automated.stage7fWorkflowRunNumber, 1184);
+  assert.equal(report.evidence.automated.stage7fWorkflowConclusion, 'success');
+  assert.equal(report.evidence.automated.stage7fNodeTestCount, 284);
+  assert.equal(report.evidence.automated.stage7fNodeTestFailures, 0);
   assert.equal(report.evidence.realDevice.finalCleanSnapshotAndTombstoneRerun, 'waived_due_to_manual_cost');
   assert.equal(report.evidence.realDevice.finalCleanSnapshotAndTombstoneRerunExceptionAcceptedByOwner, true);
+  assert.equal(report.evidence.cleanup.exactDeletionCountsRecorded, false);
+  assert.equal(report.evidence.cleanup.independentZeroCountEvidenceRecorded, false);
+  assert.equal(report.evidence.cleanup.exactEvidenceWaiverAcceptedByOwner, true);
   assert.equal(report.evidence.temporaryResources.status, 'verified_destroyed');
-  assert.equal(report.evidence.temporaryResources.evidenceSource, 'user_report');
-  assert.deepEqual(report.blockers, [
-    'candidate_version_owner_decision',
-    'cleanup_exact_evidence_missing',
-  ]);
+  assert.deepEqual(report.blockers, []);
   assert.deepEqual(report.boundaries, {
     filesModifiedByAudit: 0,
     deploymentsPerformed: 0,
     blobMutationsPerformed: 0,
     productionWriteEnablementIncluded: false,
+    stablePromotionAuthorized: false,
+    stablePromotionPerformed: false,
     promotionPerformed: false,
   });
 });
@@ -81,6 +85,36 @@ test('人工重跑豁免未获项目负责人接受时继续阻断', () => {
     const report = auditReleaseRepository({ root });
     assert.equal(report.status, 'decision_required');
     assert.equal(report.blockers.includes('real_device_final_rerun_exception_acceptance'), true);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('清理精确数字缺失且未接受豁免时继续阻断', () => {
+  const root = copyFixture();
+  try {
+    mutateJson(root, 'release/release-closure-ledger-v1.json', ledger => {
+      ledger.evidence.cleanup.exactEvidenceWaiverAcceptedByOwner = false;
+    });
+    const report = auditReleaseRepository({ root });
+    assert.equal(report.status, 'decision_required');
+    assert.equal(report.blockers.includes('cleanup_exact_evidence_missing'), true);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('候选构建版本与项目负责人决策不一致时失败关闭', () => {
+  const root = copyFixture();
+  try {
+    mutateJson(root, 'release/release-closure-ledger-v1.json', ledger => {
+      ledger.candidateVersionDecision = '8.2.29';
+    });
+    assert.throws(
+      () => auditReleaseRepository({ root }),
+      error => error instanceof ReleaseReadinessAuditError
+        && error.code === 'RELEASE_CANDIDATE_DECISION_MISMATCH',
+    );
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -135,11 +169,11 @@ test('稳定基线元数据无效时失败关闭', () => {
   }
 });
 
-test('阶段7E自动化证据无效时失败关闭', () => {
+test('阶段7F自动化证据无效时失败关闭', () => {
   const root = copyFixture();
   try {
     mutateJson(root, 'release/release-closure-ledger-v1.json', ledger => {
-      ledger.evidence.automated.stage7eNodeTestFailures = 1;
+      ledger.evidence.automated.stage7fNodeTestFailures = 1;
     });
     assert.throws(
       () => auditReleaseRepository({ root }),
@@ -151,19 +185,17 @@ test('阶段7E自动化证据无效时失败关闭', () => {
   }
 });
 
-test('剩余证据补齐后仍只进入独立晋升授权状态', () => {
+test('稳定晋升授权被意外开启时失败关闭', () => {
   const root = copyFixture();
   try {
     mutateJson(root, 'release/release-closure-ledger-v1.json', ledger => {
-      ledger.candidateVersionDecision = '8.2.30';
-      ledger.evidence.cleanup.exactDeletionCountsRecorded = true;
-      ledger.evidence.cleanup.independentZeroCountEvidenceRecorded = true;
-      ledger.evidence.temporaryResources.status = 'verified_destroyed';
+      ledger.releasePolicy.stablePromotionAuthorized = true;
     });
-    const report = auditReleaseRepository({ root });
-    assert.equal(report.status, 'promotion_authorization_required');
-    assert.deepEqual(report.blockers, []);
-    assert.equal(report.boundaries.promotionPerformed, false);
+    assert.throws(
+      () => auditReleaseRepository({ root }),
+      error => error instanceof ReleaseReadinessAuditError
+        && error.code === 'RELEASE_POLICY_INVALID',
+    );
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
