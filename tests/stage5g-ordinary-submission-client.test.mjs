@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
-import { createRequire } from 'node:module';
 import test from 'node:test';
 import { computeOrdinarySubmissionHashes } from '../src/server/ordinary_types_policy_v1.js';
 
-const require = createRequire(import.meta.url);
-const snapshotSync = require('../src/cloud_collab_snapshot_sync.js');
-const baseSubmission = require('../src/cloud_collab_submission_client.js');
-const ordinary = require('../src/cloud_collab_ordinary_submission_client.js');
+await import('../src/cloud_collab_snapshot_sync.js');
+await import('../src/cloud_collab_submission_client.js');
+await import('../src/cloud_collab_ordinary_submission_client.js');
+const snapshotSync = globalThis.CloudCollabSnapshotSync;
+const baseSubmission = globalThis.CloudCollabSubmission;
+const ordinary = globalThis.CloudCollabOrdinarySubmission;
 
 const DEVICE = 'dev_01JABCDEF0123456789XYZABCD';
 const SUB_A = 'sub_01JABCDEF0123456789XYZABCD';
