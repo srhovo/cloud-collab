@@ -30,8 +30,12 @@
       "independentZeroCountEvidenceRecorded": false
     },
     "temporaryResources": {
-      "status": "verification_required_before_release",
-      "credentialsMustBeRemovedOrRotated": true
+      "status": "verified_destroyed",
+      "evidenceSource": "user_report",
+      "edgeOneTemporaryProjectDeleted": true,
+      "temporaryDeploymentsDeletedWithProject": true,
+      "projectEnvironmentVariablesDeletedWithProject": true,
+      "credentialsMustNotBeReused": true
     }
   },
   "releasePolicy": {
