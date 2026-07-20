@@ -24,6 +24,24 @@
           "value": "no-referrer"
         }
       ]
+    },
+    {
+      "source": "/build-manifest.json",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json; charset=utf-8"
+        }
+      ]
+    },
+    {
+      "source": "/pages-release.json",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json; charset=utf-8"
+        }
+      ]
     }
   ]
 }
