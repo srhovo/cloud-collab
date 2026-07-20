@@ -1,0 +1,66 @@
+name: stage7s-production-sensitive-intake
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'cloud-functions/api/sensitive-submissions/create.js'
+      - 'src/server/production_sensitive_runtime_v1.js'
+      - 'src/server/production_sensitive_http_v1.js'
+      - 'tests/stage7s-production-sensitive-intake.test.mjs'
+      - '.github/workflows/stage7s-production-sensitive-intake.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production-sensitive-intake:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Run production sensitive intake tests
+        shell: bash
+        run: |
+          set -o pipefail
+          node --test \
+            tests/stage7s-production-sensitive-intake.test.mjs \
+            tests/stage6a-sensitive-acceptance.test.mjs \
+            tests/stage6b-sensitive-publication.test.mjs \
+            tests/stage7n-production-runtime-and-bootstrap.test.mjs \
+            2>&1 | tee stage7s-production-sensitive-intake.log
+
+      - name: Upload targeted diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage7s-production-sensitive-intake-log
+          path: stage7s-production-sensitive-intake.log
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Audit manual-review-only boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "manualReviewRequired" src/server/production_sensitive_runtime_v1.js
+          grep -q "publicMutationAllowed: false" src/server/production_sensitive_runtime_v1.js
+          grep -q "autoApprovalEnabled: false" src/server/production_sensitive_runtime_v1.js
+          grep -q "stablePromotionAuthorized: false" src/server/production_sensitive_runtime_v1.js
+          ! grep -R "Access-Control-Allow-Origin.*\*" src/server/production_sensitive_http_v1.js
+          ! grep -R "approveSensitiveCandidate\|rejectSensitiveCandidate\|editAndApproveSensitiveCandidate" src/server/production_sensitive_runtime_v1.js src/server/production_sensitive_http_v1.js cloud-functions/api/sensitive-submissions
+          ! grep -R "CLOUD_PRODUCTION_.*=1" config/production.env.template
+
+      - name: Confirm all Cloud Function imports resolve
+        run: node --test tests/cloud-functions-relative-imports.test.mjs
