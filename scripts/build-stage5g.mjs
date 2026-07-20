@@ -52,6 +52,20 @@ html = replaceOnce(
 
 html = replaceOnce(
   html,
+  '    bossId: /^boss_[0-9A-HJKMNP-TV-Z]{26}$/,',
+  '    bossId: /^(?:boss_[0-9A-HJKMNP-TV-Z]{26}|boss_v1_[A-Za-z0-9_-]{43})$/,',
+  'stage5g boss identity compatibility',
+);
+
+html = replaceOnce(
+  html,
+  "    if (['playable_name', 'boss_profile'].includes(submission.dataType)) assert(submission.libraryId === null, 'GROUP_SCOPE_REQUIRED', '陪玩名字和老板资料必须是group作用域');",
+  "    if (['playable_name', 'boss_profile'].includes(submission.dataType)) assert(submission.libraryId !== null, 'STAGE5G_PREVIEW_LIBRARY_SCOPE_REQUIRED', '阶段5G隔离候选需要绑定的预览libraryId');",
+  'stage5g ordinary queue scope',
+);
+
+html = replaceOnce(
+  html,
   "if (mode === 'collaborate' && previousBinding?.mode !== 'collaborate') await this.enqueueInitialBindingSubmissions(localLibraryId);",
   `if (mode === 'collaborate' && previousBinding?.mode !== 'collaborate') {\n     await this.enqueueInitialBindingSubmissions(localLibraryId);\n     await this.enqueueInitialOrdinarySubmissions(localLibraryId);\n    }`,
   'initial ordinary enqueue',
