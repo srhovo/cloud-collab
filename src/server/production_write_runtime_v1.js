@@ -8,6 +8,8 @@ import {
   putJSONOnlyIfNew,
 } from './blob_repository_v1.js';
 import { authenticateDevice, registerDevice } from './device_registration_v1.js';
+import { acceptOrdinarySubmission } from './ordinary_submission_acceptance_v1.js';
+import { normalizeOrdinarySubmission } from './ordinary_types_policy_v1.js';
 import { acceptSubmission } from './submission_acceptance_v1.js';
 import { normalizeSubmission } from './submission_policy_v1.js';
 import {
@@ -18,6 +20,8 @@ import {
 export const PRODUCTION_WRITE_RUNTIME_VERSION = 1;
 export const PRODUCTION_REGISTRATION_RATE_SLOT_MS = 60_000;
 export const PRODUCTION_SUBMISSION_RATE_SLOT_MS = 5_000;
+export const PRODUCTION_ORDINARY_TYPES = Object.freeze(['exact_price', 'playable_name', 'boss_profile']);
+export const PRODUCTION_EXACT_AUTO_APPROVAL_TYPES = Object.freeze(['exact_price']);
 
 export class ProductionWriteRuntimeError extends Error {
   constructor(code, message, status = 400, details = null, cause = null) {
@@ -123,6 +127,32 @@ export function assertProductionSubmissionScope(submission, config) {
   return submission;
 }
 
+export function assertProductionCandidateHandlerAvailable(rawSubmission, config) {
+  const dataType = String(rawSubmission?.dataType || '').trim().toLowerCase();
+  const operation = String(rawSubmission?.operation || '').trim().toLowerCase();
+  if (operation === 'delete' || ['rank_range_rule', 'surcharge_rule', 'gift_rule'].includes(dataType)) {
+    throw new ProductionWriteRuntimeError(
+      'PRODUCTION_SENSITIVE_HANDLER_REQUIRED',
+      '敏感提交必须使用独立人工审核处理器',
+      503,
+    );
+  }
+  if (!PRODUCTION_ORDINARY_TYPES.includes(dataType)) {
+    throw new ProductionWriteRuntimeError('UNSUPPORTED_PRODUCTION_DATA_TYPE', '正式普通提交类型不受支持', 400, {
+      allowedDataTypes: PRODUCTION_ORDINARY_TYPES,
+    });
+  }
+  if (config?.runtime?.flags?.autoApproval === true && dataType !== 'exact_price') {
+    throw new ProductionWriteRuntimeError(
+      'PRODUCTION_ORDINARY_TYPE_AUTO_APPROVAL_HANDLER_REQUIRED',
+      '该普通类型的正式自动审核处理器尚未接入',
+      503,
+      { dataType, supportedAutoApprovalTypes: PRODUCTION_EXACT_AUTO_APPROVAL_TYPES },
+    );
+  }
+  return Object.freeze({ dataType, operation });
+}
+
 export async function registerProductionDevice({
   store,
   input,
@@ -143,6 +173,22 @@ export async function registerProductionDevice({
   return register({ store, input, now });
 }
 
+async function consumeCandidateRateIfNew({ store, submission, identity, config, now, rateScope }) {
+  const candidateKey = pendingSubmissionKey(submission.libraryId, submission.idempotencyKey);
+  const existingCandidate = await getJSONStrong(store, candidateKey);
+  if (!existingCandidate) {
+    await consumeProductionRateSlot({
+      store,
+      scope: rateScope,
+      subject: identity.deviceId,
+      salt: config.rateLimitSalt,
+      now,
+      slotMs: PRODUCTION_SUBMISSION_RATE_SLOT_MS,
+    });
+  }
+  return Object.freeze({ candidateKey, existingCandidate });
+}
+
 export async function acceptProductionExactSubmission({
   store,
   authorization,
@@ -154,6 +200,7 @@ export async function acceptProductionExactSubmission({
   review = reviewExactPriceCandidate,
 } = {}) {
   const config = readProductionWriteConfig(env);
+  assertProductionCandidateHandlerAvailable(rawSubmission, config);
   let submission;
   try {
     submission = normalizeSubmission(rawSubmission);
@@ -167,18 +214,14 @@ export async function acceptProductionExactSubmission({
     throw new ProductionWriteRuntimeError('DEVICE_SCOPE_MISMATCH', 'Authorization设备与提交deviceId不一致', 403);
   }
 
-  const candidateKey = pendingSubmissionKey(submission.libraryId, submission.idempotencyKey);
-  const existingCandidate = await getJSONStrong(store, candidateKey);
-  if (!existingCandidate) {
-    await consumeProductionRateSlot({
-      store,
-      scope: 'submission-create',
-      subject: identity.deviceId,
-      salt: config.rateLimitSalt,
-      now,
-      slotMs: PRODUCTION_SUBMISSION_RATE_SLOT_MS,
-    });
-  }
+  const { candidateKey } = await consumeCandidateRateIfNew({
+    store,
+    submission,
+    identity,
+    config,
+    now,
+    rateScope: 'submission-create',
+  });
 
   const result = await accept({
     store,
@@ -206,6 +249,7 @@ export async function acceptProductionExactSubmission({
   const publicMutationApplied = autoApprovalResult?.publicMutationApplied === true;
   return Object.freeze({
     ...result,
+    dataType: submission.dataType,
     externalScope: config.externalScope,
     protocolScope: Object.freeze({ groupId: config.allowedGroupId, libraryId: config.allowedLibraryId }),
     ordinarySubmissionEnabled: true,
@@ -215,4 +259,73 @@ export async function acceptProductionExactSubmission({
     autoApprovalResult,
     stablePromotionAuthorized: false,
   });
+}
+
+export async function acceptProductionOrdinarySubmission({
+  store,
+  authorization,
+  rawSubmission,
+  env,
+  now = Date.now(),
+  authenticate = authenticateDevice,
+  accept = acceptOrdinarySubmission,
+} = {}) {
+  const config = readProductionWriteConfig(env);
+  assertProductionCandidateHandlerAvailable(rawSubmission, config);
+  let submission;
+  try {
+    submission = normalizeOrdinarySubmission(rawSubmission);
+  } catch (error) {
+    throw new ProductionWriteRuntimeError(
+      error?.code || 'INVALID_SUBMISSION',
+      error?.message || '普通共享提交无效',
+      400,
+      error?.details || null,
+      error,
+    );
+  }
+  if (submission.dataType === 'exact_price') {
+    throw new ProductionWriteRuntimeError('EXACT_PRICE_HANDLER_REQUIRED', '精确价格必须使用精确价格接收器', 500);
+  }
+  assertProductionSubmissionScope(submission, config);
+
+  const identity = await authenticate({ store, authorization, now });
+  if (identity.deviceId !== submission.deviceId) {
+    throw new ProductionWriteRuntimeError('DEVICE_SCOPE_MISMATCH', 'Authorization设备与提交deviceId不一致', 403);
+  }
+  await consumeCandidateRateIfNew({
+    store,
+    submission,
+    identity,
+    config,
+    now,
+    rateScope: 'ordinary-submission-create',
+  });
+
+  const result = await accept({
+    store,
+    authorization,
+    rawSubmission: submission,
+    now,
+    authenticate: async () => identity,
+  });
+  return Object.freeze({
+    ...result,
+    dataType: submission.dataType,
+    externalScope: config.externalScope,
+    protocolScope: Object.freeze({ groupId: config.allowedGroupId, libraryId: config.allowedLibraryId }),
+    ordinarySubmissionEnabled: true,
+    publicMutationAllowed: false,
+    publicMutationApplied: false,
+    autoApprovalEnabled: false,
+    autoApprovalResult: null,
+    stablePromotionAuthorized: false,
+  });
+}
+
+export async function acceptProductionCandidateSubmission(input = {}) {
+  const config = readProductionWriteConfig(input.env || {});
+  const { dataType } = assertProductionCandidateHandlerAvailable(input.rawSubmission, config);
+  if (dataType === 'exact_price') return acceptProductionExactSubmission(input);
+  return acceptProductionOrdinarySubmission(input);
 }
