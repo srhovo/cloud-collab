@@ -5,7 +5,7 @@ import {
   cleanupStage5g6a6bObjects,
   inspectStage5g6a6bObjects,
   readStage5g6a6bCleanupConfig,
-} from '../src/server/stage5g6a6b_cleanup_v1.js';
+} from '../src/server/stage5g6a6b_cleanup_exact_v1.js';
 
 class MemoryStore {
   constructor(entries = {}) { this.values = new Map(Object.entries(entries)); }
@@ -56,27 +56,47 @@ test('清理配置要求所有能力关闭且密钥独立', () => {
   );
 });
 
-test('检查只接受固定白名单对象并返回摘要', async () => {
+test('检查接受联合验收实际对象格式并返回摘要', async () => {
   const publicStore = new MemoryStore({
     'stage5g6a6b/seed/v1.json': {},
     'devices/profiles/dev_01JSTAGE5G6A6B000000000001.json': {},
+    'devices/token-index/dth_v1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA.json': {},
     'submissions/lib_receive_fixture/pending/ik_v1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA.json': {},
+    'submissions/lib_receive_fixture/matches/bk_v1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/pv_000000000000/ch_v1_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB/dev_01JSTAGE5G6A6B000000000001.json': {},
+    'reviews/lib_receive_fixture/pending/bk_v1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/pv_000000000000/ch_v1_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB.json': {},
+    'reviews/lib_receive_fixture/ordinary-decisions/rv_v1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA.json': {},
+    'reviews/lib_receive_fixture/sensitive-decisions/srv_v1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA.json': {},
     'public/lib_receive_fixture/events/000000000001.json': {},
+    'public/lib_receive_fixture/sensitive-events/000000000002.json': {},
+    'public/lib_receive_fixture/sensitive-approvals/sap_v1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA.json': {},
+    'audit/2026/07/au_v1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA.json': {},
+    'audit/2026/07/sau_v1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA.json': {},
   });
   const adminStore = new MemoryStore({
     'admin-preview-rate/login/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/1.json': {},
   });
   const result = await inspectStage5g6a6bObjects({ publicStore, adminStore });
-  assert.equal(result.publicObjectCount, 4);
+  assert.equal(result.publicObjectCount, 13);
   assert.equal(result.adminObjectCount, 1);
   assert.match(result.publicKeySetDigest, /^[A-Za-z0-9_-]{43}$/);
 });
 
-test('未知对象在删除前失败关闭', async () => {
+test('未知顶层对象在删除前失败关闭', async () => {
   const publicStore = new MemoryStore({ 'real-production/object.json': {} });
   const adminStore = new MemoryStore();
   await assert.rejects(
     inspectStage5g6a6bObjects({ publicStore, adminStore }),
+    error => error.code === 'STAGE5G6A6B_CLEANUP_UNSAFE_OBJECTS',
+  );
+  assert.equal(publicStore.values.size, 1);
+});
+
+test('已知目录中的未知Key也在删除前失败关闭', async () => {
+  const publicStore = new MemoryStore({
+    'reviews/lib_receive_fixture/anything-goes.json': {},
+  });
+  await assert.rejects(
+    inspectStage5g6a6bObjects({ publicStore, adminStore: new MemoryStore() }),
     error => error.code === 'STAGE5G6A6B_CLEANUP_UNSAFE_OBJECTS',
   );
   assert.equal(publicStore.values.size, 1);
