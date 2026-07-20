@@ -29,6 +29,25 @@ const env = read('.env.example');
 const build = read('scripts/build.mjs');
 const stage5gBuild = read('scripts/build-stage5g.mjs');
 const packageJson = JSON.parse(read('package.json'));
+const packageBuildCommand = String(packageJson?.scripts?.build || '');
+const packageValidateCommand = String(packageJson?.scripts?.validate || '');
+const activeBuildScriptMatch = /^node\s+(scripts\/[A-Za-z0-9._-]+\.mjs)$/.exec(packageBuildCommand.trim());
+const activeBuildScript = activeBuildScriptMatch?.[1] || '';
+
+function buildChainReachesStage5G(script, visited = new Set()) {
+  if (!script || visited.has(script) || !fs.existsSync(path.join(root, script))) return false;
+  if (script === 'scripts/build-stage5g.mjs') return true;
+  visited.add(script);
+  const source = read(script);
+  const imports = [...source.matchAll(/["'`](\.\/build-[A-Za-z0-9._-]+\.mjs)["'`]/g)]
+    .map(match => path.posix.join('scripts', match[1].replace(/^\.\//, '')));
+  return imports.some(item => buildChainReachesStage5G(item, visited));
+}
+
+const activeBuildSource = activeBuildScript && fs.existsSync(path.join(root, activeBuildScript))
+  ? read(activeBuildScript)
+  : '';
+const activeBuildRetainsStage5G = buildChainReachesStage5G(activeBuildScript);
 
 check('Stage5G gate defaults closed', env.includes('CLOUD_ORDINARY_TYPES_PREVIEW_ENABLED=0'));
 check('Stage5G Blob and fixture scope are explicit', [
@@ -103,9 +122,13 @@ check('Stage5G administrator page uses dedicated routes and confirmations', [
 check('Stage5G administrator page visibly locks Stage6-sensitive actions', adminPage.includes('stage6SensitiveChangesBlocked')
   && adminPage.includes('mutableReasons')
   && adminPage.includes('任何写入都会被服务器'));
-
-check('Stage5G package builds and validates the active generated candidate', packageJson?.scripts?.build === 'node scripts/build-stage5g.mjs'
-  && String(packageJson?.scripts?.validate || '').startsWith('node scripts/build-stage5g.mjs'));
+check('Stage5G package builds and validates the active generated candidate', Boolean(activeBuildScript)
+  && packageValidateCommand.startsWith(`node ${activeBuildScript}`)
+  && activeBuildRetainsStage5G, {
+    packageBuildCommand,
+    packageValidateCommand,
+    activeBuildScript,
+  });
 check('Stage5G browser client recomputes ordinary hashes and dispatches all ordinary types', ordinaryClient.includes('computeOrdinaryHashes')
   && ordinaryClient.includes('planOrdinaryMerge')
   && ordinaryClient.includes('OrdinarySubmissionDispatcher')
@@ -166,7 +189,8 @@ check('Stage5G source contains no browser persistence or embedded secrets', !/(?
     ordinaryReadonly,
   ].join('\n')));
 check('8.2.25 remains excluded from all build inputs', !build.includes('码单器8.2.25')
-  && !stage5gBuild.includes('码单器8.2.25'));
+  && !stage5gBuild.includes('码单器8.2.25')
+  && !activeBuildSource.includes('码单器8.2.25'));
 
 const failed = checks.filter(item => !item.ok);
 const result = {
