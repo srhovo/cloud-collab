@@ -54,7 +54,7 @@
 - 同一请求必须自动重放，核验幂等恢复与公共版本只递增一次；
 - 所有候选、审核、公共事件和墓碑均只写入 `group_fixture / lib_receive_fixture`。
 
-## 计划中的一次性页面与路由
+## 一次性页面与路由
 
 页面：
 
@@ -63,7 +63,7 @@
 /stage5g6a6b-cleanup.html
 ```
 
-一次性路由：
+一次性控制路由：
 
 ```text
 POST /api/stage5g6a6b/acceptance/seed
@@ -71,7 +71,18 @@ GET  /api/stage5g6a6b/acceptance/status
 POST /api/stage5g6a6b/cleanup
 ```
 
-正式阶段5G、6A、6B的用户提交、管理员审核和公共读取路由继续直接使用 `main` 中的实现；一次性路由只负责生成合成种子、汇总强一致验收状态和按白名单销毁数据。
+一次性用户链路代理：
+
+```text
+POST /api/stage5g6a6b/acceptance/device-register
+POST /api/stage5g6a6b/acceptance/ordinary-submissions-create
+POST /api/stage5g6a6b/acceptance/sensitive-submissions-create
+GET  /api/stage5g6a6b/acceptance/public-version
+GET  /api/stage5g6a6b/acceptance/public-snapshot
+GET  /api/stage5g6a6b/acceptance/public-changes
+```
+
+正式阶段5G、6A、6B的管理员审核页面与接口继续直接使用 `main` 中的实现。一次性代理必须先校验同源和独立验收密钥，只在当前请求内部向既有 fixture 处理器提供所需的临时开关；实际部署环境中的正式公共写入与正式自动批准门禁始终保持关闭。
 
 ## 默认关闭与隔离门禁
 
@@ -85,17 +96,22 @@ CLOUD_STAGE5G6A6B_CLEANUP_CONFIRMATION=
 CLOUD_STAGE5G6A6B_CLEANUP_KEY=
 ```
 
-验收部署同时要求：
+验收部署的实际环境变量必须满足：
 
 ```text
-CLOUD_WRITE_PREVIEW_ENABLED=1
+CLOUD_WRITE_PREVIEW_ENABLED=0
+CLOUD_AUTO_APPROVAL_PREVIEW_ENABLED=0
 CLOUD_ORDINARY_TYPES_PREVIEW_ENABLED=1
 CLOUD_SENSITIVE_RULES_PREVIEW_ENABLED=1
 CLOUD_SENSITIVE_REVIEW_PREVIEW_ENABLED=1
 CLOUD_ADMIN_PREVIEW_ENABLED=1
 CLOUD_ADMIN_REVIEW_PREVIEW_ENABLED=1
 CLOUD_ADMIN_REVIEW_MUTATION_PREVIEW_ENABLED=1
+CLOUD_STAGE5G6A6B_ACCEPTANCE_ENABLED=1
+CLOUD_STAGE5G6A6B_CLEANUP_ENABLED=0
 ```
+
+原因：阶段5A管理员认证明确禁止与正式公共写入或正式自动批准预览同时开启。联合验收只能通过 `[DO NOT MERGE]` 分支中的一次性代理，在验收密钥、同源和 fixture 作用域校验通过后，按单个请求临时调用既有处理器；不能放宽正式门禁。
 
 并继续硬锁：
 
