@@ -44,7 +44,7 @@ html = replaceExact(
 );
 
 const identifierGuard = `
-<script id="cloudIdentifierAsciiGuard">
+// ===== 阶段7J：club/library ASCII ID失败关闭 =====
 (() => {
  const allowed = /^[a-z0-9_]+$/;
  const ids = ['cloudGroupIdInput', 'cloudLibraryIdInput'];
@@ -69,14 +69,15 @@ const identifierGuard = `
   invalid.focus?.();
  }, true);
 })();
-</script>
+// ===== 阶段7J：club/library ASCII ID失败关闭结束 =====
 `;
-html = replaceExact(html, '</body>', `${identifierGuard}</body>`, '页面结束标签');
+html = replaceExact(html, '</script>\n</body>', `${identifierGuard}</script>\n</body>`, '唯一内联脚本结束标签');
 
 if (html.includes(appVersionAnchor)) throw new Error('候选构建仍残留8.2.28 APP_VERSION锚点');
 if (html.includes('placeholder="例如：小雪"') || html.includes('placeholder="group_xiacijian"')) {
   throw new Error('阶段7J候选仍残留旧界面示例');
 }
+if ((html.match(/<script\b/gi) || []).length !== 1) throw new Error('阶段7J候选必须保留单一内联脚本');
 fs.writeFileSync(outputPath, html, 'utf8');
 
 let adminPage = fs.readFileSync(adminPagePath, 'utf8');
@@ -98,6 +99,7 @@ manifest.adminFrameAncestorsHeaderOnly = true;
 manifest.clubDisplayLabelEnabled = true;
 manifest.legacyGroupIdProtocolRetained = true;
 manifest.identifierAsciiValidationEnabled = true;
+manifest.singleInlineScriptRetained = true;
 manifest.nicknameExample = '下雪';
 manifest.publicJsonUtf8CharsetRequired = true;
 manifest.sha256 = crypto.createHash('sha256').update(Buffer.from(html)).digest('hex');
