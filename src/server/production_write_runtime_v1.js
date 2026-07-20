@@ -256,17 +256,17 @@ export async function acceptProductionOrdinarySubmission({
 
 export async function acceptProductionCandidateSubmission(input = {}) {
   const dataType = String(input?.rawSubmission?.dataType || '').trim().toLowerCase();
-  if (dataType === 'exact_price') return acceptProductionExactSubmission(input);
-  if (dataType === 'playable_name' || dataType === 'boss_profile') {
-    return acceptProductionOrdinarySubmission(input);
-  }
-  if (['rank_range_rule', 'surcharge_rule', 'gift_rule'].includes(dataType)
-      || String(input?.rawSubmission?.operation || '').trim().toLowerCase() === 'delete') {
+  const operation = String(input?.rawSubmission?.operation || '').trim().toLowerCase();
+  if (operation === 'delete' || ['rank_range_rule', 'surcharge_rule', 'gift_rule'].includes(dataType)) {
     throw new ProductionWriteRuntimeError(
       'PRODUCTION_SENSITIVE_HANDLER_REQUIRED',
       '敏感提交必须使用独立人工审核处理器',
       503,
     );
+  }
+  if (dataType === 'exact_price') return acceptProductionExactSubmission(input);
+  if (dataType === 'playable_name' || dataType === 'boss_profile') {
+    return acceptProductionOrdinarySubmission(input);
   }
   throw new ProductionWriteRuntimeError('UNSUPPORTED_PRODUCTION_DATA_TYPE', '正式普通提交类型不受支持', 400, {
     allowedDataTypes: PRODUCTION_ORDINARY_TYPES,
