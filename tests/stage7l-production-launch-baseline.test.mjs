@@ -21,7 +21,7 @@ function parseEnv(text) {
     }));
 }
 
-test('阶段7L固化生产目标与授权但不执行稳定晋升', () => {
+test('阶段7M固化生产目标与授权但不执行稳定晋升', () => {
   const plan = JSON.parse(fs.readFileSync(planPath, 'utf8'));
   const ledger = JSON.parse(fs.readFileSync(ledgerPath, 'utf8'));
 
@@ -33,13 +33,12 @@ test('阶段7L固化生产目标与授权但不执行稳定晋升', () => {
   assert.equal(plan.stableRelease.promotionPerformed, false);
   assert.equal(plan.stableRelease.separateFinalAuthorizationRequired, true);
 
-  assert.deepEqual(plan.scope, {
-    displayLabel: 'club',
-    protocolField: 'groupId',
-    groupId: 'see',
-    libraryId: 'see_cz',
-    legacyGroupIdProtocolRetained: true,
-  });
+  assert.equal(plan.scope.displayLabel, 'club');
+  assert.equal(plan.scope.protocolField, 'groupId');
+  assert.equal(plan.scope.mappingVersion, 1);
+  assert.deepEqual(plan.scope.external, { clubId: 'see', libraryId: 'see_cz' });
+  assert.deepEqual(plan.scope.protocol, { groupId: 'group_see', libraryId: 'lib_see_cz' });
+  assert.equal(plan.scope.legacyPrefixedIdsRemainAccepted, true);
 
   for (const key of ['readSync', 'ordinarySubmission', 'sensitiveSubmission', 'automaticOrdinaryApproval']) {
     assert.equal(plan.capabilityAuthorization[key], true, `${key}授权必须记录`);
@@ -48,7 +47,9 @@ test('阶段7L固化生产目标与授权但不执行稳定晋升', () => {
   assert.equal(plan.storage.realBlobWritePerformed, false);
   assert.equal(plan.administrator.username, 'xiaxue');
   assert.equal(plan.administrator.submittedChatSecretAccepted, false);
-  assert.equal(plan.access.platformProjectOrDeploymentDomainPermanentForPublicUse, false);
+  assert.equal(plan.access.platformProjectDomainStableWhileProjectExists, true);
+  assert.equal(plan.access.platformDomainAnonymousPermanentAccess, false);
+  assert.equal(plan.access.platformPreviewAccessTokenTtlHours, 3);
 
   assert.equal(ledger.stableVersion, '8.2.25');
   assert.equal(ledger.releasePolicy.stablePromotionAuthorized, false);
@@ -70,8 +71,10 @@ test('生产环境模板不含真实密钥且所有能力默认关闭', () => {
     'CLOUD_PRODUCTION_BOOTSTRAP_ENABLED',
   ]) assert.equal(env.get(name), '0');
 
-  assert.equal(env.get('CLOUD_PRODUCTION_GROUP_ID'), 'see');
-  assert.equal(env.get('CLOUD_PRODUCTION_LIBRARY_ID'), 'see_cz');
+  assert.equal(env.get('CLOUD_PRODUCTION_EXTERNAL_CLUB_ID'), 'see');
+  assert.equal(env.get('CLOUD_PRODUCTION_EXTERNAL_LIBRARY_ID'), 'see_cz');
+  assert.equal(env.get('CLOUD_PRODUCTION_GROUP_ID'), 'group_see');
+  assert.equal(env.get('CLOUD_PRODUCTION_LIBRARY_ID'), 'lib_see_cz');
   assert.equal(env.get('CLOUD_ADMIN_USERNAME'), 'xiaxue');
   assert.equal(env.get('CLOUD_PRODUCTION_PUBLIC_ORIGIN'), '');
   assert.equal(env.get('CLOUD_ADMIN_PUBLIC_ORIGIN'), '');
@@ -98,6 +101,9 @@ test('生产计划校验器与零写入初始化预演成功', () => {
   assert.equal(validate.status, 0, validate.stderr || validate.stdout);
   const readiness = JSON.parse(fs.readFileSync(path.join(root, 'dist', 'production-launch-readiness-v1.json'), 'utf8'));
   assert.equal(readiness.status, 'production_preparation_ready_domain_blob_and_secrets_required');
+  assert.deepEqual(readiness.externalScope, { clubId: 'see', libraryId: 'see_cz' });
+  assert.deepEqual(readiness.protocolScope, { groupId: 'group_see', libraryId: 'lib_see_cz' });
+  assert.equal(readiness.githubPagesStaticBackupAuthorized, true);
   assert.equal(readiness.productionActivationPerformed, false);
   assert.equal(readiness.stablePromotionPerformed, false);
 
@@ -108,7 +114,10 @@ test('生产计划校验器与零写入初始化预演成功', () => {
   assert.equal(bootstrap.status, 0, bootstrap.stderr || bootstrap.stdout);
   const report = JSON.parse(fs.readFileSync(path.join(root, 'dist', 'production-bootstrap-plan-v1.json'), 'utf8'));
   assert.equal(report.mode, 'dry_run');
-  assert.deepEqual(report.scope, { groupId: 'see', libraryId: 'see_cz' });
+  assert.deepEqual(report.externalScope, { clubId: 'see', libraryId: 'see_cz' });
+  assert.deepEqual(report.protocolScope, { groupId: 'group_see', libraryId: 'lib_see_cz' });
+  assert.deepEqual(report.initialSnapshot.scope, { groupId: 'group_see', libraryId: 'lib_see_cz' });
+  assert.equal(report.oneTimeConfirmation, 'INITIALIZE-see-see_cz-V1');
   assert.equal(report.realBlobReadsPerformed, 0);
   assert.equal(report.realBlobWritesPerformed, 0);
   assert.equal(report.realBlobDeletesPerformed, 0);

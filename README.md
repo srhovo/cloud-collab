@@ -1,6 +1,6 @@
 # 码单器公共协作数据库
 
-当前工程阶段为**阶段7L：生产上线参数与安全初始化准备**。最终普通用户交付仍是单HTML。
+当前工程阶段为**阶段7M：免费静态备用入口与正式作用域映射**。最终普通用户交付仍是单HTML。
 
 ## 当前发布状态
 
@@ -13,15 +13,16 @@ EdgeOne候选线上验收：通过
 Wi-Fi与移动数据访问：通过
 iPhone Safari冒烟：通过
 正式稳定目标版本：8.3.0（已选择，未授权晋升）
-正式作用域：club/groupId=see，libraryId=see_cz
-永久主入口：等待负责人可控制的自定义域名
+用户可见作用域：club=see，library=see_cz
+协议作用域：groupId=group_see，libraryId=lib_see_cz
+永久匿名主入口：等待负责人可控制的自定义域名
 生产能力授权：已记录
 生产能力实际启用：否
 稳定版8.2.25未晋升
 正式公共写入保持关闭
 ```
 
-阶段7A至7K已经完成维护能力、发布证据闭环、候选打包、双入口预演、EdgeOne真实部署、界面兼容修正和真实网络验收。阶段7L只建立生产参数、环境变量模板、密钥生成规则和零写入初始化预演，不修改候选HTML、不执行稳定晋升。
+阶段7A至7K已经完成维护能力、发布证据闭环、候选打包、双入口预演、EdgeOne真实部署、界面兼容修正和真实网络验收。阶段7L建立生产参数、环境变量模板、密钥生成规则和零写入初始化预演。阶段7M在不修改候选HTML的前提下补齐用户可见ID到既有协议ID的稳定映射，并授权自动部署GitHub Pages静态备用入口。
 
 ## 阶段7J兼容规则
 
@@ -37,15 +38,22 @@ club ID / library ID：仅支持小写英文字母、数字和下划线
 
 既有`group_*`和现有本地绑定不会被批量改名；本阶段不执行破坏性数据迁移。
 
-## 阶段7L生产准备
+## 阶段7M作用域映射
+
+```text
+用户可见club ID：see
+用户可见library ID：see_cz
+协议groupId：group_see
+协议libraryId：lib_see_cz
+```
+
+该映射保留已经通过自动化与真实EdgeOne验收的业务Hash、幂等键、审核链、Blob目录和迁移协议。既有带前缀ID不会被重复添加前缀；中文、空格、连字符和过短ID失败关闭。
 
 项目负责人已确认：
 
 ```text
 候选观察期：通过
 目标稳定版本：8.3.0
-首个groupId：see
-首个libraryId：see_cz
 只读同步：授权
 普通提交：授权
 普通自动审核：授权
@@ -64,23 +72,23 @@ npm run production:bootstrap:plan
 npm run production:secrets:generate -- --output /安全路径/cloud-collab-production-secrets.env
 ```
 
-所有生产开关默认保持`0`。阶段7L不会创建或写入真实Blob。
+所有生产开关默认保持`0`。阶段7M不会创建或写入真实Blob。
 
 ## 发布入口策略
 
 | 角色 | 入口 | 当前状态 |
 |---|---|---|
 | 权威源 | GitHub仓库、PR、Actions | 已使用 |
-| 候选验收入口 | EdgeOne Makers临时预览链接 | 8.2.31已通过Wi-Fi、移动数据和iPhone Safari验收；链接约3小时有效 |
-| 永久正式主入口 | EdgeOne自定义域名 | 未配置；当前正式上线阻断项 |
-| 免费静态备用 | GitHub Pages候选入口 | 手动授权，未触发部署；不能承载Cloud Functions和Blob |
+| 候选验收入口 | EdgeOne Makers固定项目域名加临时令牌 | 8.2.31已通过Wi-Fi、移动数据和iPhone Safari验收；令牌约3小时有效 |
+| 永久正式主入口 | EdgeOne自定义域名 | 未配置；匿名长期正式上线阻断项 |
+| 免费静态备用 | GitHub Pages | 阶段7M在`main`更新后自动部署冻结候选；不能承载Cloud Functions和Blob |
 | 离线兜底 | `码单器8.2.31_候选.html` | 已由Actions生成并冻结摘要 |
 
-GitHub仓库页面不是普通用户应用入口。GitHub Pages只能作为静态备用，不能替代EdgeOne正式API。需要中国大陆节点的EdgeOne自定义域名时必须完成ICP备案；没有域名时可继续通过临时预览链接做技术验收，但不能形成长期公开网址。
+EdgeOne项目域名在项目存在期间固定，但“全球可用区（含中国大陆）”仍需要临时访问令牌。GitHub仓库页面不是普通用户应用入口。GitHub Pages只能作为本地模式静态备用，不能替代EdgeOne正式API。
 
 ## 公开产物白名单
 
-候选主入口和备用入口只允许发布：
+EdgeOne候选入口与GitHub Pages备用入口都只允许发布：
 
 ```text
 index.html
@@ -117,31 +125,34 @@ Node：22.11.0
 
 `edgeone:build`会运行完整Node门禁，并只生成三文件候选白名单。
 
-## GitHub Pages候选备用入口
+## GitHub Pages免费静态备用
 
-`.github/workflows/pages.yml`不跟随`main`自动发布。未来只有项目负责人手动输入以下两项时才可部署候选备用入口：
+`.github/workflows/pages-static-backup.yml`在`main`更新后：
 
-```text
-candidate_version = 8.2.31
-confirmation = DEPLOY-CANDIDATE-8.2.31
-```
+1. 运行完整CI；
+2. 重新生成冻结8.2.31三文件白名单；
+3. 核对稳定晋升、正式公共写入和管理员页面边界；
+4. 发布到GitHub Pages；
+5. 在线核对提交、标题、版本、SHA-256和字节数。
 
-GitHub Pages是免费静态备用，不承载公共协作后端。
+原`.github/workflows/pages.yml`手动候选发布门禁继续保留，作为人工重发与故障恢复路径。
 
 ## 阶段边界
 
 ```text
-本PR自动真实部署：0
+EdgeOne新部署：0
 EdgeOne环境变量写入：0
 真实Blob创建或写入：0
 DNS修改：0
 生产能力启用：0
 稳定晋升：0
+GitHub Pages：仅自动部署冻结静态候选，不含后端能力
 正式公共写入保持关闭
 ```
 
 详细方案见：
 
+- `docs/阶段7M_免费静态备用入口与正式作用域映射.md`
 - `docs/阶段7L_生产上线参数与安全初始化准备.md`
 - `docs/阶段7K_8.2.31候选线上与真实网络验收.md`
 - `docs/阶段7J_候选8.2.31界面兼容与JSON字符集修复.md`
