@@ -21,8 +21,14 @@ const detailRoute = read('cloud-functions/api/admin/ordinary-reviews/detail.js')
 const approveRoute = read('cloud-functions/api/admin/ordinary-reviews/approve.js');
 const rejectRoute = read('cloud-functions/api/admin/ordinary-reviews/reject.js');
 const editRoute = read('cloud-functions/api/admin/ordinary-reviews/edit-and-approve.js');
+const ordinaryClient = read('src/cloud_collab_ordinary_types_client.js');
+const ordinaryFeature = read('src/cloud_collab_ordinary_feature_methods.fragment.js');
+const ordinaryReadonly = read('src/cloud_collab_ordinary_readonly_methods.fragment.js');
+const output = read('dist/index.html');
 const env = read('.env.example');
 const build = read('scripts/build.mjs');
+const stage5gBuild = read('scripts/build-stage5g.mjs');
+const packageJson = JSON.parse(read('package.json'));
 
 check('Stage5G gate defaults closed', env.includes('CLOUD_ORDINARY_TYPES_PREVIEW_ENABLED=0'));
 check('Stage5G Blob and fixture scope are explicit', [
@@ -97,6 +103,40 @@ check('Stage5G administrator page uses dedicated routes and confirmations', [
 check('Stage5G administrator page visibly locks Stage6-sensitive actions', adminPage.includes('stage6SensitiveChangesBlocked')
   && adminPage.includes('mutableReasons')
   && adminPage.includes('任何写入都会被服务器'));
+
+check('Stage5G package builds and validates the active generated candidate', packageJson?.scripts?.build === 'node scripts/build-stage5g.mjs'
+  && String(packageJson?.scripts?.validate || '').startsWith('node scripts/build-stage5g.mjs'));
+check('Stage5G browser client recomputes ordinary hashes and dispatches all ordinary types', ordinaryClient.includes('computeOrdinaryHashes')
+  && ordinaryClient.includes('planOrdinaryMerge')
+  && ordinaryClient.includes('OrdinarySubmissionDispatcher')
+  && ordinaryClient.includes("['exact_price', 'playable_name', 'boss_profile']"));
+check('Stage5G semantic enqueue hooks are explicit user or initial-binding actions', [
+  'enqueuePlayableNameUserChange',
+  'enqueueBossProfileUserChange',
+  'enqueueInitialOrdinarySubmissions',
+  "origin: 'user'",
+  'planInitialOrdinarySubmissions',
+].every(token => ordinaryFeature.includes(token))
+  && !ordinaryFeature.includes('addEventListener'));
+check('Stage5G receive merge verifies hashes, preserves local conflicts and rolls back failures', ordinaryReadonly.includes('planOrdinaryMerge')
+  && ordinaryReadonly.includes('ORDINARY_DELETE_REQUIRES_STAGE6')
+  && ordinaryReadonly.includes('SYNC_ROLLBACK_INCOMPLETE')
+  && ordinaryReadonly.includes('restoreData')
+  && ordinaryReadonly.includes('baseHashes: plans.ordinaryPlan.nextBaseHashes'));
+check('Stage5G generated queue accepts server boss identity and fixture library scope', stage5gBuild.includes('boss_v1_[A-Za-z0-9_-]{43}')
+  && stage5gBuild.includes('STAGE5G_PREVIEW_LIBRARY_SCOPE_REQUIRED')
+  && output.includes('boss_v1_[A-Za-z0-9_-]{43}')
+  && output.includes('STAGE5G_PREVIEW_LIBRARY_SCOPE_REQUIRED'));
+check('Stage5G generated candidate contains ordinary dispatch, semantic hooks and mixed receive merge', output.includes('CloudCollabOrdinaryTypes')
+  && output.includes('OrdinarySubmissionDispatcher')
+  && output.includes('enqueuePlayableNameUserChange')
+  && output.includes('enqueueBossProfileUserChange')
+  && output.includes('planStage5GMixedMerge')
+  && output.includes('commitStage5GMixedPlan'));
+check('Stage5G generated ordinary client stays outside administrator routes', !ordinaryClient.includes('/api/admin')
+  && !ordinaryFeature.includes('/api/admin')
+  && !ordinaryReadonly.includes('/api/admin')
+  && !output.includes('admin-ordinary-reviews-preview'));
 check('Stage5G source contains no browser persistence or embedded secrets', !/(?:localStorage|sessionStorage)\.(?:setItem|getItem|removeItem)/.test([
   policy,
   acceptance,
@@ -107,6 +147,9 @@ check('Stage5G source contains no browser persistence or embedded secrets', !/(?
   adminMutation,
   adminMutationHttp,
   adminPage,
+  ordinaryClient,
+  ordinaryFeature,
+  ordinaryReadonly,
 ].join('\n'))
   && !/(?:password|secret|token)\s*[:=]\s*['"][^'"]{12,}/i.test([
     policy,
@@ -118,8 +161,12 @@ check('Stage5G source contains no browser persistence or embedded secrets', !/(?
     adminMutation,
     adminMutationHttp,
     adminPage,
+    ordinaryClient,
+    ordinaryFeature,
+    ordinaryReadonly,
   ].join('\n')));
-check('8.2.25 remains excluded from all build inputs', !build.includes('码单器8.2.25'));
+check('8.2.25 remains excluded from all build inputs', !build.includes('码单器8.2.25')
+  && !stage5gBuild.includes('码单器8.2.25'));
 
 const failed = checks.filter(item => !item.ok);
 const result = {
@@ -127,9 +174,10 @@ const result = {
   total: checks.length,
   passed: checks.length - failed.length,
   failed: failed.length,
+  failedChecks: failed.map(item => item.name),
   checks,
 };
 fs.mkdirSync(path.join(root, 'test-results'), { recursive: true });
 fs.writeFileSync(path.join(root, 'test-results', '阶段5G_静态隐私与兼容门禁.json'), JSON.stringify(result, null, 2), 'utf8');
-console.log(JSON.stringify({ stage: result.stage, total: result.total, passed: result.passed, failed: result.failed }, null, 2));
+console.log(JSON.stringify({ stage: result.stage, total: result.total, passed: result.passed, failed: result.failed, failedChecks: result.failedChecks }, null, 2));
 process.exit(failed.length ? 1 : 0);
