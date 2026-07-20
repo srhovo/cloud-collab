@@ -37,7 +37,7 @@ function mutateJson(root, relativePath, mutate) {
   fs.writeFileSync(absolutePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 
-test('阶段7E审计冻结稳定元数据并准确列出发布决策项', () => {
+test('阶段7F审计记录已接受豁免并准确列出剩余发布决策项', () => {
   const report = auditReleaseRepository({ root: ROOT });
   assert.equal(report.status, 'decision_required');
   assert.equal(report.stable.version, '8.2.25');
@@ -51,11 +51,16 @@ test('阶段7E审计冻结稳定元数据并准确列出发布决策项', () => 
   assert.equal(report.candidate.ownerDecision, null);
   assert.equal(report.environment.allEnabledGatesDefaultOff, true);
   assert.equal(report.environment.examplePrivateValuesEmpty, true);
+  assert.equal(report.evidence.automated.stage7eWorkflowRunNumber, 1173);
+  assert.equal(report.evidence.automated.stage7eWorkflowConclusion, 'success');
+  assert.equal(report.evidence.automated.stage7eNodeTestCount, 282);
+  assert.equal(report.evidence.automated.stage7eNodeTestFailures, 0);
+  assert.equal(report.evidence.realDevice.finalCleanSnapshotAndTombstoneRerun, 'waived_due_to_manual_cost');
+  assert.equal(report.evidence.realDevice.finalCleanSnapshotAndTombstoneRerunExceptionAcceptedByOwner, true);
   assert.equal(report.evidence.temporaryResources.status, 'verified_destroyed');
   assert.equal(report.evidence.temporaryResources.evidenceSource, 'user_report');
   assert.deepEqual(report.blockers, [
     'candidate_version_owner_decision',
-    'real_device_final_rerun_exception_acceptance',
     'cleanup_exact_evidence_missing',
   ]);
   assert.deepEqual(report.boundaries, {
@@ -65,6 +70,20 @@ test('阶段7E审计冻结稳定元数据并准确列出发布决策项', () => 
     productionWriteEnablementIncluded: false,
     promotionPerformed: false,
   });
+});
+
+test('人工重跑豁免未获项目负责人接受时继续阻断', () => {
+  const root = copyFixture();
+  try {
+    mutateJson(root, 'release/release-closure-ledger-v1.json', ledger => {
+      ledger.evidence.realDevice.finalCleanSnapshotAndTombstoneRerunExceptionAcceptedByOwner = false;
+    });
+    const report = auditReleaseRepository({ root });
+    assert.equal(report.status, 'decision_required');
+    assert.equal(report.blockers.includes('real_device_final_rerun_exception_acceptance'), true);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('任一预览能力默认开启时失败关闭', () => {
@@ -116,12 +135,27 @@ test('稳定基线元数据无效时失败关闭', () => {
   }
 });
 
-test('全部证据补齐后仍只进入独立晋升授权状态', () => {
+test('阶段7E自动化证据无效时失败关闭', () => {
+  const root = copyFixture();
+  try {
+    mutateJson(root, 'release/release-closure-ledger-v1.json', ledger => {
+      ledger.evidence.automated.stage7eNodeTestFailures = 1;
+    });
+    assert.throws(
+      () => auditReleaseRepository({ root }),
+      error => error instanceof ReleaseReadinessAuditError
+        && error.code === 'RELEASE_AUTOMATED_EVIDENCE_FAILED',
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('剩余证据补齐后仍只进入独立晋升授权状态', () => {
   const root = copyFixture();
   try {
     mutateJson(root, 'release/release-closure-ledger-v1.json', ledger => {
       ledger.candidateVersionDecision = '8.2.30';
-      ledger.evidence.realDevice.finalCleanSnapshotAndTombstoneRerun = 'passed';
       ledger.evidence.cleanup.exactDeletionCountsRecorded = true;
       ledger.evidence.cleanup.independentZeroCountEvidenceRecorded = true;
       ledger.evidence.temporaryResources.status = 'verified_destroyed';

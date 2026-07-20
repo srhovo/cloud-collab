@@ -88,9 +88,18 @@ function ledgerOf(value) {
       || !Number.isSafeInteger(stable.bytes) || stable.bytes <= 0) {
     fail('RELEASE_STABLE_METADATA_INVALID', '外部冻结稳定基线元数据无效');
   }
-  if (value.evidence?.automated?.stage7dWorkflowConclusion !== 'success'
-      || value.evidence?.automated?.coreAndBrowserRegression !== 'passed') {
+  const automated = value.evidence?.automated;
+  if (automated?.stage7dWorkflowConclusion !== 'success'
+      || automated?.stage7eWorkflowConclusion !== 'success'
+      || automated?.coreAndBrowserRegression !== 'passed'
+      || !Number.isSafeInteger(automated?.stage7eNodeTestCount) || automated.stage7eNodeTestCount <= 0
+      || automated?.stage7eNodeTestFailures !== 0) {
     fail('RELEASE_AUTOMATED_EVIDENCE_FAILED', '自动化证据未通过');
+  }
+  const realDevice = value.evidence?.realDevice;
+  const rerunState = realDevice?.finalCleanSnapshotAndTombstoneRerun;
+  if (!['passed', 'waived_due_to_manual_cost'].includes(rerunState)) {
+    fail('RELEASE_REAL_DEVICE_EVIDENCE_INVALID', '最终实机证据状态无效');
   }
   const policy = value.releasePolicy || {};
   if (policy.stableBaselineMustRemainUnchanged !== true
@@ -106,9 +115,11 @@ function ledgerOf(value) {
 function blockersOf(ledger) {
   const blockers = [];
   if (ledger.candidateVersionDecision === null) blockers.push('candidate_version_owner_decision');
-  if (ledger.evidence.realDevice.finalCleanSnapshotAndTombstoneRerun !== 'passed') {
-    blockers.push('real_device_final_rerun_exception_acceptance');
-  }
+  const realDevice = ledger.evidence.realDevice;
+  const rerunSatisfied = realDevice.finalCleanSnapshotAndTombstoneRerun === 'passed'
+    || (realDevice.finalCleanSnapshotAndTombstoneRerun === 'waived_due_to_manual_cost'
+      && realDevice.finalCleanSnapshotAndTombstoneRerunExceptionAcceptedByOwner === true);
+  if (!rerunSatisfied) blockers.push('real_device_final_rerun_exception_acceptance');
   if (!ledger.evidence.cleanup.exactDeletionCountsRecorded
       || !ledger.evidence.cleanup.independentZeroCountEvidenceRecorded) {
     blockers.push('cleanup_exact_evidence_missing');
