@@ -1,4 +1,4 @@
-name: stage7g-release-candidate
+name: stage7j-release-candidate
 
 on:
   pull_request:
@@ -11,10 +11,11 @@ on:
       - 'scripts/release-readiness-audit-v1.mjs'
       - 'scripts/package-release-candidate-v1.mjs'
       - 'release/release-closure-ledger-v1.json'
-      - 'release/最终发布清单_8.2.30.json'
+      - 'release/最终发布清单_8.2.31.json'
       - 'tests/stage7e-release-readiness-audit.test.mjs'
       - 'tests/stage7g-release-package.test.mjs'
-      - 'docs/阶段7G_候选8.2.30打包与发布清单.md'
+      - 'tests/stage7j-candidate-ui-charset.test.mjs'
+      - 'docs/阶段7J_候选8.2.31界面兼容与JSON字符集修复.md'
   workflow_dispatch:
 
 permissions:
@@ -34,7 +35,7 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm install --ignore-scripts
+        run: npm ci --ignore-scripts
 
       - name: Run complete CI gate
         run: npm run ci
@@ -46,21 +47,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -f 'release-output/码单器8.2.30_候选.html'
-          test -f 'release-output/最终发布清单_8.2.30.json'
-          test -f 'release-output/发布审计_8.2.30.json'
-          test -f 'release/最终发布清单_8.2.30.json'
-          cmp -s 'release/最终发布清单_8.2.30.json' 'release-output/最终发布清单_8.2.30.json'
-          sha256sum 'release-output/码单器8.2.30_候选.html'
-          cat 'release-output/最终发布清单_8.2.30.json'
+          test -f 'release-output/码单器8.2.31_候选.html'
+          test -f 'release-output/最终发布清单_8.2.31.json'
+          test -f 'release-output/发布审计_8.2.31.json'
+          test -f 'release/最终发布清单_8.2.31.json'
+          cmp -s 'release/最终发布清单_8.2.31.json' 'release-output/最终发布清单_8.2.31.json'
+          sha256sum 'release-output/码单器8.2.31_候选.html'
+          cat 'release-output/最终发布清单_8.2.31.json'
 
-      - name: Upload 8.2.30 candidate package
+      - name: Upload 8.2.31 candidate package
         uses: actions/upload-artifact@v4
         with:
-          name: mdq-8.2.30-candidate-package
+          name: mdq-8.2.31-candidate-package
           path: |
-            release-output/码单器8.2.30_候选.html
-            release-output/最终发布清单_8.2.30.json
-            release-output/发布审计_8.2.30.json
+            release-output/码单器8.2.31_候选.html
+            release-output/最终发布清单_8.2.31.json
+            release-output/发布审计_8.2.31.json
           if-no-files-found: error
           retention-days: 30
