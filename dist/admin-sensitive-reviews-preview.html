@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; object-src 'none'; frame-ancestors 'none'">
+  <title>阶段6B敏感变更人工审核</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;color-scheme:light;--blue:#0969da;--green:#1a7f37;--red:#cf222e;--amber:#9a6700;--border:#d0d7de;--muted:#57606a;--bg:#f6f8fa}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#1f2328}main{width:min(1020px,calc(100% - 24px));margin:24px auto}.card{margin-bottom:14px;padding:18px;border:1px solid var(--border);border-radius:14px;background:#fff;box-shadow:0 8px 24px rgba(31,35,40,.07)}h1,h2,h3{margin:0 0 8px}h1{font-size:24px}h2{font-size:20px}h3{font-size:17px}p{line-height:1.6}.muted{color:var(--muted);font-size:14px}.banner{padding:12px 14px;border-left:4px solid var(--red);border-radius:8px;background:#ffebe9}.toolbar,.actions{display:flex;gap:9px;flex-wrap:wrap;margin:14px 0}button{min-height:42px;border:0;border-radius:8px;padding:9px 14px;background:var(--blue);color:#fff;font:750 15px system-ui;cursor:pointer}.secondary{background:#57606a}.danger{background:var(--red)}button:disabled{opacity:.45;cursor:not-allowed}.status{padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg);font-weight:700;white-space:pre-wrap}.ok{color:var(--green)}.error{color:var(--red)}.review{margin-top:12px;padding:14px;border:1px solid var(--border);border-radius:10px;background:#fff}.review-head{display:flex;gap:8px;justify-content:space-between;align-items:flex-start}.pill{display:inline-block;padding:3px 8px;border-radius:999px;background:#fff8c5;color:#7d4e00;font-size:12px;font-weight:750}.meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px 12px;color:var(--muted);font-size:13px}.summary{margin-top:12px;padding:12px;border-radius:9px;background:var(--bg);white-space:pre-wrap;overflow-wrap:anywhere}.editor{display:grid;grid-template-columns:1fr;gap:8px;margin-top:12px}.editor textarea,.editor select{width:100%;min-height:42px;border:1px solid var(--border);border-radius:8px;padding:9px;font:14px ui-monospace,SFMono-Regular,Consolas,monospace}.editor textarea{min-height:150px}.note{margin-top:10px;color:var(--muted);font-size:13px}.empty{padding:22px;text-align:center;color:var(--muted)}.hidden{display:none!important}@media(max-width:680px){main{margin-top:12px}.card{padding:15px}.meta{grid-template-columns:1fr}.review-head{display:block}.actions button{width:100%}}
+  </style>
+</head>
+<body>
+<main>
+  <section class="card">
+    <h1>阶段6B：敏感变更人工审核</h1>
+    <p class="muted">独立管理员入口 · 仅合成测试作用域 · 所有敏感变化强制人工审核</p>
+    <p class="banner"><strong>高风险操作。</strong>批准后会在合成预览库发布不可变公共更新或删除墓碑；不会物理删除历史事件，也不会开放正式公共写入。</p>
+    <div class="toolbar">
+      <button id="loginBtn" type="button">前往安全登录</button>
+      <button id="refreshBtn" class="secondary" type="button">刷新敏感审核队列</button>
+      <button id="logoutBtn" class="danger" type="button">退出并清除会话</button>
+    </div>
+    <div id="status" class="status" aria-live="polite">正在检查管理员会话……</div>
+    <p id="identity" class="muted">尚未验证管理员会话。</p>
+  </section>
+  <section id="queueCard" class="card hidden">
+    <h2>敏感待审核 <span id="count" class="pill">0</span></h2>
+    <p id="scope" class="muted">尚未读取合成作用域。</p>
+    <div id="queue"></div>
+  </section>
+</main>
+<script>
+(() => {
+  'use strict';
+  const ids=['loginBtn','refreshBtn','logoutBtn','status','identity','queueCard','count','scope','queue'];
+  const els=Object.fromEntries(ids.map(id=>[id,document.getElementById(id)]));
+  const details=new Map();
+  let busy=false;
+
+  function setBusy(value){busy=value;for(const button of document.querySelectorAll('button'))button.disabled=value;for(const input of document.querySelectorAll('textarea,select'))input.disabled=value}
+  function setStatus(message,kind=''){els.status.textContent=message;els.status.className=`status ${kind}`.trim()}
+  function clearQueue(){details.clear();els.queue.replaceChildren();els.queueCard.classList.add('hidden');els.count.textContent='0'}
+  async function api(path,init={}){const response=await fetch(path,{credentials:'same-origin',cache:'no-store',redirect:'error',referrerPolicy:'no-referrer',...init});const payload=await response.json().catch(()=>null);if(!response.ok||!payload?.ok){const error=new Error(payload?.error?.message||`敏感审核接口失败（HTTP ${response.status}）`);error.code=payload?.error?.code||`HTTP_${response.status}`;throw error}return payload.data}
+  function assertCapabilities(data){const caps=data?.capabilities||{};if(caps.queueRead!==true||caps.detailRead!==true||caps.approve!==true||caps.reject!==true||caps.editAndApprove!==true||caps.tombstonePublish!==true||caps.automaticApproval!==false||caps.trustedDeviceBypass!==false||caps.twoDeviceBypass!==false||caps.syntheticFixtureOnly!==true)throw new Error('服务器未保持阶段6B敏感审核权限边界。')}
+  function typeLabel(type){return({exact_price:'普通单价',playable_name:'陪玩名字',boss_profile:'老板资料',rank_range_rule:'区间规则',surcharge_rule:'加价规则',gift_rule:'礼物规则'})[type]||type}
+  function reasonLabel(reason){return({rank_range_rule_manual_review:'区间规则人工审核',surcharge_rule_manual_review:'加价规则人工审核',gift_rule_manual_review:'礼物规则人工审核',explicit_delete_manual_review:'显式删除人工审核',boss_name_change_sensitive:'老板身份变化',boss_direct_report_change_sensitive:'直属变化',boss_discount_increase_sensitive:'折数升高',boss_discount_drop_abnormal:'异常大幅降折'})[reason]||'敏感变更人工审核'}
+  function addMeta(container,label,value){const span=document.createElement('span');span.textContent=`${label}：${value}`;container.append(span)}
+  function pretty(value){return value===null?'（无）':JSON.stringify(value,null,2)}
+
+  async function loadDetail(reviewId,container,button){if(details.has(reviewId)){renderDetail(details.get(reviewId),container);return}button.disabled=true;button.textContent='正在读取…';try{const data=await api(`/api/admin/sensitive-reviews/detail?id=${encodeURIComponent(reviewId)}`);assertCapabilities(data);details.set(reviewId,data);renderDetail(data,container)}catch(error){setStatus(error?.message||'敏感审核详情读取失败。','error');button.disabled=false;button.textContent='重新读取详情'}}
+
+  function renderDetail(data,container){container.replaceChildren();const item=data.item;const summary=document.createElement('div');summary.className='summary';summary.textContent=`公共基线\n${pretty(data.baseline?.payload??null)}\n\n候选${item.operation==='delete'?'（删除墓碑）':''}\n${pretty(data.candidate.payload)}`;const editor=document.createElement('div');editor.className='editor';const textarea=document.createElement('textarea');textarea.value=pretty(data.candidate.payload);textarea.setAttribute('aria-label','敏感候选编辑JSON');if(item.operation==='delete')textarea.disabled=true;const rejectReason=document.createElement('select');rejectReason.setAttribute('aria-label','敏感拒绝原因');for(const [value,label] of [['invalid_data','数据无效'],['insufficient_evidence','证据不足'],['conflicting_candidates','候选冲突'],['unsupported_change','不支持的变更'],['identity_uncertain','身份不确定'],['delete_not_confirmed','删除未确认']]){const option=document.createElement('option');option.value=value;option.textContent=label;rejectReason.append(option)}editor.append(textarea,rejectReason);const actions=document.createElement('div');actions.className='actions';const approve=document.createElement('button');approve.type='button';approve.textContent=item.operation==='delete'?'批准并发布墓碑':'批准候选';approve.addEventListener('click',()=>{if(!window.confirm(`确认批准此${typeLabel(item.dataType)}${item.operation==='delete'?'删除墓碑':'变更'}？`))return;mutate('/api/admin/sensitive-reviews/approve',{reviewId:item.reviewId,confirmation:'APPROVE_SENSITIVE'},'批准完成')});const reject=document.createElement('button');reject.type='button';reject.className='danger';reject.textContent='拒绝候选';reject.addEventListener('click',()=>{if(!window.confirm(`确认拒绝此${typeLabel(item.dataType)}敏感候选？`))return;mutate('/api/admin/sensitive-reviews/reject',{reviewId:item.reviewId,confirmation:'REJECT_SENSITIVE',reasonCode:rejectReason.value},'拒绝完成')});const edit=document.createElement('button');edit.type='button';edit.className='secondary';edit.textContent='按JSON编辑后批准';edit.disabled=item.operation==='delete';edit.addEventListener('click',()=>{let payload;try{payload=JSON.parse(textarea.value)}catch(_){setStatus('编辑内容不是有效JSON。','error');return}if(!window.confirm(`确认按当前JSON修改并批准此${typeLabel(item.dataType)}？`))return;mutate('/api/admin/sensitive-reviews/edit-and-approve',{reviewId:item.reviewId,confirmation:'EDIT_AND_APPROVE_SENSITIVE',payload},'编辑后批准完成')});actions.append(approve,reject,edit);container.append(summary,editor,actions)}
+
+  function reviewNode(item){const article=document.createElement('article');article.className='review';const head=document.createElement('div');head.className='review-head';const title=document.createElement('h3');title.textContent=`${typeLabel(item.dataType)} · ${item.operation==='delete'?'删除':'修改'} · …${item.reviewId.slice(-8)}`;const pill=document.createElement('span');pill.className='pill';pill.textContent=reasonLabel(item.reason);head.append(title,pill);const meta=document.createElement('div');meta.className='meta';addMeta(meta,'收到时间',new Date(item.receivedAt).toLocaleString());addMeta(meta,'墓碑请求',item.tombstoneRequested?'是':'否');addMeta(meta,'业务键',`…${item.businessKey.slice(-10)}`);addMeta(meta,'基线Hash',item.baselineContentHash?`…${item.baselineContentHash.slice(-10)}`:'无');const detail=document.createElement('div');const load=document.createElement('button');load.type='button';load.className='secondary';load.textContent='读取基线与候选详情';load.addEventListener('click',()=>loadDetail(item.reviewId,detail,load));article.append(head,meta,load,detail);return article}
+
+  function renderQueue(data){assertCapabilities(data);els.count.textContent=String(data.count);els.scope.textContent=`合成作用域：${data.scope.groupId} / ${data.scope.libraryId}`;els.queue.replaceChildren();if(!Array.isArray(data.items)||!data.items.length){const empty=document.createElement('div');empty.className='empty';empty.textContent='当前没有敏感待审核项目。';els.queue.append(empty)}else for(const item of data.items)els.queue.append(reviewNode(item));els.queueCard.classList.remove('hidden')}
+  async function loadQueue({preserveStatus=false}={}){if(busy)return;setBusy(true);if(!preserveStatus)setStatus('正在强一致读取敏感审核队列……');try{const data=await api('/api/admin/sensitive-reviews');renderQueue(data);if(!preserveStatus)setStatus(`敏感审核队列已加载：${data.count} 项。`,'ok')}catch(error){clearQueue();setStatus(error?.message||'敏感审核队列加载失败。','error')}finally{setBusy(false)}}
+  async function mutate(path,body,label){if(busy)return;setBusy(true);setStatus('正在写入不可变决定、审计和公共事件……');try{const data=await api(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});assertCapabilities(data);const publicText=data.publicResult?`；公共版本 ${data.publicResult.version}`:'';setStatus(`${label}${publicText}；决定 …${data.resolution.decisionId.slice(-8)}。`,'ok');setBusy(false);await loadQueue({preserveStatus:true})}catch(error){setStatus(error?.message||'敏感审核动作失败。','error');setBusy(false)}}
+  async function initialize(){setBusy(true);try{const session=await api('/api/admin/auth/session');if(!session?.authenticated)throw new Error('管理员会话无效。');els.identity.textContent=`${session.username} · 会话…${session.sessionIdSuffix} · 到期 ${new Date(session.expiresAt).toLocaleString()}`;setBusy(false);await loadQueue()}catch(error){clearQueue();els.identity.textContent='没有有效管理员会话；请先前往独立安全登录页。';const expected=['ADMIN_SESSION_MISSING','ADMIN_SESSION_INVALID','ADMIN_SESSION_EXPIRED','ADMIN_PREVIEW_DISABLED'].includes(error?.code);setStatus(expected?'请先完成管理员安全登录。':(error?.message||'会话检查失败。'),expected?'':'error');setBusy(false)}}
+  els.loginBtn.addEventListener('click',()=>{window.location.href='/admin-preview.html'});els.refreshBtn.addEventListener('click',()=>loadQueue());els.logoutBtn.addEventListener('click',async()=>{if(busy)return;setBusy(true);try{await api('/api/admin/auth/logout',{method:'POST'});clearQueue();els.identity.textContent='管理员会话已清除。';setStatus('已退出；敏感审核内容已从页面清除。','ok')}catch(error){setStatus(error?.message||'退出失败。','error')}finally{setBusy(false)}});window.addEventListener('pagehide',clearQueue);initialize();
+})();
+</script>
+</body>
+</html>
