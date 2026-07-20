@@ -67,6 +67,7 @@ test('检查接受联合验收实际对象格式并返回摘要', async () => {
     'reviews/lib_receive_fixture/ordinary-decisions/rv_v1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA.json': {},
     'reviews/lib_receive_fixture/sensitive-decisions/srv_v1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA.json': {},
     'public/lib_receive_fixture/events/000000000001.json': {},
+    'public/lib_receive_fixture/transitions/bk_v1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/000000000000.json': {},
     'public/lib_receive_fixture/sensitive-events/000000000002.json': {},
     'public/lib_receive_fixture/sensitive-approvals/sap_v1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA.json': {},
     'audit/2026/07/au_v1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA.json': {},
@@ -76,7 +77,7 @@ test('检查接受联合验收实际对象格式并返回摘要', async () => {
     'admin-preview-rate/login/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/1.json': {},
   });
   const result = await inspectStage5g6a6bObjects({ publicStore, adminStore });
-  assert.equal(result.publicObjectCount, 13);
+  assert.equal(result.publicObjectCount, 14);
   assert.equal(result.adminObjectCount, 1);
   assert.match(result.publicKeySetDigest, /^[A-Za-z0-9_-]{43}$/);
 });
