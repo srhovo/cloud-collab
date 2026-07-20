@@ -8,9 +8,11 @@
     "sha256": "d34a436d5910ab027ad466309c44c6607fc8b60d2b21cf4b1cc4bf5a188bd6d3",
     "bytes": 908220
   },
-  "currentCompatibleCandidateVersion": "8.2.28",
+  "currentCompatibleCandidateVersion": "8.2.30",
   "recommendedCandidateVersionFromPlan": "8.2.30",
-  "candidateVersionDecision": null,
+  "candidateVersionDecision": "8.2.30",
+  "candidateVersionDecisionRecordedAt": "2026-07-21",
+  "candidateVersionDecisionSource": "project_owner_chat",
   "evidence": {
     "automated": {
       "stage7dMainCommit": "cf4149fb16575057f9fc9f823e178798034da5ac",
@@ -22,6 +24,12 @@
       "stage7eWorkflowConclusion": "success",
       "stage7eNodeTestCount": 282,
       "stage7eNodeTestFailures": 0,
+      "stage7fPullRequest": 41,
+      "stage7fMainCommit": "1bafc754188b7a5807df2fc8f8e23eadfe75ac7b",
+      "stage7fWorkflowRunNumber": 1184,
+      "stage7fWorkflowConclusion": "success",
+      "stage7fNodeTestCount": 284,
+      "stage7fNodeTestFailures": 0,
       "coreAndBrowserRegression": "passed"
     },
     "realDevice": {
@@ -32,12 +40,16 @@
       "finalCleanSnapshotAndTombstoneRerunExceptionAcceptedByOwner": true,
       "exceptionAcceptanceRecordedAt": "2026-07-21",
       "exceptionAcceptanceSource": "project_owner_chat",
-      "technicalCorroboration": "stage7e_full_ci_and_reused_real_chain_evidence"
+      "technicalCorroboration": "stage7e_and_stage7f_full_ci_and_reused_real_chain_evidence"
     },
     "cleanup": {
       "status": "user_reported_completed",
       "exactDeletionCountsRecorded": false,
-      "independentZeroCountEvidenceRecorded": false
+      "independentZeroCountEvidenceRecorded": false,
+      "exactEvidenceWaiverAcceptedByOwner": true,
+      "waiverAcceptedAt": "2026-07-21",
+      "waiverSource": "project_owner_chat",
+      "waiverReason": "temporary_edgeone_project_already_deleted_and_exact_counts_cannot_be_recovered"
     },
     "temporaryResources": {
       "status": "verified_destroyed",
@@ -52,7 +64,10 @@
     "stableBaselineMustRemainUnchanged": true,
     "allPreviewCapabilitiesDefaultOff": true,
     "candidateVersionRequiresOwnerDecision": true,
+    "candidatePackagingAuthorized": true,
     "promotionRequiresSeparateOwnerAuthorization": true,
+    "stablePromotionAuthorized": false,
+    "stablePromotionPerformed": false,
     "productionWriteEnablementIncluded": false
   }
 }
