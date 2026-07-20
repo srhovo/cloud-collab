@@ -42,7 +42,7 @@ function responseHeaders(filename, { edgeHeaders = true, omit = null, jsonCharse
   if (edgeHeaders) {
     const values = new Map([
       ['Cache-Control', 'no-cache, max-age=0, must-revalidate'],
-      ['X-Content-Type-Options', 'nosn'], ['X-Frame-Options', 'DENY'], ['Referrer-Policy', 'no-referrer'],
+      ['X-Content-Type-Options', 'nosniff'], ['X-Frame-Options', 'DENY'], ['Referrer-Policy', 'no-referrer'],
     ]);
     for (const [key, value] of values) if (key.toLowerCase() !== String(omit || '').toLowerCase()) headers.set(key, value);
   }
