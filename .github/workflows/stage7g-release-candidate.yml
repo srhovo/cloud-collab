@@ -13,13 +13,16 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-candidate:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -27,6 +30,18 @@ jobs:
         run: npm install --ignore-scripts
       - name: Build and validate 8.2.30 candidate
         run: npm run ci
+      - name: Commit reproducible candidate assets to the PR branch
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- "release/candidates/码单器8.2.30_候选.html" "release/final-release-manifest-v1.json"
+          if git diff --cached --quiet; then
+            echo "Candidate assets already match the reproducible build."
+            exit 0
+          fi
+          git commit -m "build(stage7g): record generated 8.2.30 candidate assets"
+          git push origin "HEAD:${GITHUB_HEAD_REF}"
       - name: Upload 8.2.30 candidate and final release manifest
         uses: actions/upload-artifact@v4
         with:
