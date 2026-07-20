@@ -1,0 +1,53 @@
+name: stage7p-production-write
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'cloud-functions/api/device/register.js'
+      - 'cloud-functions/api/submissions/create.js'
+      - 'src/server/production_write_runtime_v1.js'
+      - 'src/server/production_write_http_v1.js'
+      - 'src/server/write_mode_dispatch_v1.js'
+      - 'src/server/production_runtime_config_v1.js'
+      - 'tests/stage7p-production-device-and-exact-submission.test.mjs'
+      - '.github/workflows/stage7p-production-write.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production-write:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Run production device and exact submission tests
+        run: node --test tests/stage7p-production-device-and-exact-submission.test.mjs tests/stage4b2-preview-write.test.mjs tests/stage7n-production-runtime-and-bootstrap.test.mjs
+
+      - name: Audit production write routes and defaults
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! grep -R "CLOUD_PRODUCTION_.*=1" config/production.env.template
+          grep -q "dispatchDeviceRegisterRequest" cloud-functions/api/device/register.js
+          grep -q "dispatchSubmissionCreateRequest" cloud-functions/api/submissions/create.js
+          ! grep -R "Access-Control-Allow-Origin.*\*" src/server/production_write_http_v1.js
+          ! grep -R "stablePromotionAuthorized: true" src/server/production_write_runtime_v1.js src/server/production_write_http_v1.js
+          ! grep -R "publicMutationAllowed: true" src/server/production_write_runtime_v1.js src/server/production_write_http_v1.js
+          ! grep -R "autoApprovalEnabled: true" src/server/production_write_runtime_v1.js src/server/production_write_http_v1.js
+          ! grep -R "CLOUD_ADMIN_PASSWORD\|CLOUD_PRODUCTION_CLIENT_ACCESS_KEY=.*[^=]" cloud-functions/api src/server/production_write_runtime_v1.js src/server/production_write_http_v1.js src/server/write_mode_dispatch_v1.js
+
+      - name: Confirm all Cloud Function imports resolve
+        run: node --test tests/cloud-functions-relative-imports.test.mjs
