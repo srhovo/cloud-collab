@@ -6,4 +6,9 @@ node_modules/
 *.log
 coverage/
 __pycache__/
-test-results/阶段4C_静态与隐私边界验证结果.json
+.pages-artifact/
+.edgeone-artifact/
+release-output/
+dist/release-readiness-audit.json
+dist/stage7h-release-rehearsal.json
+test-results/*
