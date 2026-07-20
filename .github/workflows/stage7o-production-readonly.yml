@@ -1,0 +1,49 @@
+name: stage7o-production-readonly
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'cloud-functions/api/public/**'
+      - 'src/server/production_read_runtime_v1.js'
+      - 'src/server/production_read_http_v1.js'
+      - 'src/server/production_runtime_config_v1.js'
+      - 'src/server/edgeone_blob_runtime_v1.js'
+      - 'tests/stage7o-production-readonly.test.mjs'
+      - '.github/workflows/stage7o-production-readonly.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production-readonly:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Run production read-only tests
+        run: node --test tests/stage7o-production-readonly.test.mjs tests/stage7n-production-runtime-and-bootstrap.test.mjs
+
+      - name: Audit production routes and default-closed environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(find cloud-functions/api/public -maxdepth 1 -type f -printf '%f\n' | sort | tr '\n' ' ')" = "changes.js snapshot.js version.js "
+          ! grep -R "CLOUD_PRODUCTION_.*=1" config/production.env.template
+          ! grep -R "createEdgeOneNamedBlobStore" cloud-functions/api/public
+          ! grep -R "setJSON\|delete(" src/server/production_read_runtime_v1.js src/server/production_read_http_v1.js cloud-functions/api/public
+          grep -q "stablePromotionAuthorized: false" src/server/production_read_runtime_v1.js
+
+      - name: Confirm Cloud Function relative imports resolve
+        run: node --test tests/cloud-functions-relative-imports.test.mjs
