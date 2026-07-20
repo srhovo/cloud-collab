@@ -1,6 +1,6 @@
 # 码单器公共协作数据库
 
-当前工程阶段为**阶段7Q：正式普通自动审核接线**。最终普通用户交付仍是单HTML。
+当前工程阶段为**阶段7R：正式陪玩名字与老板资料自动审核**。最终普通用户交付仍是单HTML。
 
 ## 当前发布状态
 
@@ -17,14 +17,14 @@ iPhone Safari冒烟：通过
 协议作用域：groupId=group_see，libraryId=lib_see_cz
 永久匿名主入口：等待负责人可控制的自定义域名
 正式只读API代码：完成，默认关闭
-正式设备注册和精确价格候选入队：完成，默认关闭
-正式普通精确价格自动审核：完成，默认关闭
+正式设备注册和普通候选入队：完成，默认关闭
+正式三类普通自动审核：完成，默认关闭
 生产能力实际启用：否
 稳定版8.2.25未晋升
 正式公共写入保持关闭
 ```
 
-阶段7A至7K完成维护、发布证据、候选打包、EdgeOne候选部署和真实网络验收。阶段7L建立生产参数与零写入准备；阶段7M补齐作用域映射和GitHub Pages静态备用；阶段7N补齐生产运行时门禁和一次性初始化器；阶段7O接入正式只读API；阶段7P接入正式设备注册与精确价格候选入队；阶段7Q把既有普通精确价格自动审核引擎接到正式提交路由。
+阶段7A至7K完成维护、发布证据、候选打包、EdgeOne候选部署和真实网络验收。阶段7L建立生产参数与零写入准备；阶段7M补齐作用域映射和GitHub Pages静态备用；阶段7N补齐生产运行时门禁和一次性初始化器；阶段7O接入正式只读API；阶段7P接入正式设备注册与精确价格候选入队；阶段7Q接入普通精确价格自动审核；阶段7R接入陪玩名字和老板普通资料自动审核。
 
 ## 阶段7J兼容规则
 
@@ -93,7 +93,7 @@ GET /api/public/changes
 
 生产或只读开关关闭时先返回503，不创建Blob Store；只允许GET、HEAD和受限OPTIONS；禁止通配CORS；没有`setJSON`或`delete`路径。
 
-## 阶段7P/7Q正式普通写入
+## 阶段7P至7R正式普通写入
 
 继续使用现有客户端路径：
 
@@ -117,9 +117,17 @@ X-Cloud-Collab-Access-Key
 Authorization: Bearer <device-token>
 ```
 
-设备注册每个deviceId每60秒一个限流槽；新候选每台设备每5秒一个限流槽。限流Key仅保存加盐Hash，不包含设备ID或密钥。精确幂等重放不消耗新限流槽。
+设备注册每个deviceId每60秒一个限流槽；新候选每台设备每5秒一个限流槽。限流Key只保存加盐Hash，不包含设备ID或密钥。三类普通数据共用`submission-create`限流作用域，精确幂等重放不消耗新限流槽。
 
-正式提交只接受协议作用域`group_see / lib_see_cz`，核对Authorization设备与正文deviceId一致。自动审核关闭时维持阶段7P行为：
+正式提交只接受协议作用域`group_see / lib_see_cz`，核对Authorization设备与正文deviceId一致。统一入口支持：
+
+```text
+exact_price
+playable_name
+boss_profile
+```
+
+自动审核关闭时维持阶段7P行为：
 
 ```text
 publicMutationAllowed=false
@@ -128,7 +136,7 @@ autoApprovalEnabled=false
 stablePromotionAuthorized=false
 ```
 
-开启`CLOUD_PRODUCTION_AUTO_APPROVAL_ENABLED=1`后，路由在候选不可变入队并强一致读回后调用既有`reviewExactPriceCandidate`。响应区分能力与本次实际修改：
+开启`CLOUD_PRODUCTION_AUTO_APPROVAL_ENABLED=1`后，精确价格继续使用阶段7Q的`reviewExactPriceCandidate`；陪玩名字和老板资料使用阶段5G的`reviewOrdinaryCandidate`。响应统一区分能力与本次实际修改：
 
 ```text
 publicMutationAllowed=true
@@ -138,9 +146,9 @@ autoApprovalResult.status=waiting_confirmation|pending_review|auto_approved
 stablePromotionAuthorized=false
 ```
 
-普通设备首次提交等待第二台不同设备确认；可信设备可批准全新普通精确价格；两个不同设备提交相同新值时发布唯一公共事件；候选冲突或不安全变化进入人工审核。精确重放、公共值相同以及审核失败后的恢复重试都不会产生第二个公共版本。
+普通设备首次提交等待第二台不同设备确认；可信设备可按既有规则批准；两个不同设备提交相同内容时发布唯一公共事件；候选冲突、老板直属变化、折数增加等情况进入人工审核。幂等重放和审核恢复不会产生第二个公共版本。
 
-阶段7Q只接入普通精确价格。正式陪玩名字、老板资料、管理员控制面和敏感提交仍未接入。
+区间、加价、礼物、删除和其他敏感变化仍未接入正式提交路由，必须等待管理员控制面和敏感人工审核接线。
 
 ## 生产模板与命令
 
@@ -159,12 +167,12 @@ npm run production:secrets:generate -- --output /安全路径/cloud-collab-produ
 | 角色 | 入口 | 当前状态 |
 |---|---|---|
 | 权威源 | GitHub仓库、PR、Actions | 已使用 |
-| 候选验收入口 | EdgeOne Makers固定项目域名加临时令牌 | 8.2.31已通过网络与iPhone验收；令牌约3小时有效 |
-| 永久正式主入口 | EdgeOne自定义域名 | 未配置；匿名长期正式上线阻断项 |
+| 候选验收入口 | EdgeOne Makers固定项目域名 | 8.2.31已通过网络与iPhone验收 |
+| 永久正式主入口 | EdgeOne自定义域名 | 未配置；平台归属和长期公开策略待定 |
 | 免费静态备用 | GitHub Pages | 自动工作流已配置；仅承载冻结候选静态文件 |
 | 离线兜底 | `码单器8.2.31_候选.html` | 已冻结摘要 |
 
-EdgeOne项目域名在项目存在期间固定，但含中国大陆区域仍需要临时访问令牌。GitHub Pages只能作为本地模式静态备用，不能替代EdgeOne Cloud Functions和Blob。
+EdgeOne固定项目域名跟随生产分支最新成功部署；失败部署不会替换既有成功内容。含中国大陆区域的访问策略仍以EdgeOne平台实际规则和控制台状态为准。GitHub Pages只能作为本地模式静态备用，不能替代EdgeOne Cloud Functions和Blob。
 
 ## 公开产物白名单
 
@@ -210,9 +218,8 @@ EdgeOne环境变量写入：0
 DNS修改：0
 正式只读API：代码完成，实际启用0
 正式设备注册：代码完成，实际启用0
-正式精确价格候选入队：代码完成，实际启用0
-正式普通精确价格自动审核：代码完成，实际启用0
-正式普通陪玩名字和老板资料：0
+正式三类普通候选入队：代码完成，实际启用0
+正式三类普通自动审核：代码完成，实际启用0
 正式管理员控制面：0
 正式敏感提交与人工审核：0
 稳定晋升：0
@@ -222,6 +229,7 @@ GitHub Pages：仅冻结静态候选，不含后端能力
 
 详细方案见：
 
+- `docs/阶段7R_正式陪玩名字与老板资料自动审核.md`
 - `docs/阶段7Q_正式普通自动审核接线.md`
 - `docs/阶段7P_正式设备注册与精确价格候选入队.md`
 - `docs/阶段7O_正式只读同步API.md`
