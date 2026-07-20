@@ -1,0 +1,65 @@
+name: stage7n-production-runtime
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/server/production_runtime_config_v1.js'
+      - 'src/server/production_bootstrap_v1.js'
+      - 'src/server/production_scope_mapping_v1.js'
+      - 'scripts/audit-production-runtime-defaults-v1.mjs'
+      - 'config/production.env.template'
+      - 'tests/stage7n-production-runtime-and-bootstrap.test.mjs'
+      - 'package.json'
+      - '.github/workflows/stage7n-production-runtime.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Audit disabled production runtime and bootstrap plan
+        run: npm run production:runtime:audit
+
+      - name: Run Stage7N targeted tests
+        run: node --test tests/stage7n-production-runtime-and-bootstrap.test.mjs tests/stage7m-production-scope-mapping.test.mjs
+
+      - name: Prove CI did not configure secrets or touch real Blob
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs = require('fs');
+          const report = JSON.parse(fs.readFileSync('dist/production-runtime-default-audit-v1.json', 'utf8'));
+          if (report.status !== 'production_runtime_and_bootstrap_code_ready_not_executed') throw new Error('unexpected status');
+          if (report.bootstrap.realBlobReadsPerformed !== 0) throw new Error('real Blob read occurred');
+          if (report.bootstrap.realBlobWritesPerformed !== 0) throw new Error('real Blob write occurred');
+          if (report.bootstrap.realBlobDeletesPerformed !== 0) throw new Error('real Blob delete occurred');
+          if (report.realSecretsGenerated !== false) throw new Error('secret generation boundary changed');
+          if (report.productionActivationPerformed !== false) throw new Error('production activation boundary changed');
+          if (report.stablePromotionAuthorized !== false || report.stablePromotionPerformed !== false) throw new Error('stable promotion boundary changed');
+          NODE
+          test ! -e cloud-collab-production-secrets.env
+
+      - name: Upload no-secret runtime evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage7n-production-runtime-evidence
+          path: dist/production-runtime-default-audit-v1.json
+          if-no-files-found: error
+          retention-days: 30
