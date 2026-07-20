@@ -138,7 +138,9 @@ export async function handleStage5g6a6bStatusRequest(context, dependencies = {})
   try {
     const env = context?.env || {};
     const config = readAcceptanceRuntimeConfig(env);
-    assertStage5g6a6bAcceptanceAccess(context?.request, config);
+    // 浏览器对同源GET/HEAD通常不发送Origin。这里仍校验当前HTTPS项目、
+    // Sec-Fetch-Site（若存在）以及独立验收密钥，但不把缺少Origin误判为跨源。
+    assertStage5g6a6bAcceptanceAccess(context?.request, config, { requireOrigin: false });
     const store = createStore(env, config, dependencies);
     const result = await inspectStage5g6a6bAcceptance({ store, now: dependencies.now?.() ?? Date.now() });
     if (head) return new Response(null, { status: 200, headers: headers() });
