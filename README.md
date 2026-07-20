@@ -1,29 +1,42 @@
 # 码单器公共协作数据库
 
-当前工程阶段为**阶段7H：8.2.30候选发布预演与中国大陆访问入口准备**。最终普通用户交付仍是单HTML。
+当前工程阶段为**阶段7J：8.2.31候选界面兼容与公开JSON字符集修复**。最终普通用户交付仍是单HTML。
 
 ## 当前发布状态
 
 ```text
 冻结稳定基线：8.2.25
-发布候选：8.2.30
-候选SHA-256：82bef41a655cd8528a138f7f2d7f7630b10bc391a95738704905c1e0647be89f
-候选字节数：1,154,030
+发布候选：8.2.31
+候选SHA-256：79c443e16d2560c43921dad51bfdc0152c440254d450f57b96326fdd27b2ccea
+候选字节数：1,155,499
 发布审计：promotion_authorization_required
 稳定版8.2.25未晋升
 正式公共写入保持关闭
 ```
 
-阶段7A至7G已经完成维护能力、发布证据闭环、候选版本决策、候选单文件和最终发布清单。阶段7H不增加业务模块，只建立候选双入口的最小公开产物、发布预演和线上一致性验证。
+阶段7A至7I已经完成维护能力、发布证据闭环、8.2.30真实EdgeOne候选部署与线上清单核对。阶段7J在不修改内部`groupId`协议的前提下，将界面显示调整为`club`，增加ASCII ID失败关闭校验，并修复公开JSON在Safari中的UTF-8字符集识别。
+
+## 阶段7J兼容规则
+
+```text
+界面标签：club
+界面示例：club_id
+内部协议字段：groupId（继续保留）
+club ID / library ID：仅支持小写英文字母、数字和下划线
+中文ID：不支持
+设备昵称示例：例如：下雪
+```
+
+既有`group_*`和现有本地绑定不会被批量改名；本阶段不执行破坏性数据迁移。
 
 ## 发布入口策略
 
 | 角色 | 入口 | 当前状态 |
 |---|---|---|
 | 权威源 | GitHub仓库、PR、Actions | 已使用 |
-| 建议主入口 | EdgeOne Pages候选预览 | 配置和预演已准备，未创建真实项目、未部署 |
-| 备用入口 | GitHub Pages候选入口 | 已改为手动授权，未触发部署 |
-| 离线兜底 | `码单器8.2.30_候选.html` | 已生成并校验 |
+| 建议主入口 | EdgeOne Pages候选预览 | 8.2.30已实测；8.2.31待本PR合并后重新部署 |
+| 备用入口 | GitHub Pages候选入口 | 手动授权，未触发部署 |
+| 离线兜底 | `码单器8.2.31_候选.html` | 已由Actions生成并冻结摘要 |
 
 GitHub仓库页面或GitHub Pages不作为中国大陆普通用户唯一入口。需要中国大陆节点的EdgeOne自定义域名时，必须先核对ICP备案条件。
 
@@ -37,7 +50,11 @@ build-manifest.json
 pages-release.json
 ```
 
-管理员预览页、源码、日志、环境变量、维护页面和稳定版文件均不得进入公开入口。
+管理员预览页、源码、日志、环境变量、维护页面和稳定版文件均不得进入公开入口。EdgeOne对两个JSON文件显式返回：
+
+```text
+application/json; charset=utf-8
+```
 
 ## 本地与CI验证
 
@@ -47,7 +64,7 @@ npm run ci
 npm run release:rehearse
 ```
 
-`npm run release:rehearse`会重新构建候选，核对阶段7G冻结SHA-256，同时生成：
+`npm run release:rehearse`会重新构建8.2.31候选，核对阶段7J冻结SHA-256，同时生成：
 
 ```text
 .pages-artifact/
@@ -68,32 +85,34 @@ dist/stage7h-release-rehearsal.json
 Node：22.11.0
 ```
 
-`edgeone:build`会运行完整Node门禁，并只生成三文件白名单。仓库已配置候选入口缓存和基础安全响应头。
+`edgeone:build`会运行完整Node门禁，并只生成三文件白名单。仓库已配置候选入口缓存、安全响应头及JSON UTF-8字符集。
 
 ## GitHub Pages候选备用入口
 
-`.github/workflows/pages.yml`不再跟随`main`自动发布。未来只有项目负责人手动输入以下两项时才可部署候选备用入口：
+`.github/workflows/pages.yml`不跟随`main`自动发布。未来只有项目负责人手动输入以下两项时才可部署候选备用入口：
 
 ```text
-candidate_version = 8.2.30
-confirmation = DEPLOY-CANDIDATE-8.2.30
+candidate_version = 8.2.31
+confirmation = DEPLOY-CANDIDATE-8.2.31
 ```
 
-部署后工作流会核对线上提交、标题、APP_VERSION、字节数、SHA-256及管理员预览页不可访问。
+部署后工作流会核对线上提交、标题、APP_VERSION、字节数、SHA-256、JSON字符集及管理员预览页不可访问。
 
 ## 阶段边界
 
 ```text
-真实部署：0
+本PR自动真实部署：0
 DNS修改：0
-EdgeOne项目创建：0
 Blob写入或删除：0
 稳定晋升：0
 正式公共写入：关闭
 ```
 
+当前线上8.2.30候选不会被本PR自动替换。8.2.31合并后仍需在EdgeOne选择`main`最新提交重新部署一次。
+
 详细方案见：
 
+- `docs/阶段7J_候选8.2.31界面兼容与JSON字符集修复.md`
 - `docs/阶段7H_候选发布预演与大陆访问入口.md`
 - `docs/阶段7G_候选8.2.30打包与发布清单.md`
 - `docs/阶段7E_发布收口基线审计.md`
