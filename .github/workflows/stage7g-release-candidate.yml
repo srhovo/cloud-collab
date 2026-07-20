@@ -1,0 +1,62 @@
+name: stage7g-release-candidate
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/stage7g-release-candidate.yml'
+      - 'package.json'
+      - 'scripts/build-stage6b-compatible.mjs'
+      - 'scripts/validate-compatible-active.mjs'
+      - 'scripts/release-readiness-audit-v1.mjs'
+      - 'scripts/package-release-candidate-v1.mjs'
+      - 'release/release-closure-ledger-v1.json'
+      - 'tests/stage7e-release-readiness-audit.test.mjs'
+      - 'tests/stage7g-release-package.test.mjs'
+      - 'docs/阶段7G_候选8.2.30打包与发布清单.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package-candidate:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout candidate source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install --ignore-scripts
+
+      - name: Run complete CI gate
+        run: npm run ci
+
+      - name: Package approved candidate
+        run: npm run release:package
+
+      - name: Verify release package files
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f 'release-output/码单器8.2.30_候选.html'
+          test -f 'release-output/最终发布清单_8.2.30.json'
+          test -f 'release-output/发布审计_8.2.30.json'
+          sha256sum 'release-output/码单器8.2.30_候选.html'
+          cat 'release-output/最终发布清单_8.2.30.json'
+
+      - name: Upload 8.2.30 candidate package
+        uses: actions/upload-artifact@v4
+        with:
+          name: mdq-8.2.30-candidate-package
+          path: |
+            release-output/码单器8.2.30_候选.html
+            release-output/最终发布清单_8.2.30.json
+            release-output/发布审计_8.2.30.json
+          if-no-files-found: error
+          retention-days: 30
