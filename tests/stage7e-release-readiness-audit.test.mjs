@@ -4,19 +4,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import {
-  auditReleaseRepository,
-  ReleaseReadinessAuditError,
-} from '../scripts/release-readiness-audit-v1.mjs';
+import { auditReleaseRepository, ReleaseReadinessAuditError } from '../scripts/release-readiness-audit-v1.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const FROZEN = JSON.parse(fs.readFileSync(path.join(ROOT, 'release', '最终发布清单_8.2.31.json'), 'utf8'));
 const REQUIRED_FILES = [
-  'package.json',
-  '.env.example',
-  'scripts/build-stage6b-compatible.mjs',
-  'dist/index.html',
-  'dist/build-manifest.json',
-  'release/release-closure-ledger-v1.json',
+  'package.json', '.env.example', 'scripts/build-stage6b-compatible.mjs',
+  'dist/index.html', 'dist/build-manifest.json', 'release/release-closure-ledger-v1.json',
 ];
 
 function copyFixture() {
@@ -29,7 +23,6 @@ function copyFixture() {
   }
   return root;
 }
-
 function mutateJson(root, relativePath, mutate) {
   const absolutePath = path.join(root, relativePath);
   const value = JSON.parse(fs.readFileSync(absolutePath, 'utf8'));
@@ -51,8 +44,8 @@ test('阶段7J审计确认8.2.31候选可打包但不得自动晋升', () => {
   assert.equal(report.candidate.currentCompatibleVersion, '8.2.31');
   assert.equal(report.candidate.recommendedVersionFromPlan, '8.2.30');
   assert.equal(report.candidate.ownerDecision, '8.2.31');
-  assert.equal(report.candidate.sha256, '79c443e16d2560c43921dad51bfdc0152c440254d450f57b96326fdd27b2ccea');
-  assert.equal(report.candidate.bytes, 1155499);
+  assert.equal(report.candidate.sha256, FROZEN.candidate.sha256);
+  assert.equal(report.candidate.bytes, FROZEN.candidate.bytes);
   assert.equal(report.candidate.packagingAuthorized, true);
   assert.equal(report.environment.allEnabledGatesDefaultOff, true);
   assert.equal(report.environment.examplePrivateValuesEmpty, true);
@@ -87,9 +80,7 @@ test('人工重跑豁免未获项目负责人接受时继续阻断', () => {
     const report = auditReleaseRepository({ root });
     assert.equal(report.status, 'decision_required');
     assert.equal(report.blockers.includes('real_device_final_rerun_exception_acceptance'), true);
-  } finally {
-    fs.rmSync(root, { recursive: true, force: true });
-  }
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
 test('清理精确数字缺失且未接受豁免时继续阻断', () => {
@@ -101,104 +92,54 @@ test('清理精确数字缺失且未接受豁免时继续阻断', () => {
     const report = auditReleaseRepository({ root });
     assert.equal(report.status, 'decision_required');
     assert.equal(report.blockers.includes('cleanup_exact_evidence_missing'), true);
-  } finally {
-    fs.rmSync(root, { recursive: true, force: true });
-  }
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
 test('候选构建版本与项目负责人决策不一致时失败关闭', () => {
   const root = copyFixture();
   try {
-    mutateJson(root, 'release/release-closure-ledger-v1.json', ledger => {
-      ledger.candidateVersionDecision = '8.2.29';
-    });
-    assert.throws(
-      () => auditReleaseRepository({ root }),
-      error => error instanceof ReleaseReadinessAuditError
-        && error.code === 'RELEASE_CANDIDATE_DECISION_MISMATCH',
-    );
-  } finally {
-    fs.rmSync(root, { recursive: true, force: true });
-  }
+    mutateJson(root, 'release/release-closure-ledger-v1.json', ledger => { ledger.candidateVersionDecision = '8.2.29'; });
+    assert.throws(() => auditReleaseRepository({ root }), error => error instanceof ReleaseReadinessAuditError && error.code === 'RELEASE_CANDIDATE_DECISION_MISMATCH');
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
 test('任一预览能力默认开启时失败关闭', () => {
   const root = copyFixture();
   try {
     const envPath = path.join(root, '.env.example');
-    const env = fs.readFileSync(envPath, 'utf8')
-      .replace('CLOUD_WRITE_PREVIEW_ENABLED=0', 'CLOUD_WRITE_PREVIEW_ENABLED=1');
-    fs.writeFileSync(envPath, env, 'utf8');
-    assert.throws(
-      () => auditReleaseRepository({ root }),
-      error => error instanceof ReleaseReadinessAuditError
-        && error.code === 'RELEASE_ENV_GATE_OPEN',
-    );
-  } finally {
-    fs.rmSync(root, { recursive: true, force: true });
-  }
+    fs.writeFileSync(envPath, fs.readFileSync(envPath, 'utf8').replace('CLOUD_WRITE_PREVIEW_ENABLED=0', 'CLOUD_WRITE_PREVIEW_ENABLED=1'), 'utf8');
+    assert.throws(() => auditReleaseRepository({ root }), error => error instanceof ReleaseReadinessAuditError && error.code === 'RELEASE_ENV_GATE_OPEN');
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
 test('构建清单与候选摘要不一致时失败关闭', () => {
   const root = copyFixture();
   try {
-    mutateJson(root, 'dist/build-manifest.json', manifest => {
-      manifest.sha256 = '0'.repeat(64);
-    });
-    assert.throws(
-      () => auditReleaseRepository({ root }),
-      error => error instanceof ReleaseReadinessAuditError
-        && error.code === 'RELEASE_MANIFEST_HASH_MISMATCH',
-    );
-  } finally {
-    fs.rmSync(root, { recursive: true, force: true });
-  }
+    mutateJson(root, 'dist/build-manifest.json', manifest => { manifest.sha256 = '0'.repeat(64); });
+    assert.throws(() => auditReleaseRepository({ root }), error => error instanceof ReleaseReadinessAuditError && error.code === 'RELEASE_MANIFEST_HASH_MISMATCH');
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
 test('稳定基线元数据无效时失败关闭', () => {
   const root = copyFixture();
   try {
-    mutateJson(root, 'release/release-closure-ledger-v1.json', ledger => {
-      ledger.stableArtifact.sha256 = 'bad';
-    });
-    assert.throws(
-      () => auditReleaseRepository({ root }),
-      error => error instanceof ReleaseReadinessAuditError
-        && error.code === 'RELEASE_STABLE_METADATA_INVALID',
-    );
-  } finally {
-    fs.rmSync(root, { recursive: true, force: true });
-  }
+    mutateJson(root, 'release/release-closure-ledger-v1.json', ledger => { ledger.stableArtifact.sha256 = 'bad'; });
+    assert.throws(() => auditReleaseRepository({ root }), error => error instanceof ReleaseReadinessAuditError && error.code === 'RELEASE_STABLE_METADATA_INVALID');
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
 test('阶段7F自动化证据无效时失败关闭', () => {
   const root = copyFixture();
   try {
-    mutateJson(root, 'release/release-closure-ledger-v1.json', ledger => {
-      ledger.evidence.automated.stage7fNodeTestFailures = 1;
-    });
-    assert.throws(
-      () => auditReleaseRepository({ root }),
-      error => error instanceof ReleaseReadinessAuditError
-        && error.code === 'RELEASE_AUTOMATED_EVIDENCE_FAILED',
-    );
-  } finally {
-    fs.rmSync(root, { recursive: true, force: true });
-  }
+    mutateJson(root, 'release/release-closure-ledger-v1.json', ledger => { ledger.evidence.automated.stage7fNodeTestFailures = 1; });
+    assert.throws(() => auditReleaseRepository({ root }), error => error instanceof ReleaseReadinessAuditError && error.code === 'RELEASE_AUTOMATED_EVIDENCE_FAILED');
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
 test('稳定晋升授权被意外开启时失败关闭', () => {
   const root = copyFixture();
   try {
-    mutateJson(root, 'release/release-closure-ledger-v1.json', ledger => {
-      ledger.releasePolicy.stablePromotionAuthorized = true;
-    });
-    assert.throws(
-      () => auditReleaseRepository({ root }),
-      error => error instanceof ReleaseReadinessAuditError
-        && error.code === 'RELEASE_POLICY_INVALID',
-    );
-  } finally {
-    fs.rmSync(root, { recursive: true, force: true });
-  }
+    mutateJson(root, 'release/release-closure-ledger-v1.json', ledger => { ledger.releasePolicy.stablePromotionAuthorized = true; });
+    assert.throws(() => auditReleaseRepository({ root }), error => error instanceof ReleaseReadinessAuditError && error.code === 'RELEASE_POLICY_INVALID');
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
