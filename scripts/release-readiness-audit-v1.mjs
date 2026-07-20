@@ -80,6 +80,9 @@ function ledgerOf(value) {
   for (const key of ['stableVersion', 'currentCompatibleCandidateVersion', 'recommendedCandidateVersionFromPlan']) {
     if (!/^\d+\.\d+\.\d+$/.test(String(value[key] || ''))) fail('RELEASE_LEDGER_VERSION_INVALID', '证据账本版本无效', { key });
   }
+  if (value.candidateVersionDecision !== value.currentCompatibleCandidateVersion) {
+    fail('RELEASE_OWNER_VERSION_DECISION_INVALID', '项目负责人版本决定与当前候选不一致');
+  }
   const stable = value.stableArtifact;
   if (!stable || stable.source !== 'external_frozen_baseline'
       || stable.filename !== '码单器8.2.25_现.html'
@@ -106,7 +109,8 @@ function ledgerOf(value) {
       || policy.allPreviewCapabilitiesDefaultOff !== true
       || policy.candidateVersionRequiresOwnerDecision !== true
       || policy.promotionRequiresSeparateOwnerAuthorization !== true
-      || policy.productionWriteEnablementIncluded !== false) {
+      || policy.productionWriteEnablementIncluded !== false
+      || policy.stablePromotionAuthorized !== false) {
     fail('RELEASE_POLICY_INVALID', '发布策略边界无效');
   }
   return value;
@@ -120,10 +124,11 @@ function blockersOf(ledger) {
     || (realDevice.finalCleanSnapshotAndTombstoneRerun === 'waived_due_to_manual_cost'
       && realDevice.finalCleanSnapshotAndTombstoneRerunExceptionAcceptedByOwner === true);
   if (!rerunSatisfied) blockers.push('real_device_final_rerun_exception_acceptance');
-  if (!ledger.evidence.cleanup.exactDeletionCountsRecorded
-      || !ledger.evidence.cleanup.independentZeroCountEvidenceRecorded) {
-    blockers.push('cleanup_exact_evidence_missing');
-  }
+  const cleanup = ledger.evidence.cleanup;
+  const cleanupExactEvidenceSatisfied = (cleanup.exactDeletionCountsRecorded === true
+      && cleanup.independentZeroCountEvidenceRecorded === true)
+    || cleanup.exactEvidenceMissingExceptionAcceptedByOwner === true;
+  if (!cleanupExactEvidenceSatisfied) blockers.push('cleanup_exact_evidence_missing');
   if (ledger.evidence.temporaryResources.status !== 'verified_destroyed') {
     blockers.push('temporary_resource_teardown_verification');
   }
@@ -136,30 +141,53 @@ export function auditReleaseRepository({ root } = {}) {
   const ledger = ledgerOf(json(repositoryRoot, 'release/release-closure-ledger-v1.json'));
   const manifest = json(repositoryRoot, 'dist/build-manifest.json');
   const candidate = read(repositoryRoot, 'dist/index.html');
-  const buildScript = read(repositoryRoot, 'scripts/build-stage6b-compatible.mjs').toString('utf8');
+  const candidateFilename = `码单器${ledger.currentCompatibleCandidateVersion}_候选.html`;
+  const releaseCandidate = read(repositoryRoot, `release/candidates/${candidateFilename}`);
+  const finalReleaseManifest = json(repositoryRoot, 'release/final-release-manifest-v1.json');
+  const buildScript = read(repositoryRoot, 'scripts/build-stage7g-release-candidate.mjs').toString('utf8');
 
-  if (pkg.scripts?.build !== 'node scripts/build-stage6b-compatible.mjs') {
+  if (pkg.scripts?.build !== 'node scripts/build-stage7g-release-candidate.mjs') {
     fail('RELEASE_BUILD_ENTRY_INVALID', '候选构建入口发生变化');
   }
-  if (manifest.version !== ledger.currentCompatibleCandidateVersion || manifest.output !== 'dist/index.html') {
-    fail('RELEASE_MANIFEST_VERSION_INVALID', '构建清单版本无效');
+  if (manifest.version !== ledger.currentCompatibleCandidateVersion
+      || manifest.output !== 'dist/index.html'
+      || manifest.stage !== '7G-release-candidate'
+      || manifest.releaseCandidate !== true
+      || manifest.stablePromotionPerformed !== false
+      || manifest.formalPublicWritesEnabled !== false) {
+    fail('RELEASE_MANIFEST_VERSION_INVALID', '构建清单版本或边界无效');
   }
   const candidateSha256 = digest(candidate);
   if (manifest.sha256 !== candidateSha256 || manifest.bytes !== candidate.length) {
     fail('RELEASE_MANIFEST_HASH_MISMATCH', '构建清单与候选摘要不一致');
   }
-  if (!buildScript.includes(`manifest.version = '${ledger.currentCompatibleCandidateVersion}'`)
-      || !buildScript.includes('compatibleShellRetained = true')) {
-    fail('RELEASE_BUILD_CONTRACT_INVALID', '兼容候选构建契约无效');
+  if (!candidate.equals(releaseCandidate)) {
+    fail('RELEASE_CANDIDATE_COPY_MISMATCH', '候选单文件与构建输出不一致');
+  }
+  if (!buildScript.includes("const candidateVersion = '8.2.30';")
+      || !buildScript.includes("await import(`${new URL('./build-stage6b-compatible.mjs'")) {
+    fail('RELEASE_BUILD_CONTRACT_INVALID', '阶段7G候选构建契约无效');
   }
   if (ledger.stableArtifact.sha256 === candidateSha256) {
     fail('RELEASE_STABLE_CANDIDATE_IDENTICAL', '稳定基线与候选摘要相同');
+  }
+  if (finalReleaseManifest.releaseState !== 'candidate_ready_not_promoted'
+      || finalReleaseManifest.candidate?.version !== ledger.currentCompatibleCandidateVersion
+      || finalReleaseManifest.candidate?.filename !== candidateFilename
+      || finalReleaseManifest.candidate?.sha256 !== candidateSha256
+      || finalReleaseManifest.candidate?.bytes !== candidate.length
+      || finalReleaseManifest.stable?.version !== ledger.stableVersion
+      || finalReleaseManifest.stable?.unchanged !== true
+      || finalReleaseManifest.boundaries?.stablePromotionAuthorized !== false
+      || finalReleaseManifest.boundaries?.stablePromotionPerformed !== false
+      || finalReleaseManifest.boundaries?.productionWriteEnablementIncluded !== false) {
+    fail('RELEASE_FINAL_MANIFEST_INVALID', '最终发布清单无效');
   }
 
   const blockers = blockersOf(ledger);
   return Object.freeze({
     schemaVersion: 1,
-    status: blockers.length ? 'decision_required' : 'promotion_authorization_required',
+    status: blockers.length ? 'decision_required' : 'candidate_ready_not_promoted',
     stable: Object.freeze({
       version: ledger.stableVersion,
       ...ledger.stableArtifact,
@@ -169,12 +197,15 @@ export function auditReleaseRepository({ root } = {}) {
     }),
     candidate: Object.freeze({
       currentCompatibleVersion: ledger.currentCompatibleCandidateVersion,
+      previousCompatibleVersion: ledger.previousCompatibleCandidateVersion,
       recommendedVersionFromPlan: ledger.recommendedCandidateVersionFromPlan,
       ownerDecision: ledger.candidateVersionDecision,
+      filename: candidateFilename,
       title: titleOf(candidate.toString('utf8'), ledger.currentCompatibleCandidateVersion),
       sha256: candidateSha256,
       bytes: candidate.length,
       buildManifestVerified: true,
+      finalReleaseManifestVerified: true,
     }),
     environment: auditEnv(envMap(read(repositoryRoot, '.env.example').toString('utf8'))),
     evidence: ledger.evidence,
