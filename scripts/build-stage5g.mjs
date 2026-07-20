@@ -21,6 +21,14 @@ function replaceOnce(text, search, replacement, label) {
   return text.slice(0, first) + replacement + text.slice(first + search.length);
 }
 
+function replacePatternOnce(text, pattern, replacement, label) {
+  const flags = pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`;
+  const matches = [...text.matchAll(new RegExp(pattern.source, flags))];
+  if (matches.length === 0) throw new Error(`找不到阶段5G构建锚点：${label}`);
+  if (matches.length !== 1) throw new Error(`阶段5G构建锚点不唯一：${label}`);
+  return text.replace(pattern, replacement);
+}
+
 html = replaceOnce(
   html,
   '// ===== 公共协作数据库：隔离候选提交客户端结束 =====\n\n\nclass CloudCollabFeature {',
@@ -49,9 +57,9 @@ html = replaceOnce(
   'initial ordinary enqueue',
 );
 
-html = replaceOnce(
+html = replacePatternOnce(
   html,
-  'const plan = await CloudCollabSnapshotSync.planExactPriceMerge({ snapshot: rawSnapshot, localItems: targetLibrary.items || [], baseHashes: scope.baseHashes || {} });\n    const result = this.commitExactPricePlan(binding, scope, plan);',
+  /const plan = await CloudCollabSnapshotSync\.planExactPriceMerge\(\{\s*snapshot:\s*rawSnapshot,\s*localItems:\s*targetLibrary\.items\s*\|\|\s*\[\],\s*baseHashes:\s*scope\.baseHashes\s*\|\|\s*\{\}\s*\}\);\s*const result = this\.commitExactPricePlan\(binding,\s*scope,\s*plan\);/,
   'const plans = await this.planStage5GMixedMerge(binding, scope, rawSnapshot, targetLibrary);\n    const result = this.commitStage5GMixedPlan(binding, scope, plans);',
   'mixed public snapshot merge',
 );
