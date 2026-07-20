@@ -22,10 +22,15 @@ function assert(condition, message) {
 }
 
 assert(manifest.stage === '6B-sensitive-review-publish', '构建清单阶段必须为6B');
-assert(manifest.version === '8.2.30', '构建清单必须使用已批准候选版本8.2.30');
+assert(manifest.version === '8.2.31', '构建清单必须使用已批准候选版本8.2.31');
 assert(manifest.compatibleShellRetained === true, '必须保留兼容候选构建链');
 assert(manifest.candidateVersionApproved === true, '候选版本必须已获项目负责人批准');
 assert(manifest.stablePromotionPerformed === false, '候选构建不得执行稳定版晋升');
+assert(manifest.clubDisplayLabelEnabled === true, '候选必须显示club兼容标签');
+assert(manifest.legacyGroupIdProtocolRetained === true, '内部groupId协议必须保留');
+assert(manifest.identifierAsciiValidationEnabled === true, 'club与library ID必须启用ASCII校验');
+assert(manifest.singleInlineScriptRetained === true, '候选必须保持单内联脚本');
+assert(manifest.publicJsonUtf8CharsetRequired === true, '公开JSON必须要求UTF-8字符集');
 assert(manifest.sensitiveCandidateClientEnabled === true, '敏感候选客户端必须启用');
 assert(manifest.sensitiveAdminReviewEnabled === true, '敏感管理员审核必须启用');
 assert(manifest.sensitivePublicEventsEnabled === true, '敏感公共事件必须启用');
@@ -34,10 +39,15 @@ assert(manifest.sensitiveReceiveMergeEnabled === true, '敏感三方合并必须
 assert(manifest.sensitiveBossRoutingEnabled === true, '老板敏感变化路由必须启用');
 assert(manifest.formalPublicWritesEnabled === false, '正式公共写入必须保持关闭');
 assert(Array.isArray(manifest.sensitiveExplicitDeleteTypes) && manifest.sensitiveExplicitDeleteTypes.length === 6, '显式删除类型必须完整冻结');
-assert(/码单器8\.2\.30（公共协作发布候选版）/.test(html), '页面必须使用8.2.30发布候选壳');
-assert(html.includes("const APP_VERSION = '8.2.30';"), '页面APP_VERSION必须使用8.2.30');
+assert(/码单器8\.2\.31（公共协作发布候选版）/.test(html), '页面必须使用8.2.31发布候选壳');
+assert(html.includes("const APP_VERSION = '8.2.31';"), '页面APP_VERSION必须使用8.2.31');
 assert(!html.includes("const APP_VERSION = '8.2.28';"), '页面不得残留8.2.28 APP_VERSION');
-assert(!html.includes('码单器8.2.31（敏感候选人工审核协作版）'), '阶段号不得改写发布候选标题');
+assert(!html.includes('码单器8.2.31（敏感候选人工审核协作版）'), '阶段内部标题不得覆盖发布候选标题');
+assert((html.match(/<script\b/gi) || []).length === 1, '最终单HTML必须只有一个内联脚本');
+assert(html.includes('<label for="cloudGroupIdInput">club</label>'), '页面必须显示club标签');
+assert(html.includes('placeholder="club_id"'), '页面必须显示club_id示例');
+assert(html.includes('placeholder="例如：下雪"'), '页面必须显示下雪昵称示例');
+assert(html.includes('ID仅支持小写英文字母、数字和下划线，不支持中文'), '页面必须明确ID不支持中文');
 assert(html.includes('CloudCollabSensitiveRules'), '页面必须内嵌敏感提交客户端');
 assert(html.includes('CloudCollabSensitiveMerge'), '页面必须内嵌敏感合并客户端');
 assert(html.includes('enqueueSensitiveRuleUserChange'), '页面必须包含敏感规则显式入队');
