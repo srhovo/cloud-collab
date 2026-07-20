@@ -18,9 +18,17 @@
   "scope": {
     "displayLabel": "club",
     "protocolField": "groupId",
-    "groupId": "see",
-    "libraryId": "see_cz",
-    "legacyGroupIdProtocolRetained": true
+    "mappingVersion": 1,
+    "external": {
+      "clubId": "see",
+      "libraryId": "see_cz"
+    },
+    "protocol": {
+      "groupId": "group_see",
+      "libraryId": "lib_see_cz"
+    },
+    "legacyPrefixedIdsRemainAccepted": true,
+    "mappingReason": "retain_verified_hash_review_and_storage_protocols_while_showing_owner_selected_ids"
   },
   "capabilityAuthorization": {
     "readSync": true,
@@ -41,11 +49,12 @@
   "access": {
     "currentProvider": "edgeone_makers",
     "currentAccelerationRegion": "global_including_chinese_mainland",
-    "platformProjectOrDeploymentDomainPermanentForPublicUse": false,
-    "platformPreviewLinkTtlHours": 3,
-    "permanentPrimaryDomainStatus": "blocked_pending_owner_controlled_custom_domain",
+    "platformProjectDomainStableWhileProjectExists": true,
+    "platformDomainAnonymousPermanentAccess": false,
+    "platformPreviewAccessTokenTtlHours": 3,
+    "permanentAnonymousPrimaryDomainStatus": "blocked_pending_owner_controlled_custom_domain",
     "githubRepositoryUrlIsApplicationEntry": false,
-    "githubPagesStaticBackupStatus": "available_but_not_yet_deployed",
+    "githubPagesStaticBackupStatus": "authorized_for_automatic_verified_candidate_deployment",
     "githubPagesCanHostCloudFunctionsOrBlob": false,
     "mainlandReliabilityWithoutCustomDomain": "not_guaranteed"
   },
