@@ -25,6 +25,13 @@ function replaceOnce(text, search, replacement, label) {
 
 html = replaceOnce(
   html,
+  '<title>码单器8.2.28（公共协作候选派发客户端）</title>',
+  '<title>码单器8.2.31（敏感候选人工审核协作版）</title>',
+  'title',
+);
+
+html = replaceOnce(
+  html,
   '// ===== 公共协作数据库：阶段5G普通共享客户端结束 =====\n\n\nclass CloudCollabFeature {',
   `// ===== 公共协作数据库：阶段5G普通共享客户端结束 =====\n\n// ===== 公共协作数据库：阶段6B敏感规则候选客户端 =====\n${sensitiveClient}\n// ===== 公共协作数据库：阶段6B敏感规则候选客户端结束 =====\n\n// ===== 公共协作数据库：阶段6B敏感规则与墓碑合并客户端 =====\n${sensitiveMergeClient}\n// ===== 公共协作数据库：阶段6B敏感规则与墓碑合并客户端结束 =====\n\n\nclass CloudCollabFeature {`,
   'sensitive browser module insertion',
@@ -33,7 +40,7 @@ html = replaceOnce(
 html = replaceOnce(
   html,
   `${ordinaryFeatureMethods}\n\n${ordinaryReadonlyMethods}\n\n getModeLabel(mode) {`,
-  `${ordinaryFeatureMethods}\n\n${ordinaryReadonlyMethods}\n\n${sensitiveFeatureMethods}\n\n${sensitiveReadonlyMethods}\n\n getModeLabel(mode) {`,
+  `${ordinaryFeatureMethods}\n\n${sensitiveFeatureMethods}\n\n${ordinaryReadonlyMethods}\n\n${sensitiveReadonlyMethods}\n\n getModeLabel(mode) {`,
   'sensitive feature and unified receive methods',
 );
 
@@ -49,6 +56,20 @@ html = replaceOnce(
   'const result = this.commitStage5GMixedPlan(binding, scope, plans);',
   'const result = await this.commitStage5GMixedPlan(binding, scope, plans);',
   'await unified sensitive merge commit',
+);
+
+html = replaceOnce(
+  html,
+  ` const editIndex = Number.isInteger(this.editingIndex) ? this.editingIndex : -1;\n let updated = false;`,
+  ` const editIndex = Number.isInteger(this.editingIndex) ? this.editingIndex : -1;\n const previousBossForCloud = editIndex >= 0 && editIndex < this.bossMemory.length ? this.get(editIndex) : null;\n let updated = false;`,
+  'capture boss baseline before edit',
+);
+
+html = replaceOnce(
+  html,
+  ` this.showSuccess(updated ? \`"\${name}" 老板信息已更新\` : \`"\${name}" 已添加到老板记忆库\`);\n this.save();\n setTimeout(() => {\n  this.app.cloudCollabFeature?.enqueueBossProfileUserChange?.({ name, paiDan, discount }).catch(error => appLogSilent(error));\n }, 0);\n this.resetEditor({ clear: true });`,
+  ` this.showSuccess(updated ? \`"\${name}" 老板信息已更新\` : \`"\${name}" 已添加到老板记忆库\`);\n this.save();\n setTimeout(() => {\n  const feature = this.app.cloudCollabFeature;\n  const nextBoss = { name, paiDan, discount };\n  const operation = feature?.isStage6BSensitiveBossChange?.(previousBossForCloud, nextBoss)\n   ? feature.enqueueSensitiveBossUserChange?.(nextBoss)\n   : feature?.enqueueBossProfileUserChange?.(nextBoss);\n  operation?.catch?.(error => appLogSilent(error));\n }, 0);\n this.resetEditor({ clear: true });`,
+  'route boss edit by sensitivity',
 );
 
 html = replaceOnce(
@@ -107,9 +128,31 @@ html = replaceOnce(
   'explicit exact price delete enqueue',
 );
 
+html = replaceOnce(
+  html,
+  ` this.updateSavedNamesList();\n this.showSuccess(\`已删除“\${name}”\`);`,
+  ` this.updateSavedNamesList();\n this.showSuccess(\`已删除“\${name}”\`);\n setTimeout(() => this.app.cloudCollabFeature?.enqueueSensitiveDeleteUserChange?.('playable_name', { name }).catch(error => appLogSilent(error)), 0);`,
+  'explicit playable name delete enqueue',
+);
+
+html = replaceOnce(
+  html,
+  ` delete(index) {\n try {\n const nextMemory = this.directory.removeMemoryAt(this.bossMemory, index);`,
+  ` delete(index) {\n try {\n const deletedBossForCloud = this.get(index);\n const nextMemory = this.directory.removeMemoryAt(this.bossMemory, index);`,
+  'capture boss record before explicit delete',
+);
+
+html = replaceOnce(
+  html,
+  " this.showSuccess('已删除老板记录');\n return true;",
+  " this.showSuccess('已删除老板记录');\n if (deletedBossForCloud) setTimeout(() => this.app.cloudCollabFeature?.enqueueSensitiveDeleteUserChange?.('boss_profile', deletedBossForCloud).catch(error => appLogSilent(error)), 0);\n return true;",
+  'explicit boss delete enqueue',
+);
+
 html = html
+  .replace('可三方合并公共普通精确价格、已确认陪玩名字和老板资料；参与协作模式也可将明确用户操作逐条送入隔离候选区，不能直接修改正式公共库。', '可三方合并价格、陪玩名字、老板资料、区间、加价和礼物规则；敏感新增、修改与明确删除全部进入管理员人工审核。')
   .replace('公共更新会三方合并普通精确价格、已确认陪玩名字和老板资料。', '公共更新会三方合并普通价格、陪玩名字、老板资料、区间、加价、礼物规则与人工批准的删除墓碑。')
-  .replace('仅“参与协作”绑定会逐条生成普通精确价格、已确认陪玩名字和明确保存老板资料候选；只接收模式、导入、迁移、云端拉取、回滚、系统记忆和私人数据永远不会进入上传队列。', '仅“参与协作”绑定会上传明确用户操作；区间、加价、礼物规则及删除全部进入人工审核。只接收模式、导入、迁移、云端拉取、回滚、系统记忆和私人数据永远不会进入上传队列。');
+  .replace('仅“参与协作”绑定会逐条生成普通精确价格、已确认陪玩名字和明确保存老板资料候选；只接收模式、导入、迁移、云端拉取、回滚、系统记忆和私人数据永远不会进入上传队列。', '仅“参与协作”绑定会上传明确用户操作；区间、加价、礼物规则、直属敏感变化及删除全部进入人工审核。只接收模式、导入、迁移、云端拉取、回滚、系统记忆和私人数据永远不会进入上传队列。');
 
 fs.writeFileSync(outputPath, html, 'utf8');
 const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
@@ -119,6 +162,8 @@ manifest.sensitiveAdminReviewEnabled = true;
 manifest.sensitivePublicEventsEnabled = true;
 manifest.sensitiveTombstonesEnabled = true;
 manifest.sensitiveReceiveMergeEnabled = true;
+manifest.sensitiveBossRoutingEnabled = true;
+manifest.sensitiveExplicitDeleteTypes = ['exact_price', 'playable_name', 'boss_profile', 'rank_range_rule', 'surcharge_rule', 'gift_rule'];
 manifest.stage6SensitiveChangesEnabled = true;
 manifest.formalPublicWritesEnabled = false;
 manifest.sha256 = crypto.createHash('sha256').update(Buffer.from(html)).digest('hex');
