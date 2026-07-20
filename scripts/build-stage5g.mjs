@@ -51,8 +51,8 @@ html = replaceOnce(
 
 html = replaceOnce(
   html,
-  '    const plan = await CloudCollabSnapshotSync.planExactPriceMerge({ snapshot: rawSnapshot, localItems: targetLibrary.items || [], baseHashes: scope.baseHashes || {} });\n    const result = this.commitExactPricePlan(binding, scope, plan);',
-  '    const plans = await this.planStage5GMixedMerge(binding, scope, rawSnapshot, targetLibrary);\n    const result = this.commitStage5GMixedPlan(binding, scope, plans);',
+  'const plan = await CloudCollabSnapshotSync.planExactPriceMerge({ snapshot: rawSnapshot, localItems: targetLibrary.items || [], baseHashes: scope.baseHashes || {} });\n    const result = this.commitExactPricePlan(binding, scope, plan);',
+  'const plans = await this.planStage5GMixedMerge(binding, scope, rawSnapshot, targetLibrary);\n    const result = this.commitStage5GMixedPlan(binding, scope, plans);',
   'mixed public snapshot merge',
 );
 
