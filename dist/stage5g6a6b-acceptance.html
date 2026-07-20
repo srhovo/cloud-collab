@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <title>阶段5G+6A+6B联合验收</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;color-scheme:light;--blue:#0969da;--green:#1a7f37;--red:#cf222e;--amber:#9a6700;--border:#d0d7de;--muted:#57606a;--bg:#f6f8fa}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#1f2328}main{width:min(960px,calc(100% - 24px));margin:18px auto 48px}.card{margin-bottom:14px;padding:18px;border:1px solid var(--border);border-radius:14px;background:#fff;box-shadow:0 8px 24px rgba(31,35,40,.06)}h1,h2{margin:0 0 10px}h1{font-size:24px}h2{font-size:19px}.banner{padding:12px;border-left:4px solid var(--red);border-radius:8px;background:#ffebe9;line-height:1.55}.hint{color:var(--muted);line-height:1.55}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}label{display:block;margin:10px 0 6px;font-weight:750}input{width:100%;min-height:44px;border:1px solid #8c959f;border-radius:8px;padding:9px;font:16px system-ui}.actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:13px}button,a.button{display:inline-flex;align-items:center;justify-content:center;min-height:42px;border:0;border-radius:8px;padding:9px 14px;background:var(--blue);color:#fff;font:750 14px system-ui;text-decoration:none;cursor:pointer}button.secondary,a.secondary{background:#656d76}button.danger{background:var(--red)}button:disabled{opacity:.45;cursor:not-allowed}.status{margin-top:12px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg);font-weight:650;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.55}.ok{color:var(--green)}.error{color:var(--red)}.warn{color:var(--amber)}.steps{display:grid;gap:8px}.step{padding:10px 12px;border:1px solid var(--border);border-radius:9px;background:#fff}.step strong{display:block;margin-bottom:3px}@media(max-width:680px){.grid{grid-template-columns:1fr}.actions button,.actions a{width:100%}}
+  </style>
+</head>
+<body>
+<main>
+  <section class="card">
+    <h1>阶段5G + 6A + 6B 一次性联合验收</h1>
+    <p class="banner"><strong>绝不合并的合成环境。</strong>本页只操作 <code>group_fixture / lib_receive_fixture</code>。正式公共写入与正式自动批准必须保持关闭；所有密钥只保存在当前页面内存，刷新即清除。</p>
+    <div class="grid">
+      <div><label for="acceptanceKey">一次性联合验收密钥</label><input id="acceptanceKey" type="password" autocomplete="off" spellcheck="false"></div>
+      <div><label for="previewKey">公共预览访问密钥</label><input id="previewKey" type="password" autocomplete="off" spellcheck="false"></div>
+    </div>
+    <div class="actions">
+      <button id="seedBtn" type="button">1. 创建/恢复两台合成设备</button>
+      <button id="statusBtn" class="secondary" type="button">读取强一致状态</button>
+    </div>
+    <div id="topStatus" class="status">尚未开始。</div>
+  </section>
+
+  <section class="card">
+    <h2>普通共享与敏感候选</h2>
+    <p class="hint">先创建普通老板冲突，核验阶段5G普通审核；再创建区间、加价和礼物敏感候选，核验阶段6A全部固定进入人工审核。</p>
+    <div class="actions">
+      <button id="ordinaryBtn" type="button" disabled>2. 创建普通老板冲突候选</button>
+      <button id="sensitiveBtn" type="button" disabled>3. 创建三类敏感候选</button>
+      <button id="snapshotBtn" class="secondary" type="button">读取统一公共快照</button>
+      <button id="deleteBtn" class="danger" type="button" disabled>5. 为已批准加价规则创建显式删除</button>
+    </div>
+    <div id="candidateStatus" class="status">需要先创建合成设备。</div>
+  </section>
+
+  <section class="card">
+    <h2>管理员人工审核</h2>
+    <p class="hint">候选创建后，在同一部署打开两个正式管理员页面。登录、会话、同源保护继续使用阶段5A正式实现；普通与敏感审核动作均应重放同一请求，公共版本只能增加一次。</p>
+    <div class="actions">
+      <a id="ordinaryAdmin" class="button" href="#" target="_blank" rel="noopener">4A. 打开普通审核页</a>
+      <a id="sensitiveAdmin" class="button" href="#" target="_blank" rel="noopener">4B. 打开敏感审核页</a>
+    </div>
+    <div class="steps">
+      <div class="step"><strong>普通审核</strong>批准一个老板冲突候选，拒绝另一个；确认敏感老板变化不会被普通审核错误批准。</div>
+      <div class="step"><strong>敏感审核</strong>对区间执行批准、加价执行编辑后批准、礼物执行拒绝；随后返回本页读取快照。</div>
+      <div class="step"><strong>删除墓碑</strong>加价规则进入公共快照后，点击“创建显式删除”，再到敏感审核页批准墓碑。</div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>最终核验</h2>
+    <div class="actions">
+      <button id="finalBtn" type="button">6. 核验版本、记录、墓碑与幂等状态</button>
+      <button id="clearBtn" class="danger" type="button">退出前清除页面内存</button>
+    </div>
+    <div id="finalStatus" class="status">等待管理员审核和墓碑操作。</div>
+  </section>
+</main>
+<script>
+(() => {
+  'use strict';
+  const GROUP='group_fixture', LIB='lib_receive_fixture';
+  const $=id=>document.getElementById(id);
+  const state={devices:null,lastSnapshot:null};
+  const ids={bossA:'sub_01JSTAGE5G6A6B000000000011',bossB:'sub_01JSTAGE5G6A6B000000000012',rank:'sub_01JSTAGE5G6A6B000000000021',surcharge:'sub_01JSTAGE5G6A6B000000000022',gift:'sub_01JSTAGE5G6A6B000000000023',delete:'sub_01JSTAGE5G6A6B000000000031'};
+
+  function edgeUrl(path){const url=new URL(path,location.origin);const here=new URL(location.href);for(const key of ['eo_token','eo_time']){const value=here.searchParams.get(key);if(value)url.searchParams.set(key,value)}return url.toString()}
+  $('ordinaryAdmin').href=edgeUrl('/admin-ordinary-reviews-preview.html');
+  $('sensitiveAdmin').href=edgeUrl('/admin-sensitive-reviews-preview.html');
+  function keys(){const acceptance=$('acceptanceKey').value;const preview=$('previewKey').value;if(acceptance.length<32||preview.length<32)throw new Error('请先填写两项至少32字符且互不相同的临时密钥');if(acceptance===preview)throw new Error('联合验收密钥与公共预览密钥不能相同');return{acceptance,preview}}
+  async function api(path,{method='GET',body=null,preview=true}={}){const k=keys();const headers={'X-Cloud-Stage5g6a6b-Acceptance-Key':k.acceptance};if(preview)headers['X-Cloud-Collab-Preview-Key']=k.preview;if(body!==null)headers['Content-Type']='application/json';const response=await fetch(edgeUrl(path),{method,headers,credentials:'include',cache:'no-store',...(body!==null?{body:JSON.stringify(body)}:{})});const text=await response.text();let payload=null;try{payload=text?JSON.parse(text):null}catch(_){throw new Error(`接口返回非JSON（HTTP ${response.status}）`)}if(!response.ok||!payload?.ok)throw new Error(`${payload?.error?.code||'HTTP_'+response.status}: ${payload?.error?.message||'请求失败'}`);return payload.data}
+  function canonical(value){if(value===null||typeof value==='string'||typeof value==='boolean')return JSON.stringify(value);if(typeof value==='number'){if(!Number.isFinite(value))throw new Error('无效数字');return JSON.stringify(value)}if(Array.isArray(value))return`[${value.map(canonical).join(',')}]`;if(!value||typeof value!=='object')throw new Error('不支持的规范值');return`{${Object.keys(value).sort().map(key=>`${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`}
+  async function digest(text){const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text));let binary='';for(const byte of new Uint8Array(bytes))binary+=String.fromCharCode(byte);return btoa(binary).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')}
+  async function prefixed(prefix,value){return`${prefix}${await digest(canonical(value))}`}
+  async function idempotency(deviceId,submissionId){return prefixed('ik_v1_',{schemaVersion:1,deviceId,submissionId})}
+  function base(device,submissionId,dataType,operation,payload,bossId=null){return{schemaVersion:1,payloadSchemaVersion:1,submissionId,deviceId:device.deviceId,groupId:GROUP,libraryId:LIB,bossId,dataType,operation,origin:'user',clientCreatedAt:Date.now(),businessKey:`bk_v1_${'A'.repeat(43)}`,contentHash:`ch_v1_${'A'.repeat(43)}`,idempotencyKey:`ik_v1_${'A'.repeat(43)}`,payload,clientContext:{appVersion:'8.2.28',projectionSpecVersion:1,queueSchemaVersion:1}}}
+  async function bossSubmission(device,submissionId,payload){const normalizedName=payload.bossName.toLocaleLowerCase('und');const bossId=await prefixed('boss_v1_',{schemaVersion:1,groupId:GROUP,normalizedBossName:normalizedName});const item=base(device,submissionId,'boss_profile','upsert',payload,bossId);item.businessKey=await prefixed('bk_v1_',{groupId:GROUP,bossId,dataType:'boss_profile'});item.contentHash=await prefixed('ch_v1_',{schemaVersion:1,payloadSchemaVersion:1,groupId:GROUP,bossId,dataType:'boss_profile',operation:'upsert',payload});item.idempotencyKey=await idempotency(device.deviceId,submissionId);return item}
+  async function sensitiveSubmission(device,submissionId,dataType,payload){const item=base(device,submissionId,dataType,'upsert',payload,null);let identity;if(dataType==='rank_range_rule'){const boundary=payload.rankType==='star'?`${payload.minStar}-${payload.maxStar}`:[...payload.namedRanks].map(v=>v.toLocaleLowerCase('und')).sort().join('|');identity={groupId:GROUP,libraryId:LIB,dataType,rankType:payload.rankType,boundary,rangeLabel:payload.rangeLabel.toLocaleLowerCase('und')}}else if(dataType==='surcharge_rule'){identity={groupId:GROUP,libraryId:LIB,dataType,name:payload.name.toLocaleLowerCase('und'),keywords:[...payload.keywords].map(v=>v.toLocaleLowerCase('und')).sort()}}else{identity={groupId:GROUP,libraryId:LIB,dataType,serviceName:payload.serviceName.toLocaleLowerCase('und')}}item.businessKey=await prefixed('bk_v1_',identity);item.contentHash=await prefixed('ch_v1_',{schemaVersion:1,payloadSchemaVersion:1,groupId:GROUP,libraryId:LIB,bossId:null,dataType,operation:'upsert',businessKey:null,payload});item.idempotencyKey=await idempotency(device.deviceId,submissionId);return item}
+  async function deleteSubmission(device,record){const item=base(device,ids.delete,record.dataType,'delete',null,record.bossId||null);item.businessKey=record.businessKey;item.contentHash=await prefixed('ch_v1_',{schemaVersion:1,payloadSchemaVersion:1,groupId:GROUP,libraryId:LIB,bossId:item.bossId,dataType:item.dataType,operation:'delete',businessKey:item.businessKey,payload:null});item.idempotencyKey=await idempotency(device.deviceId,ids.delete);return item}
+  function show(target,text,kind=''){target.className=`status ${kind}`;target.textContent=text}
+  function requireDevices(){if(!state.devices||state.devices.length!==2)throw new Error('请先创建或恢复两台合成设备');return state.devices}
+
+  $('seedBtn').onclick=async()=>{try{show($('topStatus'),'正在创建合成设备……');const result=await api('/api/stage5g6a6b/acceptance/seed',{method:'POST',preview:false,body:{confirmation:'SEED_STAGE5G6A6B_SYNTHETIC_V1'}});state.devices=result.devices;$('ordinaryBtn').disabled=false;$('sensitiveBtn').disabled=false;show($('topStatus'),`设备已就绪：${result.devices.map(v=>v.slot+' / '+v.deviceId.slice(-6)).join('，')}\n幂等重放：${result.duplicate?'是':'首次创建'}\n令牌仅保存在当前页面内存。`,'ok')}catch(error){show($('topStatus'),error.message,'error')}};
+  $('statusBtn').onclick=async()=>{try{const result=await api('/api/stage5g6a6b/acceptance/status',{preview:false});show($('topStatus'),JSON.stringify(result,null,2),'ok')}catch(error){show($('topStatus'),error.message,'error')}};
+  $('ordinaryBtn').onclick=async()=>{try{const [a,b]=requireDevices();show($('candidateStatus'),'正在创建普通老板冲突……');const one=await bossSubmission(a,ids.bossA,{bossName:'联合验收老板',paiDan:'联合验收直属',discount:.95});const two=await bossSubmission(b,ids.bossB,{bossName:'联合验收老板',paiDan:'联合验收直属',discount:.94});const r1=await api('/api/stage5g6a6b/acceptance/ordinary-submissions-create',{method:'POST',body:one});const r2=await api('/api/stage5g6a6b/acceptance/ordinary-submissions-create',{method:'POST',body:two});show($('candidateStatus'),`普通候选A：${r1.status} / ${r1.reason||r1.decision}\n普通候选B：${r2.status} / ${r2.reason||r2.decision}\n现在打开普通审核页。`,'ok')}catch(error){show($('candidateStatus'),error.message,'error')}};
+  $('sensitiveBtn').onclick=async()=>{try{const [a,b]=requireDevices();show($('candidateStatus'),'正在创建区间、加价和礼物敏感候选……');const rank=await sensitiveSubmission(a,ids.rank,'rank_range_rule',{rangeLabel:'联合验收星级',alias:'验收星',rankType:'star',minStar:0,maxStar:20,namedRanks:[],prices:{normal:{round:10,hour:null},carry:{round:15,hour:null},starGuarantee:{round:null,hour:30}}});const surcharge=await sensitiveSubmission(b,ids.surcharge,'surcharge_rule',{name:'联合验收教学',keywords:['教学','教学单'],prices:{round:5,hour:20},enabled:true});const gift=await sensitiveSubmission(a,ids.gift,'gift_rule',{serviceName:'联合验收礼物',mode:'fixed',unitPrice:66});const results=[];for(const item of [rank,surcharge,gift])results.push(await api('/api/stage5g6a6b/acceptance/sensitive-submissions-create',{method:'POST',body:item}));if(results.some(v=>v.decision!=='pending_review'||v.autoApprovalEnabled!==false))throw new Error('敏感候选没有稳定进入人工审核');show($('candidateStatus'),results.map((v,i)=>`${['区间','加价','礼物'][i]}：${v.status} / ${v.reason}`).join('\n')+'\n现在打开敏感审核页。','ok')}catch(error){show($('candidateStatus'),error.message,'error')}};
+  $('snapshotBtn').onclick=async()=>{try{const result=await api(`/api/stage5g6a6b/acceptance/public-snapshot?groupId=${GROUP}&libraryId=${LIB}`);state.lastSnapshot=result.snapshot;if(result.snapshot?.records?.some(v=>v.dataType==='surcharge_rule'))$('deleteBtn').disabled=false;show($('candidateStatus'),JSON.stringify(result,null,2),'ok')}catch(error){show($('candidateStatus'),error.message,'error')}};
+  $('deleteBtn').onclick=async()=>{try{const devices=requireDevices();const snapshot=state.lastSnapshot||await api(`/api/stage5g6a6b/acceptance/public-snapshot?groupId=${GROUP}&libraryId=${LIB}`).then(v=>v.snapshot);const target=snapshot?.records?.find(v=>v.dataType==='surcharge_rule');if(!target)throw new Error('公共快照中还没有已批准的加价规则；请先在敏感审核页批准或编辑后批准，再读取快照');const item=await deleteSubmission(devices[1],target);const result=await api('/api/stage5g6a6b/acceptance/sensitive-submissions-create',{method:'POST',body:item});show($('candidateStatus'),`显式删除候选：${result.status} / ${result.reason}\n请返回敏感审核页批准墓碑。`,'ok')}catch(error){show($('candidateStatus'),error.message,'error')}};
+  $('finalBtn').onclick=async()=>{try{const [status,version,snapshot,changes]=await Promise.all([api('/api/stage5g6a6b/acceptance/status',{preview:false}),api(`/api/stage5g6a6b/acceptance/public-version?groupId=${GROUP}&libraryId=${LIB}`),api(`/api/stage5g6a6b/acceptance/public-snapshot?groupId=${GROUP}&libraryId=${LIB}`),api(`/api/stage5g6a6b/acceptance/public-changes?groupId=${GROUP}&libraryId=${LIB}&sinceVersion=0&limit=100`)]);const report={status,version,snapshotStatus:snapshot.status,recordCount:snapshot.snapshot?.records?.length||0,tombstoneCount:snapshot.snapshot?.tombstones?.length||0,changeCount:changes.changes?.length||0};show($('finalStatus'),JSON.stringify(report,null,2),report.tombstoneCount>0?'ok':'warn')}catch(error){show($('finalStatus'),error.message,'error')}};
+  $('clearBtn').onclick=()=>{state.devices=null;state.lastSnapshot=null;$('acceptanceKey').value='';$('previewKey').value='';$('ordinaryBtn').disabled=true;$('sensitiveBtn').disabled=true;$('deleteBtn').disabled=true;show($('topStatus'),'页面内存已清除。请继续执行清理部署和双Blob销毁。','ok');show($('candidateStatus'),'已清除。');show($('finalStatus'),'已清除。')};
+})();
+</script>
+</body>
+</html>
