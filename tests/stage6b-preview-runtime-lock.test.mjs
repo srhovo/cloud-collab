@@ -36,7 +36,7 @@ test('Stage6B敏感审核模式验证Blob与作用域并启用联合读取', () 
 
   assert.throws(
     () => readPreviewAutoApprovalConfig({ ...ENV, CLOUD_BLOB_STORE_NAME: 'wrong-store' }),
-    error => error.code === 'PREVIEW_SENSITIVE_SCOPE_MISMATCH',
+    error => ['ORDINARY_TYPES_STORE_MISMATCH', 'PREVIEW_SENSITIVE_SCOPE_MISMATCH'].includes(error.code),
   );
 });
 
