@@ -62,3 +62,5 @@ jobs:
         run: python3 tests/stage5f_browser_admin_export.py
       - name: Stage5G ordinary administrator review browser regression
         run: python3 tests/stage5g_browser_admin_ordinary_reviews.py
+      - name: Stage5G ordinary user candidate browser regression
+        run: python3 tests/stage5g_browser_ordinary_client.py
