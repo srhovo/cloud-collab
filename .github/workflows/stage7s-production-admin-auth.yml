@@ -1,0 +1,66 @@
+name: stage7s-production-admin-auth
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/server/production_admin_auth_http_v1.js'
+      - 'src/server/admin_auth_mode_dispatch_v1.js'
+      - 'cloud-functions/api/admin/auth/**'
+      - 'tests/stage7s-production-admin-auth.test.mjs'
+      - '.github/workflows/stage7s-production-admin-auth.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production-admin-auth:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Run Stage7S and inherited administrator auth tests
+        shell: bash
+        run: |
+          set -o pipefail
+          node --test \
+            tests/stage7s-production-admin-auth.test.mjs \
+            tests/stage5a-admin-auth.test.mjs \
+            tests/stage7n-production-runtime-and-bootstrap.test.mjs \
+            2>&1 | tee stage7s-test.log
+
+      - name: Upload Stage7S diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage7s-test-diagnostic
+          path: stage7s-test.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Audit production admin auth boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "readProductionRuntimeConfig" src/server/production_admin_auth_http_v1.js
+          grep -q "runtime.adminStoreName" src/server/production_admin_auth_http_v1.js
+          grep -q "runtime.adminOrigin" src/server/production_admin_auth_http_v1.js
+          grep -q "CLOUD_ADMIN_PRODUCTION_ENABLED" src/server/admin_auth_mode_dispatch_v1.js
+          grep -q "stablePromotionAuthorized: false" src/server/production_admin_auth_http_v1.js
+          ! grep -R "xiaxue76\|2406048740@qq.com" src cloud-functions tests config docs README.md
+          ! grep -R "Access-Control-Allow-Origin.*\*" src/server/production_admin_auth_http_v1.js
+          ! grep -R "CLOUD_ADMIN_PASSWORD=.*[^=]" config/production.env.template
+
+      - name: Confirm all Cloud Function imports resolve
+        run: node --test tests/cloud-functions-relative-imports.test.mjs
