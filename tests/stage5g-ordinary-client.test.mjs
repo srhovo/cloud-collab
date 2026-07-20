@@ -152,7 +152,7 @@ test('Stage5G initial ordinary plan projects only confirmed names and boss publi
   for (const forbidden of ['raw-chat-name', 'interactive', 'migration', 'timestamp', 'usageCount', 'lastUsed']) {
     assert.equal(text.includes(forbidden), false, forbidden);
   }
-  assert.deepEqual(plan.submissions.map(item => item.dataType).sort(), ['boss_profile', 'playable_name']);
+  assert.deepEqual(plain(plan.submissions.map(item => item.dataType).sort()), ['boss_profile', 'playable_name']);
   assert.ok(plan.submissions.every(item => item.origin === 'initialBinding'));
 });
 
