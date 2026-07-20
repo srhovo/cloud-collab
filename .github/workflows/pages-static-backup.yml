@@ -10,10 +10,6 @@ permissions:
   pages: write
   id-token: write
 
-environment:
-  name: github-pages
-  url: ${{ steps.deployment.outputs.page_url }}
-
 concurrency:
   group: github-pages-static-backup
   cancel-in-progress: true
@@ -21,6 +17,9 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout exact main commit
         uses: actions/checkout@v6
