@@ -12,7 +12,7 @@
   "scripts": {
     "build": "node scripts/build-stage6b.mjs",
     "test": "node --test tests/*.test.mjs",
-    "validate": "node scripts/build-stage6b.mjs && node scripts/validate-compatible-active.mjs && node scripts/validate-stage5f.mjs && node scripts/validate-stage5g.mjs && node scripts/validate-stage6a.mjs && node scripts/validate-stage6a-acceptance.mjs",
+    "validate": "node scripts/build-stage6b.mjs && node scripts/validate-compatible-active.mjs && node scripts/validate-stage5f.mjs && node scripts/validate-stage5g.mjs && node scripts/validate-stage6a.mjs && node scripts/validate-stage6a-acceptance.mjs && node scripts/validate-stage6b.mjs",
     "ci": "npm run build && npm test && npm run validate"
   }
 }
