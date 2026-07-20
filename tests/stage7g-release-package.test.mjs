@@ -26,7 +26,9 @@ test('阶段7G生成8.2.30候选单文件与最终发布清单', () => {
     assert.equal(fs.existsSync(auditPath), true);
 
     const candidate = fs.readFileSync(candidatePath);
-    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    const generatedManifestText = fs.readFileSync(manifestPath, 'utf8');
+    const committedManifestText = fs.readFileSync(path.join(ROOT, 'release', '最终发布清单_8.2.30.json'), 'utf8');
+    const manifest = JSON.parse(generatedManifestText);
     const audit = JSON.parse(fs.readFileSync(auditPath, 'utf8'));
 
     assert.equal(candidate.toString('utf8').includes("const APP_VERSION = '8.2.30';"), true);
@@ -45,6 +47,7 @@ test('阶段7G生成8.2.30候选单文件与最终发布清单', () => {
     assert.equal(manifest.decisions.productionWriteEnablementAuthorized, false);
     assert.equal(audit.status, 'promotion_authorization_required');
     assert.deepEqual(audit.blockers, []);
+    assert.equal(generatedManifestText, committedManifestText);
   } finally {
     fs.rmSync(outputDirectory, { recursive: true, force: true });
   }
