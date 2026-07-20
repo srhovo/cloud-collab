@@ -49,13 +49,18 @@ function env(overrides = {}) {
   };
 }
 
-function request(path, { method = 'POST', body = {}, includeAcceptance = true } = {}) {
+function request(path, {
+  method = 'POST',
+  body = {},
+  includeAcceptance = true,
+  includeOrigin = true,
+} = {}) {
   const headers = new Headers({
-    Origin: 'https://acceptance.example.test',
     'Sec-Fetch-Site': 'same-origin',
     'X-Cloud-Collab-Preview-Key': previewKey,
     'Content-Type': 'application/json',
   });
+  if (includeOrigin) headers.set('Origin', 'https://acceptance.example.test');
   if (includeAcceptance) headers.set('X-Cloud-Stage5g6a6b-Acceptance-Key', acceptanceKey);
   return new Request(`https://acceptance.example.test${path}`, {
     method,
@@ -113,9 +118,20 @@ test('普通候选代理内部开启自动审核但关闭敏感读取锁，正�
   assert.equal(delegated.CLOUD_SENSITIVE_REVIEW_PREVIEW_ENABLED, '0');
 });
 
-test('公共读取代理要求验收密钥并只读取统一fixture快照', async () => {
+test('写入代理缺少Origin时继续失败关闭', async () => {
+  const response = await handleStage5g6a6bOrdinarySubmissionRequest({
+    request: request('/api/stage5g6a6b/acceptance/ordinary-submissions-create', { includeOrigin: false }),
+    env: env(),
+  });
+  assert.equal(response.status, 403);
+  assert.equal((await response.json()).error.code, 'ADMIN_REQUEST_ORIGIN_INVALID');
+});
+
+test('公共读取代理允许同源GET缺少Origin但仍要求验收密钥', async () => {
   const response = await handleStage5g6a6bPublicVersionRequest({
-    request: request('/api/stage5g6a6b/acceptance/public-version?groupId=group_fixture&libraryId=lib_receive_fixture', { method: 'GET' }),
+    request: request('/api/stage5g6a6b/acceptance/public-version?groupId=group_fixture&libraryId=lib_receive_fixture', {
+      method: 'GET', includeOrigin: false,
+    }),
     env: env(),
   }, {
     createStore: () => new MemoryStore(),
@@ -131,7 +147,7 @@ test('公共读取代理要求验收密钥并只读取统一fixture快照', asyn
 
   const denied = await handleStage5g6a6bPublicVersionRequest({
     request: request('/api/stage5g6a6b/acceptance/public-version?groupId=group_fixture&libraryId=lib_receive_fixture', {
-      method: 'GET', includeAcceptance: false,
+      method: 'GET', includeAcceptance: false, includeOrigin: false,
     }),
     env: env(),
   });
