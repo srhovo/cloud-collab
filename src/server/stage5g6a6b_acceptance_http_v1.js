@@ -45,6 +45,21 @@ function method(request) {
   return String(request?.method || 'GET').toUpperCase();
 }
 
+function readAcceptanceRuntimeConfig(env = {}) {
+  if (String(env.CLOUD_WRITE_PREVIEW_ENABLED || '0').trim() !== '0'
+      || String(env.CLOUD_AUTO_APPROVAL_PREVIEW_ENABLED || '0').trim() !== '0') {
+    const error = new Error('联合验收部署必须保持正式公共写入与自动批准门禁关闭');
+    error.code = 'STAGE5G6A6B_FORMAL_PUBLIC_MUTATION_MUST_BE_CLOSED';
+    error.status = 503;
+    throw error;
+  }
+  return readStage5g6a6bAcceptanceConfig({
+    ...env,
+    // 核心配置校验复用既有fixture写入约束；真实环境中的正式开关仍保持0。
+    CLOUD_WRITE_PREVIEW_ENABLED: '1',
+  });
+}
+
 async function readJson(request) {
   const type = String(request?.headers?.get?.('content-type') || '').toLowerCase();
   if (!type.startsWith('application/json')) {
@@ -98,7 +113,7 @@ export async function handleStage5g6a6bSeedRequest(context, dependencies = {}) {
   }
   try {
     const env = context?.env || {};
-    const config = readStage5g6a6bAcceptanceConfig(env);
+    const config = readAcceptanceRuntimeConfig(env);
     assertStage5g6a6bAcceptanceAccess(context?.request, config);
     const body = await readJson(context.request);
     const store = createStore(env, config, dependencies);
@@ -122,7 +137,7 @@ export async function handleStage5g6a6bStatusRequest(context, dependencies = {})
   }
   try {
     const env = context?.env || {};
-    const config = readStage5g6a6bAcceptanceConfig(env);
+    const config = readAcceptanceRuntimeConfig(env);
     assertStage5g6a6bAcceptanceAccess(context?.request, config);
     const store = createStore(env, config, dependencies);
     const result = await inspectStage5g6a6bAcceptance({ store, now: dependencies.now?.() ?? Date.now() });
