@@ -74,8 +74,9 @@ fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
 const finalReleaseManifest = {
   schemaVersion: 1,
   releaseState: 'candidate_ready_not_promoted',
-  generatedAt: new Date().toISOString(),
-  sourceCommit: process.env.GITHUB_SHA || null,
+  generatedAt: ledger.candidateVersionDecisionRecordedAt,
+  generationBasis: 'owner_decision_and_reproducible_ci_build',
+  sourceCommit: null,
   stable: {
     version: ledger.stableVersion,
     ...ledger.stableArtifact,
