@@ -20,9 +20,11 @@ fs.writeFileSync(outputPath, html, 'utf8');
 let adminPage = fs.readFileSync(adminPagePath, 'utf8');
 const ignoredMetaDirective = "; frame-ancestors 'none'";
 const metaCount = adminPage.split(ignoredMetaDirective).length - 1;
-if (metaCount !== 1) throw new Error(`阶段6B管理员页面frame-ancestors元指令数量无效：${metaCount}`);
-adminPage = adminPage.replace(ignoredMetaDirective, '');
-fs.writeFileSync(adminPagePath, adminPage, 'utf8');
+if (metaCount > 1) throw new Error(`阶段6B管理员页面frame-ancestors元指令数量无效：${metaCount}`);
+if (metaCount === 1) {
+  adminPage = adminPage.replace(ignoredMetaDirective, '');
+  fs.writeFileSync(adminPagePath, adminPage, 'utf8');
+}
 
 const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 manifest.version = '8.2.28';
