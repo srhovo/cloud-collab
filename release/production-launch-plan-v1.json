@@ -62,7 +62,7 @@
     "rejectionReason": "secret_was_exposed_in_chat_and_is_not_sufficiently_random",
     "realSecretStorage": "edgeone_private_environment_only",
     "minimumSecretBytes": 32,
-    "minimumIndependentSecrets": 7,
+    "minimumIndependentSecrets": 8,
     "plaintextSecretMayBeCommitted": false
   },
   "runtimeSafety": {
