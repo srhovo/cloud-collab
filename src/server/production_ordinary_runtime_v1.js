@@ -68,6 +68,8 @@ export async function acceptProductionOrdinarySubmission({
   review = reviewOrdinaryCandidate,
 } = {}) {
   const config = readProductionWriteConfig(env);
+  // 先拒绝跨正式作用域请求，再执行完整协议、Hash和幂等校验。
+  assertProductionSubmissionScope(rawSubmission, config);
   let submission;
   try {
     submission = normalizeOrdinarySubmission(rawSubmission);
