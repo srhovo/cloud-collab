@@ -1,0 +1,66 @@
+name: stage7l-production-readiness
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/stage7l-production-readiness.yml'
+      - 'config/production.env.template'
+      - 'release/production-launch-plan-v1.json'
+      - 'scripts/generate-production-secrets-v1.mjs'
+      - 'scripts/validate-production-launch-plan-v1.mjs'
+      - 'scripts/build-production-bootstrap-plan-v1.mjs'
+      - 'tests/stage7l-production-launch-baseline.test.mjs'
+      - 'docs/阶段7L_生产上线参数与安全初始化准备.md'
+      - 'package.json'
+      - 'README.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production-readiness:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.11.0'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Validate production launch plan
+        run: npm run production:validate
+
+      - name: Build zero-write bootstrap rehearsal
+        run: npm run production:bootstrap:plan
+
+      - name: Run Stage7L tests
+        run: node --test tests/stage7l-production-launch-baseline.test.mjs
+
+      - name: Confirm no secrets or real activation were produced
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f dist/production-launch-readiness-v1.json
+          test -f dist/production-bootstrap-plan-v1.json
+          ! grep -R --line-number --extended-regexp 'eo_token=|CLOUD_ADMIN_PASSWORD=.{1,}|CLOUD_PRODUCTION_CLIENT_ACCESS_KEY=.{1,}' \
+            config release docs README.md dist
+          node -e "const r=require('./dist/production-launch-readiness-v1.json'); if(r.productionActivationPerformed||r.stablePromotionPerformed||r.productionBlobInitialized||r.realSecretsConfigured) process.exit(1)"
+          node -e "const r=require('./dist/production-bootstrap-plan-v1.json'); if(r.realBlobReadsPerformed||r.realBlobWritesPerformed||r.realBlobDeletesPerformed||r.productionFeatureFlagsChanged||r.stablePromotionPerformed) process.exit(1)"
+
+      - name: Upload production readiness evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage7l-production-readiness-evidence
+          path: |
+            dist/production-launch-readiness-v1.json
+            dist/production-bootstrap-plan-v1.json
+            release/production-launch-plan-v1.json
+            config/production.env.template
+          if-no-files-found: error
+          retention-days: 30
