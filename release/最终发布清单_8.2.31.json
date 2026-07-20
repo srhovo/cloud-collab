@@ -16,8 +16,8 @@
     "version": "8.2.31",
     "filename": "码单器8.2.31_候选.html",
     "title": "码单器8.2.31（公共协作发布候选版）",
-    "sha256": "79c443e16d2560c43921dad51bfdc0152c440254d450f57b96326fdd27b2ccea",
-    "bytes": 1155499,
+    "sha256": "9a9719e70dce94d875befb287d247fca0755183da7c813779310abb57ba3882b",
+    "bytes": 1155575,
     "buildOutput": "dist/index.html",
     "buildManifestVerified": true,
     "packagingAuthorized": true
