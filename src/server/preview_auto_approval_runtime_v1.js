@@ -68,12 +68,13 @@ export function readPreviewAutoApprovalConfig(env = {}) {
   const sensitiveReviewEnabled = sensitiveReviewGateEnabled(env);
   if (sensitiveReviewEnabled) {
     const sensitive = readAdminSensitiveReviewConfig(env);
-    if (sensitive.storeName !== writeConfig.storeName
+    const runtimeStoreName = String(env.CLOUD_BLOB_STORE_NAME || '').trim();
+    if (sensitive.storeName !== runtimeStoreName
         || sensitive.groupId !== writeConfig.allowedGroupId
         || sensitive.libraryId !== writeConfig.allowedLibraryId) {
       throw new PreviewAutoApprovalError(
         'PREVIEW_SENSITIVE_SCOPE_MISMATCH',
-        '敏感公共读取必须与隔离预览使用同一合成作用域',
+        '敏感公共读取必须与隔离预览使用同一Blob和合成作用域',
         503,
       );
     }
@@ -144,6 +145,17 @@ export async function acceptAndReviewPreviewSubmission({
   trustedDeviceResolver = governanceTrustedDeviceResolver,
 } = {}) {
   const config = readPreviewAutoApprovalConfig(env);
+  if (config.sensitiveReviewEnabled) {
+    throw new PreviewAutoApprovalError(
+      'PREVIEW_ORDINARY_MUTATION_LOCKED_BY_SENSITIVE_REVIEW',
+      '敏感审核链开启期间普通自动审核写入被锁定；请先关闭敏感审核预览再测试阶段5G写入',
+      409,
+      {
+        publicReadMode: 'unified_sensitive_snapshot',
+        ordinaryMutationAllowed: false,
+      },
+    );
+  }
   const ordinaryTypesEnabled = config.ordinaryTypesEnabled === true;
   const submission = normalizeCandidateSubmission(rawSubmission, ordinaryTypesEnabled);
   assertPreviewAutoApprovalScope(submission.groupId, submission.libraryId, config);
