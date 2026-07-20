@@ -8,6 +8,11 @@ import {
   PUBLIC_CANDIDATE_FILES,
 } from './prepare-public-candidate-v1.mjs';
 
+const CANDIDATE_VERSION = '8.2.31';
+const CANDIDATE_SHA256 = '79c443e16d2560c43921dad51bfdc0152c440254d450f57b96326fdd27b2ccea';
+const CANDIDATE_BYTES = 1155499;
+const FINAL_RELEASE_MANIFEST = 'release/最终发布清单_8.2.31.json';
+
 export class Stage7HRehearsalError extends Error {
   constructor(code, message, details = null) {
     super(message || code);
@@ -32,21 +37,28 @@ function repositoryCommit(root) {
 
 function includesAll(text, values, code, label) {
   const missing = values.filter(value => !text.includes(value));
-  if (missing.length) fail(code, `${label}缺少阶段7H门禁`, { missing });
+  if (missing.length) fail(code, `${label}缺少候选发布门禁`, { missing });
 }
 
-function edgeOneHeaderMap(config) {
+function edgeOneHeaderMap(config, source) {
   const rule = Array.isArray(config.headers)
-    ? config.headers.find(item => item?.source === '/*')
+    ? config.headers.find(item => item?.source === source)
     : null;
   return new Map((rule?.headers || []).map(item => [String(item.key || '').toLowerCase(), String(item.value || '')]));
+}
+
+function assertJsonUtf8Header(config, source) {
+  const headers = edgeOneHeaderMap(config, source);
+  if (String(headers.get('content-type') || '').toLowerCase() !== 'application/json; charset=utf-8') {
+    fail('STAGE7J_EDGEONE_JSON_CHARSET_INVALID', `${source}必须显式使用UTF-8 JSON响应头`);
+  }
 }
 
 export function auditStage7HRepository({ root } = {}) {
   const repositoryRoot = path.resolve(root || path.join(path.dirname(fileURLToPath(import.meta.url)), '..'));
   const releaseAudit = auditReleaseRepository({ root: repositoryRoot });
   if (releaseAudit.status !== 'promotion_authorization_required' || releaseAudit.blockers.length !== 0) {
-    fail('STAGE7H_RELEASE_NOT_READY', '阶段7G发布证据未闭环', {
+    fail('STAGE7H_RELEASE_NOT_READY', '候选发布证据未闭环', {
       status: releaseAudit.status,
       blockers: releaseAudit.blockers,
     });
@@ -58,7 +70,7 @@ export function auditStage7HRepository({ root } = {}) {
   const rehearsalWorkflow = read(repositoryRoot, '.github/workflows/stage7h-release-rehearsal.yml');
   const readme = read(repositoryRoot, 'README.md');
   const guide = read(repositoryRoot, 'docs/阶段7H_候选发布预演与大陆访问入口.md');
-  const finalManifest = JSON.parse(read(repositoryRoot, 'release/最终发布清单_8.2.30.json'));
+  const finalManifest = JSON.parse(read(repositoryRoot, FINAL_RELEASE_MANIFEST));
 
   if (/^\s+push\s*:/m.test(pagesWorkflow) || /^\s+pull_request\s*:/m.test(pagesWorkflow)) {
     fail('STAGE7H_PAGES_NOT_MANUAL_ONLY', 'GitHub Pages候选备用入口必须只允许手动触发');
@@ -66,7 +78,7 @@ export function auditStage7HRepository({ root } = {}) {
   includesAll(pagesWorkflow, [
     'workflow_dispatch:',
     'candidate_version:',
-    'DEPLOY-CANDIDATE-8.2.30',
+    'DEPLOY-CANDIDATE-8.2.31',
     'npm ci --ignore-scripts',
     'npm run ci',
     'npm run public:prepare',
@@ -82,6 +94,7 @@ export function auditStage7HRepository({ root } = {}) {
     '.pages-artifact',
     '.edgeone-artifact',
     'dist/stage7h-release-rehearsal.json',
+    'release/最终发布清单_8.2.31.json',
   ], 'STAGE7H_REHEARSAL_WORKFLOW_INCOMPLETE', '候选发布预演工作流');
   if (rehearsalWorkflow.includes('actions/deploy-pages')) {
     fail('STAGE7H_REHEARSAL_DEPLOYMENT_PRESENT', '候选发布预演工作流不得执行真实部署');
@@ -93,7 +106,7 @@ export function auditStage7HRepository({ root } = {}) {
       || edgeOneConfig.nodeVersion !== '22.11.0') {
     fail('STAGE7H_EDGEONE_BUILD_SCOPE_INVALID', 'EdgeOne构建未固定为锁定安装和最小公开产物');
   }
-  const headers = edgeOneHeaderMap(edgeOneConfig);
+  const headers = edgeOneHeaderMap(edgeOneConfig, '/*');
   const cacheControl = String(headers.get('cache-control') || '').toLowerCase();
   if (!cacheControl.includes('max-age=0')
       || !cacheControl.includes('must-revalidate')
@@ -102,6 +115,8 @@ export function auditStage7HRepository({ root } = {}) {
       || String(headers.get('referrer-policy') || '').toLowerCase() !== 'no-referrer') {
     fail('STAGE7H_EDGEONE_HEADERS_INVALID', 'EdgeOne候选入口缓存或安全响应头无效');
   }
+  assertJsonUtf8Header(edgeOneConfig, '/build-manifest.json');
+  assertJsonUtf8Header(edgeOneConfig, '/pages-release.json');
 
   const scripts = packageJson.scripts || {};
   if (scripts['public:prepare'] !== 'node scripts/prepare-public-candidate-v1.mjs'
@@ -110,20 +125,20 @@ export function auditStage7HRepository({ root } = {}) {
       || scripts['release:rehearse'] !== 'npm run ci && node scripts/stage7h-release-rehearsal-v1.mjs'
       || scripts['edgeone:build'] !== 'npm run ci && npm run public:prepare -- --channel edgeone-primary --output .edgeone-artifact'
       || !String(scripts.validate || '').includes('npm run stage7h:audit')) {
-    fail('STAGE7H_PACKAGE_SCRIPTS_INVALID', 'package.json阶段7H命令契约无效');
+    fail('STAGE7H_PACKAGE_SCRIPTS_INVALID', 'package.json候选发布命令契约无效');
   }
 
-  if (finalManifest.candidate?.version !== '8.2.30'
-      || finalManifest.candidate?.sha256 !== '82bef41a655cd8528a138f7f2d7f7630b10bc391a95738704905c1e0647be89f'
-      || finalManifest.candidate?.bytes !== 1154030
+  if (finalManifest.candidate?.version !== CANDIDATE_VERSION
+      || finalManifest.candidate?.sha256 !== CANDIDATE_SHA256
+      || finalManifest.candidate?.bytes !== CANDIDATE_BYTES
       || finalManifest.stable?.promotionAuthorized !== false
       || finalManifest.stable?.promotionPerformed !== false) {
-    fail('STAGE7H_FROZEN_CANDIDATE_INVALID', '阶段7G冻结候选身份无效');
+    fail('STAGE7H_FROZEN_CANDIDATE_INVALID', '阶段7J冻结候选身份无效');
   }
 
   includesAll(readme, [
-    '阶段7H',
-    '8.2.30',
+    '阶段7J',
+    CANDIDATE_VERSION,
     '稳定版8.2.25未晋升',
     '正式公共写入保持关闭',
   ], 'STAGE7H_README_STALE', 'README');
@@ -138,7 +153,7 @@ export function auditStage7HRepository({ root } = {}) {
 
   return Object.freeze({
     schemaVersion: 1,
-    stage: '7H-candidate-release-rehearsal',
+    stage: '7J-candidate-release-rehearsal',
     status: 'rehearsal_ready_not_deployed',
     candidate: Object.freeze({
       version: finalManifest.candidate.version,
@@ -156,6 +171,7 @@ export function auditStage7HRepository({ root } = {}) {
       rehearsalWorkflowDoesNotDeploy: true,
       edgeOneMinimalArtifactOnly: true,
       edgeOneSecurityHeadersConfigured: true,
+      publicJsonUtf8CharsetConfigured: true,
       postDeploymentHashVerificationRequired: true,
       adminPreviewPagesExcluded: true,
     }),
