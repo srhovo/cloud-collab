@@ -1,15 +1,15 @@
 import { MAX_SUBMISSION_BYTES } from './submission_policy_v1.js';
 import { createEdgeOneNamedBlobStore } from './edgeone_blob_runtime_v1.js';
+import { acceptProductionOrdinarySubmission } from './production_ordinary_runtime_v1.js';
 import {
   ProductionWriteRuntimeError,
-  acceptProductionExactSubmission,
   assertProductionRequestAccess,
   readProductionWriteConfig,
   registerProductionDevice,
 } from './production_write_runtime_v1.js';
 
 const SERVICE_ID = 'cloud-collab-production-write';
-const API_VERSION = '2026-07-21-stage7p';
+const API_VERSION = '2026-07-21-stage7q';
 const MAX_REGISTRATION_BYTES = 4 * 1024;
 
 function requestMethod(request) {
@@ -131,8 +131,8 @@ export async function handleProductionDeviceRegisterRequest(context, dependencie
       externalScope: config.externalScope,
       protocolScope: { groupId: config.allowedGroupId, libraryId: config.allowedLibraryId },
       submissionEnabled: true,
+      autoApprovalEnabled: Boolean(config.runtime.flags.autoApproval),
       publicMutationAllowed: false,
-      autoApprovalEnabled: false,
       stablePromotionAuthorized: false,
     }, 201);
   } catch (error) {
@@ -150,15 +150,8 @@ export async function handleProductionSubmissionCreateRequest(context, dependenc
     config = readProductionWriteConfig(env);
     if (method === 'OPTIONS') return optionsResponse(request, config);
     assertProductionRequestAccess(request, config);
-    if (config.runtime.flags.autoApproval === true) {
-      throw new ProductionWriteRuntimeError(
-        'PRODUCTION_AUTO_APPROVAL_HANDLER_REQUIRED',
-        '普通自动审核已开启，但当前路由尚未切换到审核处理器',
-        503,
-      );
-    }
     const rawSubmission = await readJsonBody(request, MAX_SUBMISSION_BYTES);
-    const accept = dependencies.acceptProduction || acceptProductionExactSubmission;
+    const accept = dependencies.acceptProduction || acceptProductionOrdinarySubmission;
     const result = await accept({
       store: storeFor(config, dependencies),
       authorization: request.headers.get('authorization') || '',
@@ -168,8 +161,8 @@ export async function handleProductionSubmissionCreateRequest(context, dependenc
     });
     return success(request, config, {
       ...result,
+      autoApprovalEnabled: Boolean(result?.productionAutoApprovalEnabled),
       publicMutationAllowed: false,
-      autoApprovalEnabled: false,
       stablePromotionAuthorized: false,
     }, result?.duplicate ? 200 : 202);
   } catch (error) {
