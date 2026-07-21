@@ -68,9 +68,9 @@ export function readProductionAdminReviewConfig(env = {}) {
     throw new ProductionAdminReviewError('PRODUCTION_ADMIN_REVIEW_DISABLED', '正式管理员审核能力未开启', 503);
   }
   return Object.freeze({
-    storeName: runtime.storeName,
-    groupId: runtime.groupId,
-    libraryId: runtime.libraryId,
+    storeName: runtime.publicStoreName,
+    groupId: runtime.scope.protocol.groupId,
+    libraryId: runtime.scope.protocol.libraryId,
     maxObjects: ADMIN_REVIEW_MAX_OBJECTS,
     ordinaryTypesEnabled: true,
     mutationPreviewEnabled: true,
