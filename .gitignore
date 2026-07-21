@@ -8,7 +8,14 @@ coverage/
 __pycache__/
 .pages-artifact/
 .edgeone-artifact/
+.edgeone-admin-artifact/
 release-output/
 dist/release-readiness-audit.json
 dist/stage7h-release-rehearsal.json
 test-results/*
+deploy/admin/node_modules/
+deploy/admin/package.json
+deploy/admin/package-lock.json
+deploy/admin/cloud-functions/
+deploy/admin/src/
+deploy/admin/.edgeone-admin-artifact/
