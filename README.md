@@ -75,8 +75,10 @@ club ID / library ID：仅支持小写英文字母、数字和下划线
 → 普通提交
 → 普通自动审核
 → 管理员身份与人工审核
-→ 敏感提交与敏感人工审核
+→ 敏感提交（新候选入口，可独立关闭）
 ```
+
+敏感人工审核复用管理员身份与人工审核门禁；敏感提交入口关闭后，仍可查看、批准、拒绝或编辑后批准已经入队的存量候选。
 
 越级开启、弱密钥、复用密钥、非HTTPS来源、错误Store或错误作用域均失败关闭。所有生产开关在模板中保持`0`。
 
@@ -191,6 +193,8 @@ trustedDeviceBypass=false
 twoDeviceBypass=false
 stablePromotionAuthorized=false
 ```
+
+敏感提交入口可独立暂停；响应中的`sensitiveSubmissionIntakeEnabled`会明确显示当前是否仍接收新候选，不影响存量审核处理。
 
 ## 模式分发
 
