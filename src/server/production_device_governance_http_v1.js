@@ -20,7 +20,7 @@ import {
 } from './device_governance_v1.js';
 
 const SERVICE_ID = 'cloud-collab-admin-device-governance-production';
-const API_VERSION = '2026-07-21-stage7w';
+const API_VERSION = '2026-07-21-stage7x';
 
 export class ProductionDeviceGovernanceError extends Error {
   constructor(code, message, status = 503, details = null, cause = null) {
@@ -46,9 +46,8 @@ export function readProductionDeviceGovernanceConfig(env = {}) {
     );
   }
   if (runtime.mode !== 'production'
-      || runtime.flags.readSync !== true
       || runtime.flags.admin !== true
-      || runtime.flags.adminReview !== true) {
+      || runtime.flags.deviceGovernance !== true) {
     throw new ProductionDeviceGovernanceError(
       'PRODUCTION_DEVICE_GOVERNANCE_DISABLED',
       '正式设备治理能力未开启',
