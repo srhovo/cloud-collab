@@ -1,8 +1,12 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "stage": "8E",
+  "revisedAtStage": "8G",
   "recordedAt": "2026-07-21",
-  "status": "code_complete_waiting_owner_domain_and_platform_configuration",
+  "status": "code_complete_pre_domain_bootstrap_available_waiting_owner_domain_and_platform_configuration",
+  "recommendedBootstrapWorkflow": "stage8g-edgeone-production-bootstrap",
+  "bootstrapRequiresOwnerDomain": false,
+  "deploymentBootstrapPathDeprecated": true,
   "stablePromotionAuthorized": false,
   "stablePromotionPerformed": false,
   "productionActivationPerformed": false
