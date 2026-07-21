@@ -18,11 +18,14 @@ FILES = {
 
 def main() -> None:
     requested: list[str] = []
+    unexpected: list[str] = []
 
     def serve(route) -> None:
         path = route.request.url.removeprefix(ORIGIN)
         requested.append(path)
         if path not in FILES:
+            if path != '/favicon.ico':
+                unexpected.append(path)
             route.abort()
             return
         content_type, filename = FILES[path]
@@ -76,7 +79,7 @@ def main() -> None:
         assert page.locator('#valueRows input').evaluate_all('(nodes) => nodes.every(node => node.value === "")')
 
         page.click('#generate')
-        page.evaluate("window.dispatchEvent(new PageTransitionEvent('pagehide'))")
+        page.evaluate("window.dispatchEvent(new Event('pagehide'))")
         expect(page.locator('#envBlock')).to_have_value('')
         assert page.locator('#valueRows input').evaluate_all('(nodes) => nodes.every(node => node.value === "")')
         assert page.evaluate('localStorage.length') == 0
@@ -84,7 +87,8 @@ def main() -> None:
 
         browser.close()
 
-    assert set(requested) == set(FILES)
+    assert set(FILES).issubset(set(requested))
+    assert unexpected == []
     print('stage8d offline production generator browser regression passed')
 
 
