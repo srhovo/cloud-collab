@@ -1,0 +1,39 @@
+name: stage7t-one-time-import-patch
+
+on:
+  push:
+    branches:
+      - agent/stage7t-production-admin-review
+    paths:
+      - '.github/workflows/stage7t-one-time-import-patch.yml'
+      - 'scripts/stage7t-patch-admin-review-imports.mjs'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-imports:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/stage7t-production-admin-review
+          fetch-depth: 0
+
+      - name: Patch imports
+        run: node scripts/stage7t-patch-admin-review-imports.mjs
+
+      - name: Commit patch when changed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- src/server/admin_ordinary_review_projection_v1.js src/server/admin_ordinary_review_mutation_v1.js; then
+            echo 'No import patch required.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/server/admin_ordinary_review_projection_v1.js src/server/admin_ordinary_review_mutation_v1.js
+          git commit -m 'refactor(stage7t): use generic administrator review resolution key [skip ci]'
+          git push origin HEAD:agent/stage7t-production-admin-review
