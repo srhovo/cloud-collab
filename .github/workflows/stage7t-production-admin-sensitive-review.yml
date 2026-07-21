@@ -1,0 +1,73 @@
+name: stage7t-production-admin-sensitive-review
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'cloud-functions/api/admin/**'
+      - 'src/server/production_admin_auth_v1.js'
+      - 'src/server/production_admin_auth_http_v1.js'
+      - 'src/server/admin_auth_mode_dispatch_v1.js'
+      - 'src/server/production_admin_sensitive_review_v1.js'
+      - 'src/server/production_admin_sensitive_review_http_v1.js'
+      - 'src/server/admin_sensitive_review_mode_dispatch_v1.js'
+      - 'public/admin-production-sensitive-reviews.html'
+      - 'tests/stage7t-production-admin-sensitive-review.test.mjs'
+      - '.github/workflows/stage7t-production-admin-sensitive-review.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production-admin-sensitive-review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Run production admin and sensitive review tests
+        shell: bash
+        run: |
+          set -o pipefail
+          node --test \
+            tests/stage7t-production-admin-sensitive-review.test.mjs \
+            tests/stage5a-admin-auth.test.mjs \
+            tests/stage6b-admin-sensitive-review.test.mjs \
+            tests/stage7s-production-sensitive-intake.test.mjs \
+            2>&1 | tee stage7t-production-admin-sensitive-review.log
+
+      - name: Upload targeted diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage7t-production-admin-sensitive-review-log
+          path: stage7t-production-admin-sensitive-review.log
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Audit administrator isolation and default-closed boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! grep -R "CLOUD_PRODUCTION_.*=1" config/production.env.template
+          ! grep -R "localStorage\|sessionStorage\|indexedDB" public/admin-production-sensitive-reviews.html
+          grep -q "frame-ancestors 'none'" public/admin-production-sensitive-reviews.html
+          grep -q "manualReview" src/server/production_admin_sensitive_review_v1.js src/server/production_admin_sensitive_review_http_v1.js
+          grep -q "stablePromotionAuthorized: false" src/server/production_admin_auth_v1.js src/server/production_admin_sensitive_review_v1.js
+          ! grep -R "Access-Control-Allow-Origin.*\*" src/server/production_admin_auth_http_v1.js src/server/production_admin_sensitive_review_http_v1.js
+          test "$(find cloud-functions/api/admin/auth -maxdepth 1 -type f -printf '%f\n' | sort | tr '\n' ' ')" = "login.js logout.js session.js "
+          test "$(find cloud-functions/api/admin/sensitive-reviews -maxdepth 1 -type f -printf '%f\n' | sort | tr '\n' ' ')" = "approve.js detail.js edit-and-approve.js list.js reject.js "
+          ! grep -R "admin-production-sensitive-reviews" scripts/prepare-public-candidate-v1.mjs edgeone.json .github/workflows/pages-static-backup.yml
+
+      - name: Confirm all Cloud Function imports resolve
+        run: node --test tests/cloud-functions-relative-imports.test.mjs
