@@ -1,0 +1,89 @@
+name: stage8d-admin-artifact-isolation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'admin/**'
+      - 'config/edgeone-admin.project.json'
+      - 'scripts/prepare-admin-console-v1.mjs'
+      - 'scripts/verify-admin-public-artifact-isolation-v1.mjs'
+      - 'tests/stage8d-admin-artifact-isolation.test.mjs'
+      - '.github/workflows/stage8d-admin-artifact-isolation.yml'
+      - '.gitignore'
+      - 'package.json'
+      - 'README.md'
+      - 'docs/阶段8D_独立管理员产物与部署前检查.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  admin-artifact-isolation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build frozen public candidate source
+        run: npm run build
+
+      - name: Run Stage8D and inherited console/export tests
+        shell: bash
+        run: |
+          set -o pipefail
+          node --test \
+            tests/stage8d-admin-artifact-isolation.test.mjs \
+            tests/stage8c-production-admin-console.test.mjs \
+            tests/stage8b-export-consistency-hardening.test.mjs \
+            tests/stage8a-production-complete-export.test.mjs \
+            2>&1 | tee stage8d-test.log
+
+      - name: Prepare ordinary user three-file artifact
+        run: npm run public:prepare -- --channel edgeone-primary --output .edgeone-artifact --commit "$GITHUB_SHA"
+
+      - name: Prepare administrator four-file artifact
+        run: npm run admin:prepare -- --output .edgeone-admin-artifact --commit "$GITHUB_SHA"
+
+      - name: Verify administrator and public artifacts are mutually exclusive
+        run: npm run admin:verify:isolation | tee stage8d-isolation.json
+
+      - name: Audit no deployment or real activation is present
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(find .edgeone-admin-artifact -maxdepth 1 -type f | wc -l)" -eq 4
+          test "$(find .edgeone-artifact -maxdepth 1 -type f | wc -l)" -eq 3
+          grep -q '"deploymentStatus": "code_complete_not_deployed"' .edgeone-admin-artifact/admin-release.json
+          grep -q '"includesSecretValues": false' .edgeone-admin-artifact/admin-release.json
+          grep -q '"productionCapabilitiesDefaultOff": true' .edgeone-admin-artifact/admin-release.json
+          grep -q '"stablePromotionAuthorized": false' .edgeone-admin-artifact/admin-release.json
+          grep -q "frame-ancestors 'none'" config/edgeone-admin.project.json
+          ! grep -R "eo_token\|eo_time" .edgeone-admin-artifact config/edgeone-admin.project.json
+          ! grep -R "CLOUD_ADMIN_PASSWORD=.*[^=]" config/production.env.template
+          ! grep -R "curl .*deploy\|wrangler deploy\|edgeone.*deploy" .github/workflows/stage8d-admin-artifact-isolation.yml scripts/prepare-admin-console-v1.mjs scripts/verify-admin-public-artifact-isolation-v1.mjs
+
+      - name: Upload Stage8D evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage8d-admin-artifact-evidence
+          path: |
+            .edgeone-admin-artifact/admin-release.json
+            .edgeone-artifact/build-manifest.json
+            .edgeone-artifact/pages-release.json
+            config/edgeone-admin.project.json
+            stage8d-test.log
+            stage8d-isolation.json
+          if-no-files-found: error
+          retention-days: 7
