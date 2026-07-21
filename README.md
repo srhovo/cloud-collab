@@ -1,6 +1,6 @@
 # 码单器公共协作数据库
 
-当前工程阶段为**阶段8C：正式管理员控制台（代码与测试完成，明确不部署）**。普通用户最终交付仍是单HTML；管理员控制台是隔离源文件，不属于普通用户公开产物。
+当前工程阶段为**阶段8D：独立管理员产物与部署前互斥验证（代码完成，明确不部署）**。普通用户最终交付仍是单HTML；管理员控制台使用独立四文件构建，不属于普通用户公开产物。
 
 ## 当前发布状态
 
@@ -21,7 +21,7 @@ iPhone Safari冒烟：通过
 正式公共写入保持关闭
 ```
 
-阶段7J冻结的8.2.31候选身份、EdgeOne/GitHub Pages双入口预演和发布门禁继续有效。阶段8C不修改候选HTML、不部署候选、不晋升稳定版。
+阶段7J冻结的8.2.31候选身份、EdgeOne/GitHub Pages双入口预演和发布门禁继续有效。阶段8D不修改候选HTML、不部署候选、不晋升稳定版。
 
 ## 代码进度
 
@@ -37,9 +37,10 @@ iPhone Safari冒烟：通过
 公共数据回滚
 完整公共数据库迁移导出
 正式管理员控制台源实现
+独立管理员四文件构建与双产物互斥验证
 ```
 
-阶段7L至7O完成生产参数、作用域、门禁、初始化器和只读API；阶段7P至7V完成普通与敏感写入、管理员身份和人工审核；阶段7W至7Z完成设备治理和回滚；阶段8A至8B完成完整导出与一致性、审计脱敏加固；阶段8C提供隔离控制台。
+阶段7L至7O完成生产参数、作用域、门禁、初始化器和只读API；阶段7P至7V完成普通与敏感写入、管理员身份和人工审核；阶段7W至7Z完成设备治理和回滚；阶段8A至8B完成完整导出与一致性、审计脱敏加固；阶段8C提供隔离控制台；阶段8D建立独立管理员产物与部署前检查。
 
 所有生产开关在模板中保持`0`。越级开关、弱密钥、复用密钥、非HTTPS来源、错误Store和错误作用域均失败关闭。
 
@@ -103,7 +104,7 @@ POST /api/admin/auth/logout
 
 敏感提交入口可独立暂停；暂停新候选后，管理员仍可处理存量敏感队列。
 
-## 阶段8C正式管理员控制台
+## 阶段8C正式管理员控制台源
 
 ```text
 admin/production-console.html
@@ -124,19 +125,54 @@ admin/production-console.js
 退出或pagehide清空页面业务状态
 ```
 
-控制台只引用同源CSS与JS，不含第三方资源。**本阶段明确不部署管理员页面，不生成管理员公开地址，不修改EdgeOne环境变量。**未来只能部署到负责人控制的独立管理员来源。
+控制台只引用同源CSS与JS，不含第三方资源。
+
+## 阶段8D独立管理员产物
+
+管理员构建命令：
+
+```bash
+npm run admin:prepare -- --output .edgeone-admin-artifact
+npm run admin:verify:isolation
+npm run edgeone:admin:build
+```
+
+生成文件精确为：
+
+```text
+.edgeone-admin-artifact/
+  index.html
+  production-console.css
+  production-console.js
+  admin-release.json
+```
+
+`admin-release.json`绑定源提交、三份权威源文件的SHA-256和字节数，并声明：未部署、不含普通候选、不含真实秘密、生产能力默认关闭、稳定晋升关闭。
+
+管理员项目构建与响应头模板：
+
+```text
+config/edgeone-admin.project.json
+```
+
+模板要求同源外部CSS/JS、no-store、严格CSP、HSTS、DENY、no-referrer、COOP/CORP和受限Permissions-Policy。`frame-ancestors`和HSTS必须由平台实际响应头提供，不能仅依赖HTML元信息。
+
+**本阶段明确不部署管理员页面，不生成管理员公开地址，不修改EdgeOne环境变量。**未来只能部署到负责人控制的独立管理员来源。
 
 ## 公开候选隔离
 
 普通用户候选白名单仍然只有：
 
 ```text
-index.html
-build-manifest.json
-pages-release.json
+.edgeone-artifact/
+  index.html
+  build-manifest.json
+  pages-release.json
 ```
 
-`admin/`、源码、日志、环境变量和维护页面不得进入普通用户EdgeOne或GitHub Pages入口。
+自动互斥验证要求两套目录文件数量、名称、内容和摘要相互独立；管理员产物不得出现候选标题、APP_VERSION或普通发布清单，普通产物不得出现管理员CSS、JS或发布清单。
+
+`admin/`、管理员生成产物、源码、日志、环境变量和维护页面不得进入普通用户EdgeOne或GitHub Pages入口。
 
 | 角色 | 入口 | 当前状态 |
 |---|---|---|
@@ -145,7 +181,7 @@ pages-release.json
 | 永久正式主入口 | EdgeOne自定义域名 | 未配置 |
 | 免费静态备用 | GitHub Pages | 只承载冻结候选静态文件 |
 | 离线兜底 | `码单器8.2.31_候选.html` | 已冻结摘要 |
-| 管理员控制台 | 独立管理员来源 | 仅源代码与测试，未部署 |
+| 管理员控制台 | 独立管理员来源 | 四文件构建与配置模板完成，未部署 |
 
 ## 验证
 
@@ -157,11 +193,13 @@ npm run production:validate
 npm run production:bootstrap:plan
 npm run production:runtime:audit
 python3 tests/stage8c_browser_production_admin_console.py
+npm run admin:prepare -- --output .edgeone-admin-artifact
+npm run admin:verify:isolation
 ```
 
-通用CI同时校验命令退出码和Node最终测试摘要，并运行核心、普通用户、管理员阶段5A至6B和阶段8C控制台浏览器矩阵。
+通用CI同时校验命令退出码和Node最终测试摘要，并运行核心、普通用户、管理员阶段5A至6B和阶段8C控制台浏览器矩阵。阶段8D专项CI会同时生成普通三文件与管理员四文件并验证互斥，不执行部署。
 
-EdgeOne普通候选构建仍为：
+普通候选构建保持：
 
 ```text
 安装：npm ci --ignore-scripts
@@ -170,12 +208,20 @@ EdgeOne普通候选构建仍为：
 Node：22.11.0
 ```
 
-该输出不包含管理员控制台。
+管理员项目未来构建设置为：
+
+```text
+安装：npm ci --ignore-scripts
+构建：npm run edgeone:admin:build
+输出：./.edgeone-admin-artifact
+Node：22.11.0
+```
 
 ## 当前实际边界
 
 ```text
 EdgeOne新部署：0
+管理员项目创建：0
 管理员控制台部署：0
 EdgeOne环境变量写入：0
 真实Blob创建或读写：0
@@ -189,6 +235,7 @@ DNS修改：0
 
 详细方案见：
 
+- `docs/阶段8D_独立管理员产物与部署前检查.md`
 - `docs/阶段8C_正式管理员控制台.md`
 - `docs/阶段8B_正式导出一致性与审计脱敏加固.md`
 - `docs/阶段8A_正式完整公共数据库导出.md`
