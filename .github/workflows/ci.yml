@@ -121,6 +121,12 @@ jobs:
           mkdir -p test-results
           set -o pipefail
           python3 tests/stage8c_browser_production_admin_console.py 2>&1 | tee test-results/stage8c-admin-console-browser.log
+      - name: Stage8D offline production generator browser regression
+        shell: bash
+        run: |
+          mkdir -p test-results
+          set -o pipefail
+          python3 tests/stage8d_browser_production_secret_generator.py 2>&1 | tee test-results/stage8d-offline-generator-browser.log
       - name: Upload browser regression logs
         if: always()
         uses: actions/upload-artifact@v4
