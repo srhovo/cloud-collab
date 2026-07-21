@@ -7,6 +7,12 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const config = JSON.parse(fs.readFileSync(path.join(root, 'deploy', 'admin', 'edgeone.json'), 'utf8'));
 
+function headerMap(source) {
+  const rule = config.headers.find(item => item.source === source);
+  assert.ok(rule, `missing header rule ${source}`);
+  return Object.fromEntries(rule.headers.map(item => [item.key.toLowerCase(), item.value]));
+}
+
 test('管理员edgeone.json使用独立根目录构建与四文件输出', () => {
   assert.equal(config.nodeVersion, '22.11.0');
   assert.equal(config.outputDirectory, './.edgeone-admin-artifact');
@@ -28,9 +34,7 @@ test('管理员响应头符合EdgeOne规则并覆盖关键浏览器安全边界'
     assert.equal(Buffer.byteLength(header.value, 'utf8') <= 1000, true);
     assert.equal(/^[\x20-\x7e]+$/u.test(header.value), true);
   }
-  const wildcardRule = config.headers.find(rule => rule.source === '/*');
-  assert.ok(wildcardRule);
-  const wildcard = Object.fromEntries(wildcardRule.headers.map(item => [item.key.toLowerCase(), item.value]));
+  const wildcard = headerMap('/*');
   assert.equal(wildcard['cache-control'], 'no-store, max-age=0, must-revalidate');
   assert.match(wildcard['content-security-policy'], /default-src 'none'/u);
   assert.match(wildcard['content-security-policy'], /connect-src 'self'/u);
@@ -45,9 +49,13 @@ test('管理员响应头符合EdgeOne规则并覆盖关键浏览器安全边界'
   assert.equal(wildcard['cross-origin-resource-policy'], 'same-origin');
   assert.equal(wildcard['x-permitted-cross-domain-policies'], 'none');
   assert.match(wildcard['permissions-policy'], /camera=\(\)/u);
-  const releaseRule = config.headers.find(rule => rule.source === '/admin-release.json');
-  assert.ok(releaseRule);
-  assert.equal(releaseRule.headers[0].value, 'application/json; charset=utf-8');
+});
+
+test('管理员四个静态响应显式冻结UTF-8内容类型', () => {
+  assert.equal(headerMap('/index.html')['content-type'], 'text/html; charset=utf-8');
+  assert.equal(headerMap('/production-console.css')['content-type'], 'text/css; charset=utf-8');
+  assert.equal(headerMap('/production-console.js')['content-type'], 'application/javascript; charset=utf-8');
+  assert.equal(headerMap('/admin-release.json')['content-type'], 'application/json; charset=utf-8');
 });
 
 test('管理员与普通用户EdgeOne配置互不覆盖', () => {
