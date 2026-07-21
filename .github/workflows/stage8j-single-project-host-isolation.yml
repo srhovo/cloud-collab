@@ -1,0 +1,75 @@
+name: stage8j-single-project-host-isolation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'middleware.js'
+      - 'edgeone.json'
+      - 'package.json'
+      - 'scripts/prepare-edgeone-single-project-v1.mjs'
+      - 'tests/stage8j-single-project-host-routing.test.mjs'
+      - 'release/production-domain-selection-v1.json'
+      - 'release/production-handoff-plan-v1.json'
+      - 'scripts/build-production-handoff-v1.mjs'
+      - 'docs/阶段8J_单项目双域名Host隔离.md'
+      - '.github/workflows/stage8j-single-project-host-isolation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  host-isolation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Build frozen candidate source
+        run: npm run build
+      - name: Run host routing tests
+        run: node --test tests/stage8j-single-project-host-routing.test.mjs
+      - name: Build single-project two-domain artifact
+        run: npm run edgeone:production:prepare -- --output .edgeone-artifact --commit "$GITHUB_SHA" | tee stage8j-layout.json
+      - name: Audit generated layout and zero-operation boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(find .edgeone-artifact -maxdepth 1 -type f | wc -l)" -eq 3
+          test "$(find .edgeone-artifact/__admin -maxdepth 1 -type f | wc -l)" -eq 4
+          test -f .edgeone-artifact/index.html
+          test -f .edgeone-artifact/build-manifest.json
+          test -f .edgeone-artifact/pages-release.json
+          test -f .edgeone-artifact/__admin/index.html
+          test -f .edgeone-artifact/__admin/production-console.css
+          test -f .edgeone-artifact/__admin/production-console.js
+          test -f .edgeone-artifact/__admin/admin-release.json
+          test ! -e .edgeone-artifact/production-console.css
+          test ! -e .edgeone-artifact/production-console.js
+          test ! -e .edgeone-artifact/admin-release.json
+          test ! -e .edgeone-artifact/__admin/build-manifest.json
+          test ! -e .edgeone-artifact/__admin/pages-release.json
+          test ! -e .edgeone-admin-artifact
+          grep -q '"topology": "single_edgeone_project_two_custom_domains"' stage8j-layout.json
+          grep -q '"accountApiTokenRequiredAtRuntime": false' stage8j-layout.json
+          grep -q '"productionCapabilitiesEnabled": false' stage8j-layout.json
+          grep -q '"stablePromotionAuthorized": false' stage8j-layout.json
+          ! grep -R "EDGEONE_API_TOKEN\|EDGEONE_PROJECT_ID\|eo_token=" middleware.js .edgeone-artifact stage8j-layout.json
+      - name: Confirm no deployment commands
+        shell: bash
+        run: |
+          ! grep -E "edgeone[[:space:]]+deploy|wrangler|vercel|netlify|curl[[:space:]].*https?://" .github/workflows/stage8j-single-project-host-isolation.yml
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage8j-single-project-host-isolation
+          path: stage8j-layout.json
+          if-no-files-found: error
+          retention-days: 14
