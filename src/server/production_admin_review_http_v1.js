@@ -3,9 +3,11 @@ import {
   assertAdminSameOriginRequest,
   clearAdminSessionCookie,
   readAdminSessionCookie,
-  verifyAdminSessionToken,
 } from './admin_auth_v1.js';
-import { readProductionAdminAuthConfig } from './production_admin_auth_http_v1.js';
+import {
+  readProductionAdminAuthConfig,
+  verifyProductionAdminSessionToken,
+} from './production_admin_auth_v1.js';
 import { readProductionRuntimeConfig } from './production_runtime_config_v1.js';
 import {
   ADMIN_REVIEW_MAX_OBJECTS,
@@ -36,7 +38,7 @@ import {
   mutateAdminOrdinaryReview,
 } from './admin_ordinary_review_mutation_v1.js';
 
-const API_VERSION = '2026-07-21-stage7t';
+const API_VERSION = '2026-07-21-stage7u';
 
 export class ProductionAdminReviewError extends Error {
   constructor(code, message, status = 503, details = null, cause = null) {
@@ -133,7 +135,9 @@ function authenticate(context, dependencies) {
     publicOrigin: authConfig.publicOrigin,
   });
   const token = readAdminSessionCookie(context.request);
-  const identity = verifyAdminSessionToken(token, authConfig, { now: dependencies.now?.() ?? Date.now() });
+  const identity = verifyProductionAdminSessionToken(token, authConfig, {
+    now: dependencies.now?.() ?? Date.now(),
+  });
   const reviewConfig = readProductionAdminReviewConfig(env);
   return { identity, reviewConfig };
 }
