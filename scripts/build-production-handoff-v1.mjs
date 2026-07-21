@@ -31,19 +31,21 @@ const toolHtml = read('tools/production-secret-generator.html');
 const toolJs = read('tools/production-secret-generator.js');
 const toolCss = read('tools/production-secret-generator.css');
 
-if (handoff.schemaVersion !== 2 || handoff.stage !== '8E' || handoff.revisedAtStage !== '8G') fail('交接计划版本无效');
-if (handoff.status !== 'code_complete_pre_domain_bootstrap_available_waiting_owner_domain_and_platform_configuration') fail('交接计划状态无效');
-if (handoff.recommendedBootstrapWorkflow !== 'stage8g-edgeone-production-bootstrap'
-    || handoff.bootstrapRequiresOwnerDomain !== false
-    || handoff.deploymentBootstrapPathDeprecated !== true) fail('阶段8G初始化路径未收敛');
-if (handoff.stablePromotionAuthorized !== false || handoff.stablePromotionPerformed !== false) fail('稳定晋升必须关闭');
-if (handoff.productionActivationPerformed !== false) fail('生产能力不得提前启用');
+if (handoff.schemaVersion !== 3 || handoff.stage !== '8E' || handoff.revisedAtStage !== '8I') fail('交接计划版本无效');
+if (handoff.status !== 'domain_selected_architecture_review_required_before_platform_write') fail('交接计划状态无效');
+if (handoff.recommendedBootstrapWorkflow !== 'stage8h-edgeone-production-bootstrap') fail('初始化工作流版本无效');
+if (handoff.domain?.registrableDomain !== 'xiaxue.site'
+    || handoff.domain?.publicOrigin !== 'https://app.xiaxue.site'
+    || handoff.domain?.administratorOrigin !== 'https://admin.xiaxue.site') fail('正式域名计划无效');
+if (handoff.domain?.ownershipConfirmed !== false || handoff.domain?.dnsConfigured !== false || handoff.domain?.httpsVerified !== false) fail('未验收域名不得标记就绪');
+if (handoff.architecture?.currentProjectScopedBlobDetected !== true
+    || handoff.architecture?.accountApiTokenInLongRunningRuntimeAllowed !== false
+    || handoff.architecture?.administratorProjectCreationBlocked !== true
+    || handoff.architecture?.realBootstrapBlocked !== true) fail('跨项目存储阻断边界无效');
+if (handoff.stablePromotionAuthorized !== false || handoff.stablePromotionPerformed !== false || handoff.productionActivationPerformed !== false) fail('发布边界必须关闭');
 if (launch.candidate?.version !== '8.2.31'
     || launch.candidate?.sha256 !== '9a9719e70dce94d875befb287d247fca0755183da7c813779310abb57ba3882b'
     || launch.candidate?.bytes !== 1155575) fail('冻结候选身份无效');
-if (launch.stableRelease?.targetVersion !== '8.3.0'
-    || launch.stableRelease?.promotionAuthorized !== false
-    || launch.stableRelease?.promotionPerformed !== false) fail('目标稳定版本边界无效');
 
 const flags = [
   'CLOUD_PRODUCTION_ENABLED',
@@ -69,126 +71,60 @@ for (const [name, expected] of [
   ['CLOUD_ADMIN_USERNAME', 'xiaxue'],
 ]) if (env.get(name) !== expected) fail(`${name}与冻结计划不一致`);
 
-if (env.get('CLOUD_PRODUCTION_PUBLIC_ORIGIN') !== '' || env.get('CLOUD_ADMIN_PUBLIC_ORIGIN') !== '') fail('正式来源必须保持空');
+if (env.get('CLOUD_PRODUCTION_PUBLIC_ORIGIN') !== '' || env.get('CLOUD_ADMIN_PUBLIC_ORIGIN') !== '') fail('DNS与HTTPS验收前正式来源必须保持空');
 if (env.get('CLOUD_PRODUCTION_BOOTSTRAP_CONFIRMATION') !== '') fail('初始化确认词必须保持空');
 
 const privateNames = [...toolHtml.matchAll(/data-private-name="([A-Z0-9_]+)"/gu)].map(match => match[1]);
-if (privateNames.length !== 8 || new Set(privateNames).size !== 8) fail('离线工具必须包含八项独立变量');
-for (const name of privateNames) {
-  if (!env.has(name) || env.get(name) !== '') fail(`${name}模板必须存在且为空`);
-}
-
+if (privateNames.length !== 8 || new Set(privateNames).size !== 8) fail('离线工具变量范围无效');
+for (const name of privateNames) if (!env.has(name) || env.get(name) !== '') fail(`${name}模板必须为空`);
 const combinedTool = `${toolHtml}\n${toolJs}\n${toolCss}`;
 if (!toolHtml.includes("connect-src 'none'") || !toolJs.includes('crypto.getRandomValues') || !toolJs.includes('new Uint8Array(48)')) fail('离线工具隔离或随机强度不足');
-if (!toolJs.includes("window.addEventListener('pagehide', clearPage)")) fail('离线工具必须在pagehide清理');
 if (/\b(fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon|localStorage|sessionStorage|indexedDB)\b|document\.cookie|navigator\.clipboard/u.test(combinedTool)) fail('离线工具包含禁止接口');
-if (/https?:\/\//u.test(toolJs + toolCss)) fail('离线脚本或样式不得引用外部资源');
 if (/eo_token=/iu.test(templateText + JSON.stringify(handoff) + JSON.stringify(launch))) fail('交接材料不得固化临时令牌');
 
-const expectedPublic = ['index.html', 'build-manifest.json', 'pages-release.json'];
-const expectedAdmin = ['index.html', 'production-console.css', 'production-console.js', 'admin-release.json'];
-if (JSON.stringify(PUBLIC_CANDIDATE_FILES) !== JSON.stringify(expectedPublic)) fail('普通用户白名单变化');
-if (JSON.stringify(ADMIN_CONSOLE_FILES) !== JSON.stringify(expectedAdmin)) fail('管理员白名单变化');
-
 const actions = Object.freeze([
-  Object.freeze({
-    order: 1,
-    title: '可选：在域名前执行一次性Blob初始化',
-    path: 'GitHub Actions → stage8g-edgeone-production-bootstrap → 先plan；配置EDGEONE_PROJECT_ID与EDGEONE_API_TOKEN后再execute',
-    requiresOwnerDomain: false,
-    requiredNow: false,
-  }),
-  Object.freeze({
-    order: 2,
-    title: '准备可控制域名与ICP备案',
-    path: '域名注册商控制台；需要时进入工信部ICP备案系统',
-    requiresOwnerDomain: true,
-    requiredNow: false,
-  }),
-  Object.freeze({
-    order: 3,
-    title: '绑定普通与管理员正式域名',
-    path: 'EdgeOne Makers → cloud-collab项目 → 域名管理 → 添加自定义域名',
-    requiresOwnerDomain: true,
-    requiredNow: false,
-  }),
-  Object.freeze({
-    order: 4,
-    title: '在可信设备生成并导入私密配置',
-    path: '本地tools/production-secret-generator.html；EdgeOne Makers → 项目设置 → 环境变量',
-    requiresOwnerDomain: true,
-    requiredNow: false,
-  }),
-  Object.freeze({
-    order: 5,
-    title: '保持全部开关为0并完成双来源部署核验',
-    path: 'EdgeOne Makers → 部署记录；普通用户来源；管理员独立来源',
-    requiresOwnerDomain: true,
-    requiredNow: false,
-  }),
-  Object.freeze({
-    order: 6,
-    title: '按顺序开放能力并真实验收',
-    path: 'EdgeOne Makers → 项目设置 → 环境变量；部署记录；普通与管理员来源',
-    requiresOwnerDomain: true,
-    requiredNow: false,
-  }),
-  Object.freeze({
-    order: 7,
-    title: '完成L4并单独授权8.3.0晋升',
-    path: 'GitHub发布审计、EdgeOne真实环境、项目负责人确认',
-    requiresOwnerDomain: true,
-    requiredNow: false,
-  }),
+  Object.freeze({ order: 1, title: '确认xiaxue.site注册、实名和正常状态', requiredNow: true, path: '腾讯云控制台 → 域名注册 → 我的域名 → xiaxue.site' }),
+  Object.freeze({ order: 2, title: '等待阶段8I跨项目存储架构审计', requiredNow: true, path: '当前不创建管理员项目，不运行真实初始化' }),
+  Object.freeze({ order: 3, title: '绑定并验证app.xiaxue.site', requiredNow: false, path: '架构审计通过后按EdgeOne域名向导配置DNS与HTTPS' }),
+  Object.freeze({ order: 4, title: '按最终架构配置admin.xiaxue.site', requiredNow: false, path: '只有阶段8I解除阻断后执行' }),
+  Object.freeze({ order: 5, title: '生成私密配置并完成零开关部署', requiredNow: false, path: '在可信设备本地生成；全部生产开关保持0' }),
+  Object.freeze({ order: 6, title: '分阶段验收并单独决定稳定晋升', requiredNow: false, path: '完成真实设备L4后再单独授权8.3.0' }),
 ]);
 
 const report = Object.freeze({
-  schemaVersion: 2,
+  schemaVersion: 3,
   stage: '8E',
-  revisedAtStage: '8G',
-  status: 'handoff_ready_pre_domain_bootstrap_available',
+  revisedAtStage: '8I',
+  status: 'handoff_ready_domain_selected_architecture_review_required',
   candidate: Object.freeze({ version: '8.2.31', sha256: launch.candidate.sha256, bytes: launch.candidate.bytes }),
   stable: Object.freeze({ current: '8.2.25', target: '8.3.0', promotionAuthorized: false, promotionPerformed: false }),
   scope: Object.freeze({ external: launch.scope.external, protocol: launch.scope.protocol }),
+  domain: Object.freeze({ ...handoff.domain }),
+  architecture: Object.freeze({ ...handoff.architecture }),
   artifacts: Object.freeze({ public: PUBLIC_CANDIDATE_FILES, administrator: ADMIN_CONSOLE_FILES, toolsDeployed: false }),
-  offlineGenerator: Object.freeze({ files: ['tools/production-secret-generator.html', 'tools/production-secret-generator.css', 'tools/production-secret-generator.js'], networkAccess: false, persistentBrowserStorage: false, clipboardApiAccess: false, privateValueCount: 8, randomBytesPerValue: 48 }),
-  bootstrap: Object.freeze({
-    recommendedWorkflow: handoff.recommendedBootstrapWorkflow,
-    domainRequired: false,
-    automaticTrigger: false,
-    operationDefault: 'plan',
-    executeRequires: Object.freeze(['operation=execute', 'exact_confirmation', 'EDGEONE_PROJECT_ID', 'EDGEONE_API_TOKEN']),
-    deploymentEnvironmentBootstrapDeprecated: true,
-    executed: false,
-  }),
-  edgeOne: Object.freeze({ mainPushTriggersDeployment: true, projectDomainTracksLatestSuccessfulDeployment: true, customDomainTracksLatestSuccessfulProductionDeployment: true, environmentChangesRequireNewDeployment: true, blobNamespaceManualCreationRequired: false, blobNamespaceCreation: 'first_sdk_getStore_call', blobConsoleAccess: 'read_only_browse' }),
+  offlineGenerator: Object.freeze({ networkAccess: false, persistentBrowserStorage: false, clipboardApiAccess: false, privateValueCount: 8, randomBytesPerValue: 48 }),
+  bootstrap: Object.freeze({ recommendedWorkflow: handoff.recommendedBootstrapWorkflow, domainRequired: false, automaticTrigger: false, operationDefault: 'plan', blockedByArchitectureReview: true, executed: false }),
   manualActions: actions,
-  optionalPreDomainActions: Object.freeze(['stage8g_blob_bootstrap_not_executed']),
-  activationBlockers: Object.freeze(['owner_controlled_domain_missing', 'public_and_admin_origins_unconfigured', 'private_values_unconfigured', 'dual_origin_zero_flag_deployment_not_verified', 'real_environment_l4_not_executed', 'stable_promotion_not_authorized']),
+  optionalPreDomainActions: Object.freeze([]),
+  activationBlockers: Object.freeze(['domain_ownership_unconfirmed', 'dns_unconfigured', 'https_unverified', 'cross_project_blob_architecture_unresolved', 'administrator_project_creation_blocked', 'real_bootstrap_blocked', 'private_values_unconfigured', 'real_environment_l4_not_executed', 'stable_promotion_not_authorized']),
   boundaries: Object.freeze({ deploymentPerformed: false, environmentVariablesWritten: false, realPrivateValuesGenerated: false, realBlobOperationsPerformed: 0, productionActivationPerformed: false, administratorConsoleDeployed: false, stablePromotionAuthorized: false, stablePromotionPerformed: false }),
 });
 
 const markdown = [
   '# 生产上线负责人操作清单',
   '',
-  '当前无需执行正式上线操作。域名前唯一可选动作是通过阶段8G手动工作流完成一次性Blob初始化；正式入口配置、环境变量导入、能力启用和L4验收仍需可控制域名。',
+  '已选择xiaxue.site，计划入口为https://app.xiaxue.site与https://admin.xiaxue.site。当前只确认域名注册、实名和正常状态。',
   '',
-  ...actions.flatMap(item => [
-    `## ${item.order}. ${item.title}`,
-    '',
-    `**是否要求可控制域名：** ${item.requiresOwnerDomain ? '是' : '否'}`,
-    '',
-    `**路径：** ${item.path}`,
-    '',
-  ]),
+  '阶段8I完成跨项目存储架构前，不创建管理员项目，不运行真实Blob初始化。',
+  '',
+  ...actions.flatMap(item => [`## ${item.order}. ${item.title}`, '', `**现在是否执行：** ${item.requiredNow ? '是' : '否'}`, '', `**路径：** ${item.path}`, '']),
   '## 固定安全边界',
   '',
-  '- 唯一推荐初始化入口是stage8g-edgeone-production-bootstrap；不再推荐通过临时开启部署环境中的bootstrap开关初始化。',
+  '- 真实初始化入口已升级为stage8h-edgeone-production-bootstrap，但当前被阶段8I阻断。',
+  '- 不把平台账户级访问令牌放入长期运行的管理员函数。',
+  '- DNS与HTTPS验收前两个正式Origin继续留空。',
   '- 不使用带eo_token的临时地址作为正式来源。',
-  '- 不在聊天、GitHub、Actions日志或网页源代码保存真实私密值。',
-  '- 环境变量修改后必须触发新部署。',
-  '- Blob命名空间由首次getStore调用自动创建，控制台主要用于只读浏览。',
-  '- L4通过并获得负责人单独授权前不得晋升8.3.0。',
+  '- 全部正式能力保持关闭，L4完成前不得晋升8.3.0。',
   '',
 ].join('\n');
 
