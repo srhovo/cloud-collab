@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "stage": "8N",
+  "recordedAt": "2026-07-21",
+  "evidenceSource": "owner_provided_edgeone_project_and_dnspod_screenshots",
+  "project": {
+    "name": "cloud-collab",
+    "status": "running",
+    "productionBranch": "main",
+    "observedDeploymentShortSha": "68d94b7",
+    "accelerationRegion": "global_excluding_chinese_mainland",
+    "accelerationRegionVerified": true,
+    "icpFilingRequiredForCurrentRegion": false,
+    "cloudServerRequiredNow": false
+  },
+  "topology": {
+    "edgeOneProjectCount": 1,
+    "singleProjectTwoCustomDomains": true,
+    "administratorSeparateProjectRequired": false
+  },
+  "authoritativeDns": {
+    "provider": "DNSPod",
+    "zone": "xiaxue.site",
+    "rootZoneRecordsEntered": true,
+    "rootZoneRecordsEnabled": true,
+    "ownershipTxtRecordsEntered": true,
+    "publicPropagationVerified": false,
+    "standaloneChildZonesObserved": [
+      "app.xiaxue.site",
+      "admin.xiaxue.site"
+    ],
+    "standaloneChildZonesDelegatedByNs": false,
+    "standaloneChildZoneWarningsExpected": true,
+    "standaloneChildZonesUsedForProduction": false
+  },
+  "domains": {
+    "app.xiaxue.site": {
+      "edgeOneStatus": "active",
+      "associatedEnvironment": "production",
+      "rootZoneRecordType": "CNAME",
+      "rootZoneHost": "app",
+      "cnameTarget": "app.xiaxue.site.pages.dnsoe6.com.",
+      "recordEntered": true,
+      "propagationVerified": false,
+      "httpsConfigured": false
+    },
+    "admin.xiaxue.site": {
+      "edgeOneStatus": "active",
+      "associatedEnvironment": "production",
+      "rootZoneRecordType": "CNAME",
+      "rootZoneHost": "admin",
+      "cnameTarget": "admin.xiaxue.site.pages.dnsoe4.com.",
+      "recordEntered": true,
+      "propagationVerified": false,
+      "httpsConfigured": false
+    }
+  },
+  "nextOwnerAction": "wait_for_public_dns_propagation_then_verify_both_cnames_in_edgeone_before_https_configuration",
+  "realBlobBootstrapAllowed": false,
+  "productionActivationAllowed": false,
+  "stablePromotionAuthorized": false
+}
