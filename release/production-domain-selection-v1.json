@@ -1,8 +1,9 @@
 {
-  "schemaVersion": 3,
-  "stage": "8L",
+  "schemaVersion": 4,
+  "stage": "8M",
   "recordedAt": "2026-07-21",
   "evidenceSource": "owner_provided_tencent_cloud_domain_console_screenshot",
+  "edgeOneEvidenceSource": "owner_provided_edgeone_domain_management_screenshot",
   "registrableDomain": "xiaxue.site",
   "publicHostname": "app.xiaxue.site",
   "administratorHostname": "admin.xiaxue.site",
@@ -24,6 +25,20 @@
     "herman.dnspod.net"
   ],
   "dnsControlConfirmed": true,
+  "customDomainsAddedToSameProject": true,
+  "customDomainProvisioning": {
+    "app.xiaxue.site": {
+      "status": "deploying",
+      "cnameVisible": false,
+      "httpsConfigured": false
+    },
+    "admin.xiaxue.site": {
+      "status": "deploying",
+      "cnameVisible": false,
+      "httpsConfigured": false
+    }
+  },
+  "accelerationRegionVerified": false,
   "dnsConfigured": false,
   "httpsVerified": false,
   "initialAccelerationRegion": "global_excluding_chinese_mainland",

@@ -1,9 +1,9 @@
 {
-  "schemaVersion": 5,
+  "schemaVersion": 6,
   "stage": "8E",
-  "revisedAtStage": "8L",
+  "revisedAtStage": "8M",
   "recordedAt": "2026-07-21",
-  "status": "domain_verified_no_icp_initial_launch_waiting_edgeone_configuration",
+  "status": "custom_domains_added_waiting_provisioning_cname_and_region_verification",
   "recommendedBootstrapWorkflow": "stage8h-edgeone-production-bootstrap",
   "bootstrapRequiresOwnerDomain": false,
   "deploymentBootstrapPathDeprecated": true,
@@ -20,11 +20,25 @@
     "autoRenewEnabled": true,
     "dnsProvider": "DNSPod",
     "dnsControlConfirmed": true,
+    "customDomainsAddedToSameProject": true,
+    "customDomainProvisioning": {
+      "app.xiaxue.site": {
+        "status": "deploying",
+        "cnameVisible": false,
+        "httpsConfigured": false
+      },
+      "admin.xiaxue.site": {
+        "status": "deploying",
+        "cnameVisible": false,
+        "httpsConfigured": false
+      }
+    },
     "dnsConfigured": false,
     "httpsVerified": false
   },
   "deployment": {
     "initialAccelerationRegion": "global_excluding_chinese_mainland",
+    "accelerationRegionVerified": false,
     "icpFilingRequiredForInitialRegion": false,
     "icpFilingDeferred": true,
     "mainlandAccelerationEnabled": false,

@@ -9,8 +9,8 @@ const readJson = relative => JSON.parse(fs.readFileSync(path.join(root, relative
 
 test('xiaxue.site注册实名续费和DNS控制权已由负责人证据确认', () => {
   const plan = readJson('release/production-domain-selection-v1.json');
-  assert.equal(plan.schemaVersion, 3);
-  assert.equal(plan.stage, '8L');
+  assert.equal(plan.schemaVersion, 4);
+  assert.equal(plan.stage, '8M');
   assert.equal(plan.registrableDomain, 'xiaxue.site');
   assert.equal(plan.publicHostname, 'app.xiaxue.site');
   assert.equal(plan.administratorHostname, 'admin.xiaxue.site');
@@ -27,6 +27,18 @@ test('xiaxue.site注册实名续费和DNS控制权已由负责人证据确认', 
   assert.equal(plan.dnsControlConfirmed, true);
   assert.equal(plan.dnsConfigured, false);
   assert.equal(plan.httpsVerified, false);
+});
+
+test('两个自定义域名已添加到同一项目但仍等待CNAME与HTTPS', () => {
+  const plan = readJson('release/production-domain-selection-v1.json');
+  assert.equal(plan.edgeOneEvidenceSource, 'owner_provided_edgeone_domain_management_screenshot');
+  assert.equal(plan.customDomainsAddedToSameProject, true);
+  for (const hostname of ['app.xiaxue.site', 'admin.xiaxue.site']) {
+    assert.equal(plan.customDomainProvisioning[hostname].status, 'deploying');
+    assert.equal(plan.customDomainProvisioning[hostname].cnameVisible, false);
+    assert.equal(plan.customDomainProvisioning[hostname].httpsConfigured, false);
+  }
+  assert.equal(plan.accelerationRegionVerified, false);
 });
 
 test('首发使用全球不含中国大陆且当前不购买备案云资源', () => {
