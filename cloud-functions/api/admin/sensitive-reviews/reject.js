@@ -1,6 +1,6 @@
 import { resolveCloudFunctionContext } from '../../../_shared/runtime_env.js';
-import { handleAdminSensitiveReviewRejectRequest } from '../../../../src/server/admin_sensitive_review_http_v1.js';
+import { handleAdminSensitiveReviewRejectByMode } from '../../../../src/server/admin_sensitive_review_mode_dispatch_v1.js';
 
 export default async function onRequest(context) {
-  return handleAdminSensitiveReviewRejectRequest(resolveCloudFunctionContext(context));
+  return handleAdminSensitiveReviewRejectByMode(resolveCloudFunctionContext(context));
 }
