@@ -1,0 +1,71 @@
+name: stage8b-export-consistency-hardening
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/server/production_admin_export_bundle_v1.js'
+      - 'src/server/production_admin_export_http_v1.js'
+      - 'tests/stage8b-export-consistency-hardening.test.mjs'
+      - '.github/workflows/stage8b-export-consistency-hardening.yml'
+      - 'docs/阶段8B_正式导出一致性与审计脱敏加固.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export-consistency-hardening:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Run hardening and inherited export tests
+        shell: bash
+        run: |
+          set -o pipefail
+          node --test \
+            tests/stage8b-export-consistency-hardening.test.mjs \
+            tests/stage8a-production-complete-export.test.mjs \
+            tests/stage5f-admin-export.test.mjs \
+            tests/stage7s-production-admin-auth.test.mjs \
+            tests/stage7v-production-sensitive-review.test.mjs \
+            tests/stage7x-production-rollback.test.mjs \
+            2>&1 | tee stage8b-test.log
+
+      - name: Upload Stage8B diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage8b-test-diagnostic
+          path: stage8b-test.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Audit consistency and privacy boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "PRODUCTION_EXPORT_PUBLIC_STATE_MOVED" src/server/production_admin_export_bundle_v1.js
+          grep -q "publicStateFingerprint" src/server/production_admin_export_bundle_v1.js
+          grep -q "beforeOrdinaryVersion" src/server/production_admin_export_bundle_v1.js
+          grep -q "afterOrdinaryVersion" src/server/production_admin_export_bundle_v1.js
+          grep -q "snapshot.baseOrdinaryVersion" src/server/production_admin_export_bundle_v1.js
+          grep -q "createHmac" src/server/production_admin_export_http_v1.js
+          grep -q "buildProductionExportAuditIdentity" src/server/production_admin_export_http_v1.js
+          grep -q "X-Cloud-Collab-Stable-Promotion-Authorized" src/server/production_admin_export_http_v1.js
+          ! grep -q "identity: identity" src/server/production_admin_export_http_v1.js
+          ! grep -R "xiaxue76\|2406048740@qq.com" src cloud-functions tests config docs README.md
+
+      - name: Confirm all Cloud Function imports resolve
+        run: node --test tests/cloud-functions-relative-imports.test.mjs
