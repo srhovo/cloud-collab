@@ -1,6 +1,6 @@
 # 码单器公共协作数据库
 
-当前工程阶段为**阶段8C：正式管理员控制台（代码与测试完成，明确不部署）**。普通用户最终交付仍是单HTML；管理员控制台是隔离源文件，不属于普通用户公开产物。
+当前工程阶段为**阶段8D：生产部署交接包与默认零写入Blob初始化入口**。普通用户最终交付仍是单HTML；管理员控制台和生产交接包均与普通用户公开产物隔离。
 
 ## 当前发布状态
 
@@ -21,7 +21,7 @@ iPhone Safari冒烟：通过
 正式公共写入保持关闭
 ```
 
-阶段7J冻结的8.2.31候选身份、EdgeOne/GitHub Pages双入口预演和发布门禁继续有效。阶段8C不修改候选HTML、不部署候选、不晋升稳定版。
+阶段7J冻结的8.2.31候选身份、EdgeOne/GitHub Pages双入口预演和发布门禁继续有效。阶段8D不修改候选HTML、不部署候选、不晋升稳定版。
 
 ## 代码进度
 
@@ -37,9 +37,11 @@ iPhone Safari冒烟：通过
 公共数据回滚
 完整公共数据库迁移导出
 正式管理员控制台源实现
+零秘密生产交接包
+默认零写入、手动双确认的EdgeOne Blob初始化入口
 ```
 
-阶段7L至7O完成生产参数、作用域、门禁、初始化器和只读API；阶段7P至7V完成普通与敏感写入、管理员身份和人工审核；阶段7W至7Z完成设备治理和回滚；阶段8A至8B完成完整导出与一致性、审计脱敏加固；阶段8C提供隔离控制台。
+阶段7L至7O完成生产参数、作用域、门禁、初始化器和只读API；阶段7P至7V完成普通与敏感写入、管理员身份和人工审核；阶段7W至7Z完成设备治理和回滚；阶段8A至8B完成完整导出与一致性、审计脱敏加固；阶段8C提供隔离控制台；阶段8D把真实平台操作固化为可验证交接包。
 
 所有生产开关在模板中保持`0`。越级开关、弱密钥、复用密钥、非HTTPS来源、错误Store和错误作用域均失败关闭。
 
@@ -69,7 +71,7 @@ club ID / library ID：仅支持小写英文字母、数字和下划线
 管理员用户名：xiaxue
 ```
 
-聊天中出现过的管理员密码已判定为暴露且不可使用。真实凭据只允许进入平台私密环境变量。
+聊天中出现过的管理员密码已判定为暴露且不可使用。真实凭据只允许进入平台私密环境变量或GitHub Actions Secrets。
 
 ## 正式API
 
@@ -103,7 +105,7 @@ POST /api/admin/auth/logout
 
 敏感提交入口可独立暂停；暂停新候选后，管理员仍可处理存量敏感队列。
 
-## 阶段8C正式管理员控制台
+## 正式管理员控制台
 
 ```text
 admin/production-console.html
@@ -124,7 +126,37 @@ admin/production-console.js
 退出或pagehide清空页面业务状态
 ```
 
-控制台只引用同源CSS与JS，不含第三方资源。**本阶段明确不部署管理员页面，不生成管理员公开地址，不修改EdgeOne环境变量。**未来只能部署到负责人控制的独立管理员来源。
+控制台只引用同源CSS与JS，不含第三方资源。目前不部署管理员页面，不生成管理员公开地址，不修改EdgeOne环境变量。未来只能部署到负责人控制的独立管理员来源。
+
+## 阶段8D生产交接包
+
+```bash
+npm run production:handoff:build
+npm run production:bootstrap:edgeone:plan
+```
+
+生成目录：
+
+```text
+dist/production-handoff-v1/
+```
+
+内容包括脱敏清单、分阶段开关矩阵、环境变量模板、负责人操作路径和独立管理员控制台。交接包不包含普通用户`index.html`，也不包含真实秘密。
+
+EdgeOne Blob命名空间由SDK首次调用`getStore`时自动创建；控制台Blob页只用于只读浏览。手动工作流`stage8d-edgeone-production-bootstrap`默认执行`plan`，真实初始化必须选择`execute`、输入精确确认词，并配置`EDGEONE_PROJECT_ID`和`EDGEONE_API_TOKEN`两个GitHub Secrets。
+
+分阶段顺序：
+
+```text
+disabled
+→ bootstrap_once
+→ read_sync_only
+→ admin_foundation
+→ ordinary_submission_small_cohort
+→ ordinary_auto_approval
+→ admin_operations
+→ sensitive_manual_review
+```
 
 ## 公开候选隔离
 
@@ -136,7 +168,7 @@ build-manifest.json
 pages-release.json
 ```
 
-`admin/`、源码、日志、环境变量和维护页面不得进入普通用户EdgeOne或GitHub Pages入口。
+`admin/`、生产交接包、源码、日志、环境变量和维护页面不得进入普通用户EdgeOne或GitHub Pages入口。
 
 | 角色 | 入口 | 当前状态 |
 |---|---|---|
@@ -145,7 +177,7 @@ pages-release.json
 | 永久正式主入口 | EdgeOne自定义域名 | 未配置 |
 | 免费静态备用 | GitHub Pages | 只承载冻结候选静态文件 |
 | 离线兜底 | `码单器8.2.31_候选.html` | 已冻结摘要 |
-| 管理员控制台 | 独立管理员来源 | 仅源代码与测试，未部署 |
+| 管理员控制台 | 独立管理员来源 | 仅源代码、测试与交接包，未部署 |
 
 ## 验证
 
@@ -156,6 +188,8 @@ npm run release:rehearse
 npm run production:validate
 npm run production:bootstrap:plan
 npm run production:runtime:audit
+npm run production:handoff:build
+npm run production:bootstrap:edgeone:plan
 python3 tests/stage8c_browser_production_admin_console.py
 ```
 
@@ -170,7 +204,7 @@ EdgeOne普通候选构建仍为：
 Node：22.11.0
 ```
 
-该输出不包含管理员控制台。
+该输出不包含管理员控制台或生产交接包。
 
 ## 当前实际边界
 
@@ -183,12 +217,13 @@ EdgeOne环境变量写入：0
 真实管理员登录：0
 真实审核、治理、回滚或导出动作：0
 DNS修改：0
-全部正式能力：代码完成，实际启用0
+全部正式能力：代码与交接准备完成，实际启用0
 稳定晋升：0
 ```
 
 详细方案见：
 
+- `docs/阶段8D_生产部署交接包.md`
 - `docs/阶段8C_正式管理员控制台.md`
 - `docs/阶段8B_正式导出一致性与审计脱敏加固.md`
 - `docs/阶段8A_正式完整公共数据库导出.md`
