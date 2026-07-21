@@ -1,4 +1,4 @@
-name: stage8e-admin-deployment-root
+name: stage8f-admin-deployment-root
 
 on:
   pull_request:
@@ -54,6 +54,7 @@ jobs:
             tests/stage8d-admin-artifact-isolation.test.mjs \
             tests/stage8d-no-deploy-audit.test.mjs \
             tests/stage8c-production-admin-console.test.mjs \
+            tests/stage8e-production-handoff.test.mjs \
             2>&1 | tee test-results/stage8e/test.log
       - name: Install browser runtime
         run: |
@@ -79,11 +80,11 @@ jobs:
           grep -q '"stablePromotionAuthorized": false' deploy/admin/.edgeone-admin-artifact/admin-release.json
           node -e "const fs=require('fs');const r=JSON.parse(fs.readFileSync('deploy/admin/.edgeone-admin-artifact/admin-release.json','utf8'));if(r.sourceCommit!==process.env.STAGE8E_SOURCE_COMMIT)process.exit(1)"
           test -z "$(git status --short)"
-      - name: Upload Stage8E evidence
+      - name: Upload Stage8F evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: stage8e-admin-root-evidence
+          name: stage8f-admin-root-evidence
           path: |
             deploy/admin/.edgeone-admin-artifact/admin-release.json
             deploy/admin/edgeone.json
