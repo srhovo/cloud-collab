@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'dist/admin-production-console.html'
+      - 'scripts/render-admin-console-template-v1.mjs'
       - 'scripts/prepare-admin-console-v1.mjs'
       - 'scripts/verify-admin-public-artifact-isolation-v1.mjs'
       - 'tests/stage8b-production-admin-console.test.mjs'
@@ -75,6 +76,8 @@ jobs:
           grep -q "productionAdmin!==true" dist/admin-production-console.html
           grep -q "syntheticFixtureOnly!==false" dist/admin-production-console.html
           grep -q "stablePromotionAuthorized!==false" dist/admin-production-console.html
+          grep -q "checkSession({quiet:false});" dist/admin-production-console.html
+          ! grep -q "checkSession({quiet:true});" dist/admin-production-console.html
           ! grep -q "eo_token\|eo_time\|admin-preview.html" dist/admin-production-console.html
           ! grep -q "localStorage\|sessionStorage\|indexedDB" dist/admin-production-console.html
           ! grep -q "<script src=\|<link rel=\"stylesheet\"" dist/admin-production-console.html
