@@ -7,7 +7,7 @@ import { ADMIN_CONSOLE_FILES } from './prepare-admin-console-v1.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
-const fail = message => { throw new Error(`阶段8E生产交接构建失败：${message}`); };
+const fail = message => { throw new Error(`生产交接构建失败：${message}`); };
 
 function parseEnv(text) {
   const result = new Map();
@@ -31,8 +31,11 @@ const toolHtml = read('tools/production-secret-generator.html');
 const toolJs = read('tools/production-secret-generator.js');
 const toolCss = read('tools/production-secret-generator.css');
 
-if (handoff.schemaVersion !== 1 || handoff.stage !== '8E') fail('交接计划版本无效');
-if (handoff.status !== 'code_complete_waiting_owner_domain_and_platform_configuration') fail('交接计划状态无效');
+if (handoff.schemaVersion !== 2 || handoff.stage !== '8E' || handoff.revisedAtStage !== '8G') fail('交接计划版本无效');
+if (handoff.status !== 'code_complete_pre_domain_bootstrap_available_waiting_owner_domain_and_platform_configuration') fail('交接计划状态无效');
+if (handoff.recommendedBootstrapWorkflow !== 'stage8g-edgeone-production-bootstrap'
+    || handoff.bootstrapRequiresOwnerDomain !== false
+    || handoff.deploymentBootstrapPathDeprecated !== true) fail('阶段8G初始化路径未收敛');
 if (handoff.stablePromotionAuthorized !== false || handoff.stablePromotionPerformed !== false) fail('稳定晋升必须关闭');
 if (handoff.productionActivationPerformed !== false) fail('生产能力不得提前启用');
 if (launch.candidate?.version !== '8.2.31'
@@ -88,37 +91,99 @@ if (JSON.stringify(PUBLIC_CANDIDATE_FILES) !== JSON.stringify(expectedPublic)) f
 if (JSON.stringify(ADMIN_CONSOLE_FILES) !== JSON.stringify(expectedAdmin)) fail('管理员白名单变化');
 
 const actions = Object.freeze([
-  Object.freeze({ order: 1, title: '准备可控制域名与ICP备案', path: '域名注册商控制台；工信部ICP备案系统', requiredNow: false }),
-  Object.freeze({ order: 2, title: '绑定普通与管理员正式域名', path: 'EdgeOne Makers → cloud-collab项目 → 域名管理 → 添加自定义域名', requiredNow: false }),
-  Object.freeze({ order: 3, title: '在可信设备生成并导入私密配置', path: '本地tools/production-secret-generator.html；EdgeOne Makers → 项目设置 → 环境变量', requiredNow: false }),
-  Object.freeze({ order: 4, title: '重新部署并执行一次性初始化', path: 'EdgeOne Makers → 部署记录 → 重新部署；或向main推送已验收提交', requiredNow: false }),
-  Object.freeze({ order: 5, title: '按顺序开放能力并真实验收', path: 'EdgeOne Makers → 项目设置 → 环境变量；部署记录；普通与管理员来源', requiredNow: false }),
-  Object.freeze({ order: 6, title: '完成L4并单独授权8.3.0晋升', path: 'GitHub发布审计、EdgeOne真实环境、项目负责人确认', requiredNow: false }),
+  Object.freeze({
+    order: 1,
+    title: '可选：在域名前执行一次性Blob初始化',
+    path: 'GitHub Actions → stage8g-edgeone-production-bootstrap → 先plan；配置EDGEONE_PROJECT_ID与EDGEONE_API_TOKEN后再execute',
+    requiresOwnerDomain: false,
+    requiredNow: false,
+  }),
+  Object.freeze({
+    order: 2,
+    title: '准备可控制域名与ICP备案',
+    path: '域名注册商控制台；需要时进入工信部ICP备案系统',
+    requiresOwnerDomain: true,
+    requiredNow: false,
+  }),
+  Object.freeze({
+    order: 3,
+    title: '绑定普通与管理员正式域名',
+    path: 'EdgeOne Makers → cloud-collab项目 → 域名管理 → 添加自定义域名',
+    requiresOwnerDomain: true,
+    requiredNow: false,
+  }),
+  Object.freeze({
+    order: 4,
+    title: '在可信设备生成并导入私密配置',
+    path: '本地tools/production-secret-generator.html；EdgeOne Makers → 项目设置 → 环境变量',
+    requiresOwnerDomain: true,
+    requiredNow: false,
+  }),
+  Object.freeze({
+    order: 5,
+    title: '保持全部开关为0并完成双来源部署核验',
+    path: 'EdgeOne Makers → 部署记录；普通用户来源；管理员独立来源',
+    requiresOwnerDomain: true,
+    requiredNow: false,
+  }),
+  Object.freeze({
+    order: 6,
+    title: '按顺序开放能力并真实验收',
+    path: 'EdgeOne Makers → 项目设置 → 环境变量；部署记录；普通与管理员来源',
+    requiresOwnerDomain: true,
+    requiredNow: false,
+  }),
+  Object.freeze({
+    order: 7,
+    title: '完成L4并单独授权8.3.0晋升',
+    path: 'GitHub发布审计、EdgeOne真实环境、项目负责人确认',
+    requiresOwnerDomain: true,
+    requiredNow: false,
+  }),
 ]);
 
 const report = Object.freeze({
-  schemaVersion: 1,
+  schemaVersion: 2,
   stage: '8E',
-  status: 'handoff_ready_waiting_owner_domain',
+  revisedAtStage: '8G',
+  status: 'handoff_ready_pre_domain_bootstrap_available',
   candidate: Object.freeze({ version: '8.2.31', sha256: launch.candidate.sha256, bytes: launch.candidate.bytes }),
   stable: Object.freeze({ current: '8.2.25', target: '8.3.0', promotionAuthorized: false, promotionPerformed: false }),
   scope: Object.freeze({ external: launch.scope.external, protocol: launch.scope.protocol }),
   artifacts: Object.freeze({ public: PUBLIC_CANDIDATE_FILES, administrator: ADMIN_CONSOLE_FILES, toolsDeployed: false }),
   offlineGenerator: Object.freeze({ files: ['tools/production-secret-generator.html', 'tools/production-secret-generator.css', 'tools/production-secret-generator.js'], networkAccess: false, persistentBrowserStorage: false, clipboardApiAccess: false, privateValueCount: 8, randomBytesPerValue: 48 }),
+  bootstrap: Object.freeze({
+    recommendedWorkflow: handoff.recommendedBootstrapWorkflow,
+    domainRequired: false,
+    automaticTrigger: false,
+    operationDefault: 'plan',
+    executeRequires: Object.freeze(['operation=execute', 'exact_confirmation', 'EDGEONE_PROJECT_ID', 'EDGEONE_API_TOKEN']),
+    deploymentEnvironmentBootstrapDeprecated: true,
+    executed: false,
+  }),
   edgeOne: Object.freeze({ mainPushTriggersDeployment: true, projectDomainTracksLatestSuccessfulDeployment: true, customDomainTracksLatestSuccessfulProductionDeployment: true, environmentChangesRequireNewDeployment: true, blobNamespaceManualCreationRequired: false, blobNamespaceCreation: 'first_sdk_getStore_call', blobConsoleAccess: 'read_only_browse' }),
   manualActions: actions,
-  currentBlockers: Object.freeze(['owner_controlled_domain_missing', 'public_and_admin_origins_unconfigured', 'private_values_unconfigured', 'bootstrap_not_executed', 'real_environment_l4_not_executed', 'stable_promotion_not_authorized']),
+  optionalPreDomainActions: Object.freeze(['stage8g_blob_bootstrap_not_executed']),
+  activationBlockers: Object.freeze(['owner_controlled_domain_missing', 'public_and_admin_origins_unconfigured', 'private_values_unconfigured', 'dual_origin_zero_flag_deployment_not_verified', 'real_environment_l4_not_executed', 'stable_promotion_not_authorized']),
   boundaries: Object.freeze({ deploymentPerformed: false, environmentVariablesWritten: false, realPrivateValuesGenerated: false, realBlobOperationsPerformed: 0, productionActivationPerformed: false, administratorConsoleDeployed: false, stablePromotionAuthorized: false, stablePromotionPerformed: false }),
 });
 
 const markdown = [
   '# 生产上线负责人操作清单',
   '',
-  '当前无需操作。拥有可控制域名后，按以下顺序执行：',
+  '当前无需执行正式上线操作。域名前唯一可选动作是通过阶段8G手动工作流完成一次性Blob初始化；正式入口配置、环境变量导入、能力启用和L4验收仍需可控制域名。',
   '',
-  ...actions.flatMap(item => [`## ${item.order}. ${item.title}`, '', `**路径：** ${item.path}`, '']),
+  ...actions.flatMap(item => [
+    `## ${item.order}. ${item.title}`,
+    '',
+    `**是否要求可控制域名：** ${item.requiresOwnerDomain ? '是' : '否'}`,
+    '',
+    `**路径：** ${item.path}`,
+    '',
+  ]),
   '## 固定安全边界',
   '',
+  '- 唯一推荐初始化入口是stage8g-edgeone-production-bootstrap；不再推荐通过临时开启部署环境中的bootstrap开关初始化。',
   '- 不使用带eo_token的临时地址作为正式来源。',
   '- 不在聊天、GitHub、Actions日志或网页源代码保存真实私密值。',
   '- 环境变量修改后必须触发新部署。',
