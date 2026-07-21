@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PROJECT = ROOT / 'deploy' / 'admin'
 OUTPUT = PROJECT / '.edgeone-admin-artifact'
 ORIGIN = 'http://admin-stage8e.test'
-COMMIT = 'e' * 40
+COMMIT = os.environ.get('GITHUB_SHA', '').strip().lower() or ('e' * 40)
 
 mimetypes.add_type('application/javascript', '.js')
 
