@@ -5,17 +5,20 @@ import {
   adminClientAddress,
   assertAdminSameOriginRequest,
   clearAdminSessionCookie,
-  consumeAdminLoginRate,
   createAdminSessionCookie,
-  createAdminSessionToken,
+  readAdminPublicOrigin,
   readAdminSessionCookie,
-  verifyAdminCredentials,
-  verifyAdminSessionToken,
 } from './admin_auth_v1.js';
-import { readProductionRuntimeConfig } from './production_runtime_config_v1.js';
+import {
+  consumeProductionAdminLoginRate,
+  createProductionAdminSessionToken,
+  readProductionAdminAuthConfig,
+  verifyAdminCredentials,
+  verifyProductionAdminSessionToken,
+} from './production_admin_auth_v1.js';
 
 const SERVICE_ID = 'cloud-collab-admin-auth-production';
-const API_VERSION = '2026-07-21-stage7s';
+const API_VERSION = '2026-07-21-stage7t';
 const MAX_LOGIN_BYTES = 2 * 1024;
 
 export class ProductionAdminAuthError extends Error {
@@ -29,35 +32,7 @@ export class ProductionAdminAuthError extends Error {
   }
 }
 
-export function readProductionAdminAuthConfig(env = {}) {
-  let runtime;
-  try {
-    runtime = readProductionRuntimeConfig(env);
-  } catch (error) {
-    throw new ProductionAdminAuthError(
-      error?.code || 'PRODUCTION_ADMIN_CONFIG_INVALID',
-      error?.message || '正式管理员配置无效',
-      error?.status || 503,
-      error?.details || null,
-      error,
-    );
-  }
-  if (runtime.mode !== 'production' || runtime.flags.admin !== true) {
-    throw new ProductionAdminAuthError('PRODUCTION_ADMIN_DISABLED', '正式管理员身份能力未开启', 503);
-  }
-  return Object.freeze({
-    schemaVersion: 1,
-    mode: 'production',
-    username: runtime.adminUsername,
-    password: runtime.secrets.CLOUD_ADMIN_PASSWORD,
-    sessionSecret: runtime.secrets.CLOUD_ADMIN_SESSION_SECRET,
-    rateLimitSalt: runtime.secrets.CLOUD_ADMIN_RATE_LIMIT_SALT,
-    storeName: runtime.adminStoreName,
-    publicOrigin: runtime.adminOrigin,
-    sessionTtlSeconds: 15 * 60,
-    stablePromotionAuthorized: false,
-  });
-}
+export { readProductionAdminAuthConfig };
 
 function responseHeaders(extra = {}) {
   return {
@@ -81,7 +56,7 @@ function jsonResponse(payload, { status = 200, headers = {} } = {}) {
 }
 
 function success(data, { status = 200, headers = {} } = {}) {
-  return jsonResponse({ ok: true, serviceId: SERVICE_ID, apiVersion: API_VERSION, data }, { status, headers });
+  return jsonResponse({ ok: true, serviceId: SERVICE_ID, apiVersion: API_VERSION, mode: 'production', data }, { status, headers });
 }
 
 function failure(error, { clearSession = false } = {}) {
@@ -98,6 +73,7 @@ function failure(error, { clearSession = false } = {}) {
     ok: false,
     serviceId: SERVICE_ID,
     apiVersion: API_VERSION,
+    mode: 'production',
     error: { code, message },
   }, { status, headers: { ...retryAfter, ...cookie } });
 }
@@ -111,6 +87,7 @@ function methodNotAllowed(method, allow) {
     ok: false,
     serviceId: SERVICE_ID,
     apiVersion: API_VERSION,
+    mode: 'production',
     error: { code: 'METHOD_NOT_ALLOWED', message: `正式管理员接口不支持 ${method || 'UNKNOWN'} 方法` },
   }, { status: 405, headers: { Allow: allow } });
 }
@@ -150,18 +127,22 @@ function parseLoginInput(value) {
   return value;
 }
 
-function authData(identity) {
+function authData(identity, config) {
   return Object.freeze({
     authenticated: true,
+    mode: 'production',
     username: identity.username,
     issuedAt: identity.issuedAt,
     expiresAt: identity.expiresAt,
     sessionIdSuffix: identity.sessionIdSuffix,
+    externalScope: config.externalScope,
+    protocolScope: config.protocolScope,
     capabilities: Object.freeze({
       ...ADMIN_AUTH_CAPABILITIES,
       productionAdmin: true,
       stablePromotionAuthorized: false,
     }),
+    realSecretValuesExposed: false,
   });
 }
 
@@ -174,7 +155,7 @@ export async function handleProductionAdminLoginRequest(context, dependencies = 
     const input = parseLoginInput(await readJsonBody(context.request));
     const now = dependencies.now?.() ?? Date.now();
     const createStore = dependencies.createStore || createEdgeOneNamedBlobStore;
-    const consumeRate = dependencies.consumeRate || consumeAdminLoginRate;
+    const consumeRate = dependencies.consumeRate || consumeProductionAdminLoginRate;
     const store = createStore(config.storeName);
     await consumeRate({
       store,
@@ -186,9 +167,9 @@ export async function handleProductionAdminLoginRequest(context, dependencies = 
     if (!verifyAdminCredentials(config, input)) {
       throw new AdminAuthError('ADMIN_CREDENTIALS_INVALID', '管理员用户名或密码错误', 401);
     }
-    const session = createAdminSessionToken({ config, now, randomBytes: dependencies.randomBytes });
-    const identity = verifyAdminSessionToken(session.token, config, { now });
-    return success(authData(identity), {
+    const session = createProductionAdminSessionToken({ config, now, randomBytes: dependencies.randomBytes });
+    const identity = verifyProductionAdminSessionToken(session.token, config, { now });
+    return success(authData(identity, config), {
       headers: { 'Set-Cookie': createAdminSessionCookie(session.token) },
     });
   } catch (error) {
@@ -203,8 +184,8 @@ export async function handleProductionAdminSessionRequest(context, dependencies 
     const config = readProductionAdminAuthConfig(context?.env || {});
     assertAdminSameOriginRequest(context.request, { publicOrigin: config.publicOrigin });
     const token = readAdminSessionCookie(context.request);
-    const identity = verifyAdminSessionToken(token, config, { now: dependencies.now?.() ?? Date.now() });
-    return success(authData(identity));
+    const identity = verifyProductionAdminSessionToken(token, config, { now: dependencies.now?.() ?? Date.now() });
+    return success(authData(identity, config));
   } catch (error) {
     return failure(error, { clearSession: error?.status === 401 });
   }
@@ -214,8 +195,8 @@ export async function handleProductionAdminLogoutRequest(context) {
   const method = requestMethod(context?.request);
   if (method !== 'POST') return methodNotAllowed(method, 'POST');
   try {
-    const config = readProductionAdminAuthConfig(context?.env || {});
-    assertAdminSameOriginRequest(context.request, { requireOrigin: true, publicOrigin: config.publicOrigin });
+    const publicOrigin = readAdminPublicOrigin(context?.env || {});
+    assertAdminSameOriginRequest(context.request, { requireOrigin: true, publicOrigin });
     return new Response(null, {
       status: 204,
       headers: responseHeaders({ 'Set-Cookie': clearAdminSessionCookie() }),

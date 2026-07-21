@@ -19,12 +19,12 @@ export class AdminAuthModeDispatchError extends Error {
 }
 
 export function resolveAdminAuthMode(env = {}) {
-  const raw = String(env.CLOUD_ADMIN_PRODUCTION_ENABLED ?? '0').trim();
+  const raw = String(env.CLOUD_PRODUCTION_ENABLED ?? '0').trim();
   if (raw === '1') return 'production';
   if (raw === '0' || raw === '') return 'preview';
   throw new AdminAuthModeDispatchError(
-    'ADMIN_AUTH_MODE_INVALID',
-    'CLOUD_ADMIN_PRODUCTION_ENABLED必须明确为0或1',
+    'PRODUCTION_FLAG_INVALID',
+    'CLOUD_PRODUCTION_ENABLED必须明确为0或1',
     503,
   );
 }
@@ -38,7 +38,7 @@ function dispatch(context, dependencies, handlers) {
     return new Response(JSON.stringify({
       ok: false,
       serviceId: 'cloud-collab-admin-auth-dispatch',
-      apiVersion: '2026-07-21-stage7s',
+      apiVersion: '2026-07-21-stage7t',
       error: {
         code: error?.code || 'ADMIN_AUTH_MODE_INVALID',
         message: '管理员运行模式配置无效',

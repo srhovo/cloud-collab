@@ -4,6 +4,7 @@ on:
   pull_request:
     branches: [main]
     paths:
+      - 'src/server/production_admin_auth_v1.js'
       - 'src/server/production_admin_auth_http_v1.js'
       - 'src/server/admin_auth_mode_dispatch_v1.js'
       - 'cloud-functions/api/admin/auth/**'
@@ -53,11 +54,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "readProductionRuntimeConfig" src/server/production_admin_auth_http_v1.js
-          grep -q "runtime.adminStoreName" src/server/production_admin_auth_http_v1.js
-          grep -q "runtime.adminOrigin" src/server/production_admin_auth_http_v1.js
-          grep -q "CLOUD_ADMIN_PRODUCTION_ENABLED" src/server/admin_auth_mode_dispatch_v1.js
-          grep -q "stablePromotionAuthorized: false" src/server/production_admin_auth_http_v1.js
+          grep -q "readProductionRuntimeConfig" src/server/production_admin_auth_v1.js
+          grep -q "cloud-collab-admin-production" src/server/production_admin_auth_v1.js
+          grep -q "admin-production-rate/login" src/server/production_admin_auth_v1.js
+          grep -q "CLOUD_PRODUCTION_ENABLED" src/server/admin_auth_mode_dispatch_v1.js
+          ! grep -q "CLOUD_ADMIN_PRODUCTION_ENABLED" src/server/admin_auth_mode_dispatch_v1.js
+          grep -q "stablePromotionAuthorized: false" src/server/production_admin_auth_v1.js
           ! grep -R "xiaxue76\|2406048740@qq.com" src cloud-functions tests config docs README.md
           ! grep -R "Access-Control-Allow-Origin.*\*" src/server/production_admin_auth_http_v1.js
           ! grep -R "CLOUD_ADMIN_PASSWORD=.*[^=]" config/production.env.template
