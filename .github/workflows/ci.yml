@@ -115,6 +115,12 @@ jobs:
       - name: Fail on Stage6B administrator browser regression
         if: steps.stage6b_admin_browser.outcome == 'failure'
         run: exit 1
+      - name: Stage8C production administrator console browser regression
+        shell: bash
+        run: |
+          mkdir -p test-results
+          set -o pipefail
+          python3 tests/stage8c_browser_production_admin_console.py 2>&1 | tee test-results/stage8c-admin-console-browser.log
       - name: Upload browser regression logs
         if: always()
         uses: actions/upload-artifact@v4
