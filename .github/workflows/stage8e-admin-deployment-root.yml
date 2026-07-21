@@ -25,6 +25,8 @@ permissions:
 jobs:
   admin-deployment-root:
     runs-on: ubuntu-latest
+    env:
+      STAGE8E_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -38,7 +40,7 @@ jobs:
       - name: Prepare ignored evidence directory
         run: mkdir -p test-results/stage8e
       - name: Generate administrator deployment root
-        run: npm run admin:deployment:prepare -- --commit "$GITHUB_SHA" | tee test-results/stage8e/build.json
+        run: npm run admin:deployment:prepare -- --commit "$STAGE8E_SOURCE_COMMIT" | tee test-results/stage8e/build.json
       - name: Import every administrator Cloud Function
         run: npm run admin:deployment:audit | tee test-results/stage8e/runtime.json
       - name: Run deployment-root and inherited isolation tests
@@ -75,7 +77,7 @@ jobs:
           grep -q '"anonymousPublicApiIncluded": false' deploy/admin/.edgeone-admin-artifact/admin-release.json
           grep -q '"includesSecretValues": false' deploy/admin/.edgeone-admin-artifact/admin-release.json
           grep -q '"stablePromotionAuthorized": false' deploy/admin/.edgeone-admin-artifact/admin-release.json
-          node -e "const fs=require('fs');const r=JSON.parse(fs.readFileSync('deploy/admin/.edgeone-admin-artifact/admin-release.json','utf8'));if(r.sourceCommit!==process.env.GITHUB_SHA)process.exit(1)"
+          node -e "const fs=require('fs');const r=JSON.parse(fs.readFileSync('deploy/admin/.edgeone-admin-artifact/admin-release.json','utf8'));if(r.sourceCommit!==process.env.STAGE8E_SOURCE_COMMIT)process.exit(1)"
           test -z "$(git status --short)"
       - name: Upload Stage8E evidence
         if: always()
