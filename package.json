@@ -16,6 +16,8 @@
     "release:package": "node scripts/package-release-candidate-v1.mjs",
     "public:prepare": "node scripts/prepare-public-candidate-v1.mjs",
     "public:verify": "node scripts/verify-public-deployment-v1.mjs",
+    "admin:deployment:prepare": "node scripts/prepare-admin-deployment-root-v1.mjs --repository-root . --project-root deploy/admin",
+    "admin:deployment:audit": "node scripts/audit-admin-deployment-runtime-v1.mjs --project-root deploy/admin",
     "stage7h:audit": "node scripts/stage7h-release-rehearsal-v1.mjs --audit-only",
     "production:validate": "node scripts/validate-production-launch-plan-v1.mjs",
     "production:bootstrap:plan": "node scripts/build-production-bootstrap-plan-v1.mjs",
