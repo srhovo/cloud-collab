@@ -21,7 +21,7 @@ import {
 } from './ordinary_types_policy_v1.js';
 import {
   adminReviewResolutionKey,
-} from './admin_review_projection_v1.js';
+} from './admin_review_key_v1.js';
 
 export const ADMIN_ORDINARY_REVIEW_MUTATION_VERSION = 1;
 export const ADMIN_ORDINARY_REVIEW_MUTATION_MAX_BODY_BYTES = 2048;

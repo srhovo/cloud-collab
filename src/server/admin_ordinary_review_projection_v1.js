@@ -14,10 +14,10 @@ import {
 } from './ordinary_types_policy_v1.js';
 import {
   ADMIN_REVIEW_MAX_OBJECTS,
-  adminReviewResolutionKey,
   readAdminReviewConfig,
   reviewIdForKey,
 } from './admin_review_projection_v1.js';
+import { adminReviewResolutionKey } from './admin_review_key_v1.js';
 
 export const ADMIN_ORDINARY_REVIEW_PROJECTION_VERSION = 1;
 
