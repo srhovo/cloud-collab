@@ -76,8 +76,8 @@ test('生产环境模板不含真实密钥且所有能力默认关闭', () => {
   assert.equal(env.get('CLOUD_PRODUCTION_GROUP_ID'), 'group_see');
   assert.equal(env.get('CLOUD_PRODUCTION_LIBRARY_ID'), 'lib_see_cz');
   assert.equal(env.get('CLOUD_ADMIN_USERNAME'), 'xiaxue');
-  assert.equal(env.get('CLOUD_PRODUCTION_PUBLIC_ORIGIN'), '');
-  assert.equal(env.get('CLOUD_ADMIN_PUBLIC_ORIGIN'), '');
+  assert.equal(env.get('CLOUD_PRODUCTION_PUBLIC_ORIGIN'), 'https://app.xiaxue.site');
+  assert.equal(env.get('CLOUD_ADMIN_PUBLIC_ORIGIN'), 'https://admin.xiaxue.site');
 
   for (const name of [
     'CLOUD_ADMIN_PASSWORD',
