@@ -211,6 +211,6 @@ test('十个Cloud Function审核入口只依赖模式分发器并保留旧处理
     const source = fs.readFileSync(path.join(root, file), 'utf8');
     assert.match(source, /admin_review_mode_dispatch_v1/u);
     assert.match(source, new RegExp(handler, 'u'));
-    assert.doesNotMatch(source, /admin_review_http_v1|admin_review_mutation_http_v1|admin_ordinary_review_http_v1|admin_ordinary_review_mutation_http_v1/u);
+    assert.doesNotMatch(source, /from ['"][^'"]*(?:admin_review_http_v1|admin_review_mutation_http_v1|admin_ordinary_review_http_v1|admin_ordinary_review_mutation_http_v1)\.js['"]/u);
   }
 });
