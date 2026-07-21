@@ -1,0 +1,138 @@
+name: stage8d-admin-deployment-root
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'admin/**'
+      - 'deploy/admin/edgeone.json'
+      - 'scripts/prepare-admin-deployment-root-v1.mjs'
+      - 'scripts/audit-admin-deployment-runtime-v1.mjs'
+      - 'tests/stage8d-admin-deployment-artifact.test.mjs'
+      - 'tests/stage8d-admin-edgeone-config.test.mjs'
+      - 'tests/stage8d_browser_admin_deployment.py'
+      - '.github/workflows/stage8d-admin-deployment-root.yml'
+      - '.gitignore'
+      - 'docs/阶段8D_**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  admin-deployment-root:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install repository dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Rebuild frozen compatible candidate
+        run: npm run build
+
+      - name: Rebuild and audit ordinary public artifact before administrator generation
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run public:prepare -- \
+            --channel edgeone-primary \
+            --output .edgeone-artifact \
+            --commit "$GITHUB_SHA" \
+            2>&1 | tee "$RUNNER_TEMP/stage8d-public-prepare.log"
+
+      - name: Run Stage8D and Stage8C Node tests
+        shell: bash
+        run: |
+          set -o pipefail
+          node --test \
+            tests/stage8d-admin-deployment-artifact.test.mjs \
+            tests/stage8d-admin-edgeone-config.test.mjs \
+            tests/stage8c-production-admin-console.test.mjs \
+            tests/cloud-functions-relative-imports.test.mjs \
+            2>&1 | tee "$RUNNER_TEMP/stage8d-node-test.log"
+
+      - name: Simulate exact administrator subproject install
+        working-directory: deploy/admin
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp ../../package.json ../../package-lock.json ./
+          npm ci --ignore-scripts
+
+      - name: Build administrator root from subproject directory
+        working-directory: deploy/admin
+        shell: bash
+        run: |
+          set -o pipefail
+          node ../../scripts/prepare-admin-deployment-root-v1.mjs \
+            --repository-root ../.. \
+            --project-root . \
+            --commit "$GITHUB_SHA" \
+            2>&1 | tee "$RUNNER_TEMP/stage8d-admin-build.log"
+
+      - name: Import every generated administrator Cloud Function
+        shell: bash
+        run: |
+          set -o pipefail
+          node scripts/audit-admin-deployment-runtime-v1.mjs \
+            --project-root deploy/admin \
+            2>&1 | tee "$RUNNER_TEMP/stage8d-runtime-audit.log"
+
+      - name: Verify public and administrator artifacts remain isolated
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(find .edgeone-artifact -maxdepth 1 -type f -printf '%f\n' | sort | paste -sd, -)" = "build-manifest.json,index.html,pages-release.json"
+          test "$(find deploy/admin/.edgeone-admin-artifact -maxdepth 1 -type f -printf '%f\n' | sort | paste -sd, -)" = "admin-release.json,index.html,production-console.css,production-console.js"
+          test ! -e .edgeone-artifact/admin-release.json
+          test ! -e deploy/admin/.edgeone-admin-artifact/build-manifest.json
+          test ! -e deploy/admin/.edgeone-admin-artifact/pages-release.json
+          ! grep -R "码单器正式管理员控制台" .edgeone-artifact
+          ! grep -R "码单器8.2.31（公共协作发布候选版）" deploy/admin/.edgeone-admin-artifact
+          test -z "$(git status --short)"
+
+      - name: Install browser runtime
+        run: |
+          python3 -m pip install --disable-pip-version-check playwright
+          python3 -m playwright install --with-deps chromium
+          CHROMIUM_PATH="$(find "$HOME/.cache/ms-playwright" -type f -name chrome | head -n 1)"
+          test -n "$CHROMIUM_PATH"
+          echo "CHROMIUM_PATH=$CHROMIUM_PATH" >> "$GITHUB_ENV"
+
+      - name: Run generated administrator deployment browser regression
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 tests/stage8d_browser_admin_deployment.py \
+            2>&1 | tee "$RUNNER_TEMP/stage8d-browser.log"
+
+      - name: Upload Stage8D diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage8d-admin-deployment-diagnostics
+          path: |
+            ${{ runner.temp }}/stage8d-public-prepare.log
+            ${{ runner.temp }}/stage8d-node-test.log
+            ${{ runner.temp }}/stage8d-admin-build.log
+            ${{ runner.temp }}/stage8d-runtime-audit.log
+            ${{ runner.temp }}/stage8d-browser.log
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload four-file administrator static artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage8d-admin-static-artifact
+          path: deploy/admin/.edgeone-admin-artifact/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
