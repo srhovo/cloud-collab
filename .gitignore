@@ -24,4 +24,7 @@ dist/production-edgeone-env-template-v1.txt
 dist/stage8g-bootstrap-plan.json
 dist/stage8g-bootstrap-execution.json
 dist/stage8g-test-bootstrap-plan.json
+dist/stage8h-bootstrap-plan.json
+dist/stage8h-bootstrap-execution.json
+dist/stage8h-test-bootstrap-plan.json
 test-results/*

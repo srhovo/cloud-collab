@@ -1,4 +1,4 @@
-name: stage8g-edgeone-production-bootstrap
+name: stage8h-edgeone-production-bootstrap
 
 on:
   workflow_dispatch:
@@ -16,13 +16,23 @@ on:
         required: false
         default: ''
         type: string
+      impact_acknowledgement:
+        description: 'execute时必须输入WRITE-10-IMMUTABLE-OBJECTS；plan请留空'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
 
+concurrency:
+  group: production-bootstrap-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   plan:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -34,36 +44,40 @@ jobs:
         run: npm run production:handoff
       - name: Produce zero-write bootstrap plan
         env:
-          BOOTSTRAP_REPORT_PATH: dist/stage8g-bootstrap-plan.json
+          BOOTSTRAP_REPORT_PATH: dist/stage8h-bootstrap-plan.json
         run: npm run production:bootstrap:edgeone:plan
       - name: Assert plan performed no remote operations
         shell: bash
         run: |
           set -euo pipefail
-          grep -q '"stage": "8G"' dist/stage8g-bootstrap-plan.json
-          grep -q '"operation": "plan"' dist/stage8g-bootstrap-plan.json
-          grep -q '"status": "ready_not_executed"' dist/stage8g-bootstrap-plan.json
-          grep -q '"resourceCount": 10' dist/stage8g-bootstrap-plan.json
-          grep -q '"realBlobReadsPerformed": 0' dist/stage8g-bootstrap-plan.json
-          grep -q '"realBlobWritesPerformed": 0' dist/stage8g-bootstrap-plan.json
-          grep -q '"realBlobDeletesPerformed": 0' dist/stage8g-bootstrap-plan.json
-          grep -q '"stablePromotionAuthorized": false' dist/stage8g-bootstrap-plan.json
+          grep -q '"stage": "8H"' dist/stage8h-bootstrap-plan.json
+          grep -q '"operation": "plan"' dist/stage8h-bootstrap-plan.json
+          grep -q '"status": "ready_not_executed"' dist/stage8h-bootstrap-plan.json
+          grep -q '"resourceCount": 10' dist/stage8h-bootstrap-plan.json
+          grep -q '"executionBranchRequired": "refs/heads/main"' dist/stage8h-bootstrap-plan.json
+          grep -q '"approvalEnvironmentRequired": "production-bootstrap"' dist/stage8h-bootstrap-plan.json
+          grep -q '"realBlobReadsPerformed": 0' dist/stage8h-bootstrap-plan.json
+          grep -q '"realBlobWritesPerformed": 0' dist/stage8h-bootstrap-plan.json
+          grep -q '"realBlobDeletesPerformed": 0' dist/stage8h-bootstrap-plan.json
+          grep -q '"stablePromotionAuthorized": false' dist/stage8h-bootstrap-plan.json
       - name: Upload sanitized plan and handoff
         uses: actions/upload-artifact@v4
         with:
-          name: stage8g-production-bootstrap-plan
+          name: stage8h-production-bootstrap-plan
           path: |
             dist/production-handoff-v1.json
             dist/production-owner-actions-v1.md
             dist/production-edgeone-env-template-v1.txt
-            dist/stage8g-bootstrap-plan.json
+            dist/stage8h-bootstrap-plan.json
           if-no-files-found: error
           retention-days: 7
 
   execute:
-    if: ${{ inputs.operation == 'execute' }}
+    if: ${{ inputs.operation == 'execute' && github.ref == 'refs/heads/main' }}
     needs: plan
     runs-on: ubuntu-latest
+    environment: production-bootstrap
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -71,37 +85,44 @@ jobs:
           node-version: '22.11.0'
           cache: npm
       - run: npm ci --ignore-scripts
-      - name: Validate explicit write confirmation
+      - name: Validate branch and dual write confirmation
         shell: bash
         env:
           REQUESTED_CONFIRMATION: ${{ inputs.confirmation }}
+          REQUESTED_IMPACT_ACKNOWLEDGEMENT: ${{ inputs.impact_acknowledgement }}
+          REQUESTED_REF: ${{ github.ref }}
         run: |
           set -euo pipefail
+          test "$REQUESTED_REF" = 'refs/heads/main'
           test "$REQUESTED_CONFIRMATION" = 'INITIALIZE-see-see_cz-V1'
+          test "$REQUESTED_IMPACT_ACKNOWLEDGEMENT" = 'WRITE-10-IMMUTABLE-OBJECTS'
       - name: Execute immutable production bootstrap
         env:
           EDGEONE_PROJECT_ID: ${{ secrets.EDGEONE_PROJECT_ID }}
           EDGEONE_API_TOKEN: ${{ secrets.EDGEONE_API_TOKEN }}
+          EDGEONE_BOOTSTRAP_EXECUTION_UNLOCK: ${{ secrets.EDGEONE_BOOTSTRAP_EXECUTION_UNLOCK }}
           CLOUD_PRODUCTION_BOOTSTRAP_CONFIRMATION: ${{ inputs.confirmation }}
-          BOOTSTRAP_REPORT_PATH: dist/stage8g-bootstrap-execution.json
+          BOOTSTRAP_IMPACT_ACKNOWLEDGEMENT: ${{ inputs.impact_acknowledgement }}
+          BOOTSTRAP_APPROVAL_ENVIRONMENT: production-bootstrap
+          BOOTSTRAP_REPORT_PATH: dist/stage8h-bootstrap-execution.json
         run: node scripts/run-edgeone-production-bootstrap-v1.mjs --execute
       - name: Audit sanitized execution report
         if: success()
         shell: bash
         run: |
           set -euo pipefail
-          grep -q '"stage": "8G"' dist/stage8g-bootstrap-execution.json
-          grep -q '"operation": "execute"' dist/stage8g-bootstrap-execution.json
-          grep -Eq '"status": "(initialized|already_initialized_exact)"' dist/stage8g-bootstrap-execution.json
-          grep -q '"realSecretValuesExposed": false' dist/stage8g-bootstrap-execution.json
-          grep -q '"productionCapabilitiesEnabled": false' dist/stage8g-bootstrap-execution.json
-          grep -q '"stablePromotionAuthorized": false' dist/stage8g-bootstrap-execution.json
-          ! grep -qi 'EDGEONE_API_TOKEN\|Bearer\|eo_token' dist/stage8g-bootstrap-execution.json
+          grep -q '"stage": "8H"' dist/stage8h-bootstrap-execution.json
+          grep -q '"operation": "execute"' dist/stage8h-bootstrap-execution.json
+          grep -Eq '"status": "(initialized|already_initialized_exact)"' dist/stage8h-bootstrap-execution.json
+          grep -q '"realSecretValuesExposed": false' dist/stage8h-bootstrap-execution.json
+          grep -q '"productionCapabilitiesEnabled": false' dist/stage8h-bootstrap-execution.json
+          grep -q '"stablePromotionAuthorized": false' dist/stage8h-bootstrap-execution.json
+          ! grep -qi 'EDGEONE_API_TOKEN\|EXECUTION_UNLOCK\|Bearer\|eo_token' dist/stage8h-bootstrap-execution.json
       - name: Upload sanitized execution evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: stage8g-production-bootstrap-execution
-          path: dist/stage8g-bootstrap-execution.json
+          name: stage8h-production-bootstrap-execution
+          path: dist/stage8h-bootstrap-execution.json
           if-no-files-found: warn
           retention-days: 7
