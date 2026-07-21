@@ -4,6 +4,8 @@ on:
   pull_request:
     branches: [main]
     paths:
+      - 'config/production.env.template'
+      - 'src/server/production_runtime_config_v1.js'
       - 'src/server/production_device_governance_http_v1.js'
       - 'src/server/admin_device_governance_mode_dispatch_v1.js'
       - 'src/server/device_governance_v1.js'
@@ -55,10 +57,15 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Audit production device governance boundaries
+      - name: Audit independent device governance gate
         shell: bash
         run: |
           set -euo pipefail
+          grep -q "CLOUD_PRODUCTION_DEVICE_GOVERNANCE_ENABLED=0" config/production.env.template
+          grep -q "deviceGovernance: readCompatibleFlag" src/server/production_runtime_config_v1.js
+          grep -q "flags.adminReview || flags.deviceGovernance" src/server/production_runtime_config_v1.js
+          grep -q "runtime.flags.deviceGovernance" src/server/production_device_governance_http_v1.js
+          ! grep -q "runtime.flags.adminReview\|runtime.flags.readSync" src/server/production_device_governance_http_v1.js
           grep -q "runtime.publicStoreName" src/server/production_device_governance_http_v1.js
           grep -q "runtime.scope.external" src/server/production_device_governance_http_v1.js
           grep -q "runtime.scope.protocol" src/server/production_device_governance_http_v1.js
@@ -67,7 +74,7 @@ jobs:
           grep -q "readProductionAdminAuthConfig" src/server/production_device_governance_http_v1.js
           grep -q "resolveAdminAuthMode" src/server/admin_device_governance_mode_dispatch_v1.js
           ! grep -q "verifyAdminSessionToken\|readAdminAuthConfig" src/server/production_device_governance_http_v1.js
-          ! grep -q "CLOUD_ADMIN_PRODUCTION_ENABLED\|CLOUD_PRODUCTION_ADMIN_REVIEW_ENABLED" src/server/admin_device_governance_mode_dispatch_v1.js
+          ! grep -q "CLOUD_PRODUCTION_DEVICE_GOVERNANCE_ENABLED" src/server/admin_device_governance_mode_dispatch_v1.js
           ! grep -q "Access-Control-Allow-Origin" src/server/production_device_governance_http_v1.js
           grep -q "stablePromotionAuthorized: false" src/server/production_device_governance_http_v1.js
           ! grep -R "xiaxue76\|2406048740@qq.com" src cloud-functions tests config docs README.md

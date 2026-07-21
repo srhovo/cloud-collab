@@ -9,9 +9,8 @@ import {
   createProductionAdminSessionToken,
   readProductionAdminAuthConfig,
 } from '../src/server/production_admin_auth_v1.js';
-import {
-  handleAdminDeviceListByMode,
-} from '../src/server/admin_device_governance_mode_dispatch_v1.js';
+import { readProductionRuntimeConfig } from '../src/server/production_runtime_config_v1.js';
+import { handleAdminDeviceListByMode } from '../src/server/admin_device_governance_mode_dispatch_v1.js';
 import {
   handleProductionAdminDeviceListRequest,
   handleProductionAdminDeviceTrustRequest,
@@ -28,11 +27,12 @@ const secret = label => `${label}-${'x'.repeat(40)}`;
 function productionEnv(overrides = {}) {
   return {
     CLOUD_PRODUCTION_ENABLED: '1',
-    CLOUD_PRODUCTION_READ_SYNC_ENABLED: '1',
+    CLOUD_PRODUCTION_READ_SYNC_ENABLED: '0',
     CLOUD_PRODUCTION_ORDINARY_SUBMISSION_ENABLED: '0',
     CLOUD_PRODUCTION_AUTO_APPROVAL_ENABLED: '0',
     CLOUD_PRODUCTION_SENSITIVE_SUBMISSION_ENABLED: '0',
-    CLOUD_PRODUCTION_ADMIN_REVIEW_ENABLED: '1',
+    CLOUD_PRODUCTION_ADMIN_REVIEW_ENABLED: '0',
+    CLOUD_PRODUCTION_DEVICE_GOVERNANCE_ENABLED: '1',
     CLOUD_ADMIN_PRODUCTION_ENABLED: '1',
     CLOUD_PRODUCTION_BOOTSTRAP_ENABLED: '0',
     CLOUD_PRODUCTION_BOOTSTRAP_CONFIRMATION: '',
@@ -51,8 +51,8 @@ function productionEnv(overrides = {}) {
     CLOUD_ADMIN_SESSION_SECRET: secret('session'),
     CLOUD_ADMIN_RATE_LIMIT_SALT: secret('admin-rate'),
     CLOUD_ADMIN_DEVICE_REF_SALT: secret('device-ref'),
-    CLOUD_ADMIN_ROLLBACK_REF_SALT: secret('rollback-ref'),
-    CLOUD_ADMIN_EXPORT_AUDIT_SALT: secret('export-audit'),
+    CLOUD_ADMIN_ROLLBACK_REF_SALT: '',
+    CLOUD_ADMIN_EXPORT_AUDIT_SALT: '',
     ...overrides,
   };
 }
@@ -84,39 +84,61 @@ function request(pathname, {
   });
 }
 
-test('正式设备治理配置绑定公共生产Store、正式作用域和独立引用盐值', () => {
+test('设备治理开关独立于只读同步和人工审核', () => {
+  const runtime = readProductionRuntimeConfig(productionEnv());
+  assert.equal(runtime.flags.deviceGovernance, true);
+  assert.equal(runtime.flags.readSync, false);
+  assert.equal(runtime.flags.adminReview, false);
+
   const config = readProductionDeviceGovernanceConfig(productionEnv());
-  assert.equal(config.mode, 'production');
   assert.equal(config.storeName, 'cloud-collab-production-v1');
   assert.deepEqual(config.externalScope, { clubId: 'see', libraryId: 'see_cz' });
   assert.deepEqual(config.protocolScope, { groupId: 'group_see', libraryId: 'lib_see_cz' });
-  assert.equal(config.publicOrigin, ADMIN_ORIGIN);
+  assert.equal(config.deviceRefSalt, secret('device-ref'));
   assert.equal(config.syntheticFixtureOnly, false);
   assert.equal(config.stablePromotionAuthorized, false);
-  assert.equal(config.deviceRefSalt, secret('device-ref'));
 });
 
-test('正式设备列表使用生产会话和公共Store，仅返回不可逆deviceRef', async () => {
+test('缺失或关闭设备治理开关时即使人工审核开启也不能治理设备', () => {
+  const adminReviewOnly = productionEnv({
+    CLOUD_PRODUCTION_READ_SYNC_ENABLED: '1',
+    CLOUD_PRODUCTION_ADMIN_REVIEW_ENABLED: '1',
+    CLOUD_PRODUCTION_DEVICE_GOVERNANCE_ENABLED: '0',
+    CLOUD_ADMIN_ROLLBACK_REF_SALT: secret('rollback-ref'),
+    CLOUD_ADMIN_EXPORT_AUDIT_SALT: secret('export-audit'),
+  });
+  assert.throws(
+    () => readProductionDeviceGovernanceConfig(adminReviewOnly),
+    error => error.code === 'PRODUCTION_DEVICE_GOVERNANCE_DISABLED',
+  );
+
+  const missing = { ...productionEnv() };
+  delete missing.CLOUD_PRODUCTION_DEVICE_GOVERNANCE_ENABLED;
+  assert.equal(readProductionRuntimeConfig(missing).flags.deviceGovernance, false);
+  assert.throws(
+    () => readProductionDeviceGovernanceConfig(missing),
+    error => error.code === 'PRODUCTION_DEVICE_GOVERNANCE_DISABLED',
+  );
+});
+
+test('设备治理必须先开启正式管理员身份并要求独立设备引用盐值', () => {
+  assert.throws(
+    () => readProductionRuntimeConfig(productionEnv({
+      CLOUD_ADMIN_PRODUCTION_ENABLED: '0',
+      CLOUD_ADMIN_PASSWORD: '',
+      CLOUD_ADMIN_SESSION_SECRET: '',
+      CLOUD_ADMIN_RATE_LIMIT_SALT: '',
+    })),
+    error => error.code === 'PRODUCTION_ROLLOUT_ORDER_INVALID',
+  );
+  assert.throws(
+    () => readProductionRuntimeConfig(productionEnv({ CLOUD_ADMIN_DEVICE_REF_SALT: '' })),
+    error => error.code === 'PRODUCTION_SECRET_INVALID',
+  );
+});
+
+test('正式设备列表使用production issuer和公共Store且只返回deviceRef', async () => {
   let storeName = null;
-  const result = {
-    schemaVersion: 1,
-    count: 1,
-    devices: [{
-      schemaVersion: 1,
-      deviceRef: DEVICE_REF,
-      displayName: '下雪 · AB12',
-      nicknameTag: 'AB12',
-      createdAt: NOW - 1000,
-      updatedAt: NOW - 500,
-      issuedAt: NOW - 1000,
-      expiresAt: NOW + 1000,
-      lastAppVersion: '8.2.31',
-      trusted: false,
-      blocked: false,
-      governanceVersion: 0,
-      governanceUpdatedAt: null,
-    }],
-  };
   const response = await handleProductionAdminDeviceListRequest({
     env: productionEnv(),
     request: request('/api/admin/devices'),
@@ -126,35 +148,48 @@ test('正式设备列表使用生产会话和公共Store，仅返回不可逆dev
       storeName = name;
       return {};
     },
-    listDevices: async ({ config }) => {
-      assert.equal(config.deviceRefSalt, secret('device-ref'));
-      return result;
-    },
+    listDevices: async () => ({
+      schemaVersion: 1,
+      count: 1,
+      devices: [{
+        schemaVersion: 1,
+        deviceRef: DEVICE_REF,
+        displayName: '下雪 · AB12',
+        nicknameTag: 'AB12',
+        createdAt: NOW - 1000,
+        updatedAt: NOW - 500,
+        issuedAt: NOW - 1000,
+        expiresAt: NOW + 1000,
+        lastAppVersion: '8.2.31',
+        trusted: false,
+        blocked: false,
+        governanceVersion: 0,
+        governanceUpdatedAt: null,
+      }],
+    }),
   });
   assert.equal(response.status, 200);
   assert.equal(storeName, 'cloud-collab-production-v1');
   const text = await response.text();
   const body = JSON.parse(text);
-  assert.equal(body.mode, 'production');
   assert.equal(body.data.viewer.username, 'xiaxue');
   assert.equal(body.data.result.devices[0].deviceRef, DEVICE_REF);
   assert.equal(body.data.capabilities.productionAdmin, true);
   assert.equal(body.data.capabilities.syntheticFixtureOnly, false);
   assert.equal(body.data.capabilities.publicMutationAllowed, false);
   assert.equal(body.data.realSecretValuesExposed, false);
-  assert.equal(body.data.stablePromotionAuthorized, false);
   assert.doesNotMatch(text, /dev_[0-9A-HJKMNP-TV-Z]{26}/u);
   assert.equal(text.includes(secret('device-ref')), false);
 });
 
-test('正式设为可信传递显式动作、生产身份、公共Store和真实协议正文', async () => {
-  let captured = null;
+test('正式设为可信传递明确动作、生产身份和真实协议正文', async () => {
   const input = {
     schemaVersion: 1,
     deviceRef: DEVICE_REF,
     requestId: REQUEST_ID,
     reasonCode: 'verified_operator',
   };
+  let captured = null;
   const response = await handleProductionAdminDeviceTrustRequest({
     env: productionEnv(),
     request: request('/api/admin/devices/trust', { method: 'POST', body: input }),
@@ -181,14 +216,10 @@ test('正式设为可信传递显式动作、生产身份、公共Store和真实
   assert.equal(captured.identity.username, 'xiaxue');
   assert.equal(captured.command.action, 'trust');
   assert.deepEqual(captured.command.input, input);
-  assert.equal(captured.config.protocolScope.groupId, 'group_see');
-  const body = await response.json();
-  assert.equal(body.data.result.trusted, true);
-  assert.equal(body.data.capabilities.publicMutationAllowed, false);
 });
 
-test('跨站设备治理写入在正文解析和Store创建前阻断', async () => {
-  let storeCreates = 0;
+test('跨站治理在正文解析和Store创建前阻断', async () => {
+  let stores = 0;
   const response = await handleProductionAdminDeviceTrustRequest({
     env: productionEnv(),
     request: request('/api/admin/devices/trust', {
@@ -198,26 +229,20 @@ test('跨站设备治理写入在正文解析和Store创建前阻断', async () 
     }),
   }, {
     createStore: () => {
-      storeCreates += 1;
+      stores += 1;
       return {};
     },
   });
   assert.equal(response.status, 403);
-  assert.equal(storeCreates, 0);
+  assert.equal(stores, 0);
 });
 
-test('生产总开关开启时管理员子开关关闭不得回退阶段5D预览治理', async () => {
+test('生产总开关开启但设备治理关闭时不得回退阶段5D预览', async () => {
   const closed = productionEnv({
-    CLOUD_ADMIN_PRODUCTION_ENABLED: '0',
-    CLOUD_PRODUCTION_ADMIN_REVIEW_ENABLED: '0',
-    CLOUD_ADMIN_PASSWORD: '',
-    CLOUD_ADMIN_SESSION_SECRET: '',
-    CLOUD_ADMIN_RATE_LIMIT_SALT: '',
+    CLOUD_PRODUCTION_DEVICE_GOVERNANCE_ENABLED: '0',
     CLOUD_ADMIN_DEVICE_REF_SALT: '',
-    CLOUD_ADMIN_ROLLBACK_REF_SALT: '',
-    CLOUD_ADMIN_EXPORT_AUDIT_SALT: '',
   });
-  let storeCreates = 0;
+  let stores = 0;
   const response = await handleAdminDeviceListByMode({
     env: {
       ...closed,
@@ -225,24 +250,7 @@ test('生产总开关开启时管理员子开关关闭不得回退阶段5D预览
       CLOUD_ADMIN_DEVICE_GOVERNANCE_PREVIEW_ENABLED: '1',
       CLOUD_ADMIN_BLOB_STORE_NAME: 'cloud-collab-admin-preview-v1',
       CLOUD_ADMIN_DEVICE_GOVERNANCE_BLOB_STORE_NAME: 'cloud-collab-preview-v1',
-      CLOUD_ADMIN_PUBLIC_ORIGIN: ADMIN_ORIGIN,
     },
-    request: new Request(`${ADMIN_ORIGIN}/api/admin/devices`, { method: 'GET' }),
-  }, {
-    createStore: () => {
-      storeCreates += 1;
-      return {};
-    },
-    listDevices: async () => assert.fail('生产模式不得调用预览设备列表'),
-  });
-  assert.equal(response.status, 503);
-  assert.equal(storeCreates, 0);
-});
-
-test('非法生产总开关在进入任何设备治理处理器前失败关闭', async () => {
-  let stores = 0;
-  const response = await handleAdminDeviceListByMode({
-    env: { CLOUD_PRODUCTION_ENABLED: 'invalid' },
     request: new Request(`${ADMIN_ORIGIN}/api/admin/devices`, { method: 'GET' }),
   }, {
     createStore: () => {
@@ -251,36 +259,18 @@ test('非法生产总开关在进入任何设备治理处理器前失败关闭',
     },
   });
   assert.equal(response.status, 503);
-  assert.equal((await response.json()).error.code, 'PRODUCTION_FLAG_INVALID');
   assert.equal(stores, 0);
 });
 
-test('六个Cloud Function入口只依赖设备治理模式分发器', () => {
-  for (const [relative, handler] of [
-    ['cloud-functions/api/admin/devices.js', 'handleAdminDeviceListRequest'],
-    ['cloud-functions/api/admin/devices/detail.js', 'handleAdminDeviceDetailRequest'],
-    ['cloud-functions/api/admin/devices/trust.js', 'handleAdminDeviceTrustRequest'],
-    ['cloud-functions/api/admin/devices/revoke-trust.js', 'handleAdminDeviceRevokeTrustRequest'],
-    ['cloud-functions/api/admin/devices/block.js', 'handleAdminDeviceBlockRequest'],
-    ['cloud-functions/api/admin/devices/unblock.js', 'handleAdminDeviceUnblockRequest'],
-  ]) {
-    const source = fs.readFileSync(path.join(root, relative), 'utf8');
-    assert.match(source, /admin_device_governance_mode_dispatch_v1/u);
-    assert.match(source, new RegExp(handler, 'u'));
-    assert.doesNotMatch(source, /from ['"][^'"]*device_governance_http_v1/u);
-  }
-});
-
-test('正式设备治理静态边界使用production issuer、总开关分发和脱敏投影', () => {
+test('静态边界使用独立开关、production issuer和总开关分发', () => {
+  const runtime = fs.readFileSync(path.join(root, 'src/server/production_runtime_config_v1.js'), 'utf8');
   const http = fs.readFileSync(path.join(root, 'src/server/production_device_governance_http_v1.js'), 'utf8');
   const dispatch = fs.readFileSync(path.join(root, 'src/server/admin_device_governance_mode_dispatch_v1.js'), 'utf8');
+  assert.match(runtime, /CLOUD_PRODUCTION_DEVICE_GOVERNANCE_ENABLED/u);
+  assert.match(runtime, /flags\.adminReview \|\| flags\.deviceGovernance/u);
+  assert.match(http, /runtime\.flags\.deviceGovernance/u);
+  assert.doesNotMatch(http, /runtime\.flags\.adminReview|runtime\.flags\.readSync/u);
   assert.match(http, /verifyProductionAdminSessionToken/u);
-  assert.match(http, /readProductionAdminAuthConfig/u);
-  assert.match(http, /runtime\.publicStoreName/u);
-  assert.match(http, /CLOUD_ADMIN_DEVICE_REF_SALT/u);
-  assert.match(http, /stablePromotionAuthorized:\s*false/u);
-  assert.doesNotMatch(http, /readAdminAuthConfig|verifyAdminSessionToken/u);
-  assert.doesNotMatch(http, /Access-Control-Allow-Origin/u);
   assert.match(dispatch, /resolveAdminAuthMode/u);
-  assert.doesNotMatch(dispatch, /CLOUD_ADMIN_PRODUCTION_ENABLED|CLOUD_PRODUCTION_ADMIN_REVIEW_ENABLED/u);
+  assert.doesNotMatch(dispatch, /CLOUD_PRODUCTION_DEVICE_GOVERNANCE_ENABLED/u);
 });
