@@ -7,11 +7,13 @@ import { getStore } from '@edgeone/pages-blob';
 import {
   buildProductionBootstrapResources,
   executeProductionBootstrap,
+  ProductionBootstrapError,
 } from '../src/server/production_bootstrap_v1.js';
 import { readProductionRuntimeConfig } from '../src/server/production_runtime_config_v1.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CONFIRMATION = 'INITIALIZE-see-see_cz-V1';
+const IMPACT_ACKNOWLEDGEMENT = 'WRITE-10-IMMUTABLE-OBJECTS';
 const PUBLIC_STORE = 'cloud-collab-production-v1';
 const ADMIN_STORE = 'cloud-collab-admin-production-v1';
 
@@ -58,16 +60,20 @@ function buildPlan() {
   const plan = buildProductionBootstrapResources(config);
   return Object.freeze({
     schemaVersion: 1,
-    stage: '8F',
+    stage: '8G',
     operation: 'plan',
     status: 'ready_not_executed',
     projectIdConfigured: Boolean(String(process.env.EDGEONE_PROJECT_ID || '').trim()),
     apiTokenConfigured: Boolean(String(process.env.EDGEONE_API_TOKEN || '').trim()),
+    executionUnlockConfigured: Boolean(String(process.env.EDGEONE_BOOTSTRAP_EXECUTION_UNLOCK || '').trim()),
     publicStoreName: PUBLIC_STORE,
     adminStoreName: ADMIN_STORE,
     externalScope: plan.manifest.externalScope,
     protocolScope: plan.manifest.protocolScope,
     confirmationRequired: CONFIRMATION,
+    impactAcknowledgementRequired: IMPACT_ACKNOWLEDGEMENT,
+    executionBranchRequired: 'refs/heads/main',
+    approvalEnvironmentRequired: 'production-bootstrap',
     resourceCount: plan.entries.length,
     resources: plan.manifest.resources,
     manifestSha256: plan.manifestSha256,
@@ -97,16 +103,39 @@ function writeReport(report) {
 function readExecutionCredentials() {
   const projectId = String(process.env.EDGEONE_PROJECT_ID || '').trim();
   const token = String(process.env.EDGEONE_API_TOKEN || '').trim();
+  const unlock = String(process.env.EDGEONE_BOOTSTRAP_EXECUTION_UNLOCK || '').trim();
   const confirmation = String(process.env.CLOUD_PRODUCTION_BOOTSTRAP_CONFIRMATION || '').trim();
+  const acknowledgement = String(process.env.BOOTSTRAP_IMPACT_ACKNOWLEDGEMENT || '').trim();
+  const eventName = String(process.env.GITHUB_EVENT_NAME || '').trim();
+  const gitRef = String(process.env.GITHUB_REF || '').trim();
+  const approvalEnvironment = String(process.env.BOOTSTRAP_APPROVAL_ENVIRONMENT || '').trim();
 
+  if (eventName !== 'workflow_dispatch') {
+    fail('BOOTSTRAP_EVENT_INVALID', '真实初始化只能由GitHub手动工作流触发');
+  }
+  if (gitRef !== 'refs/heads/main') {
+    fail('BOOTSTRAP_BRANCH_INVALID', '真实初始化只能从main分支执行');
+  }
+  if (approvalEnvironment !== 'production-bootstrap') {
+    fail('BOOTSTRAP_APPROVAL_ENVIRONMENT_INVALID', '真实初始化必须经过production-bootstrap环境门禁');
+  }
+  if (confirmation !== CONFIRMATION) {
+    fail('BOOTSTRAP_CONFIRMATION_INVALID', '一次性初始化确认词不匹配');
+  }
+  if (acknowledgement !== IMPACT_ACKNOWLEDGEMENT) {
+    fail('BOOTSTRAP_IMPACT_ACKNOWLEDGEMENT_INVALID', '不可变写入影响确认不匹配');
+  }
   if (!/^pages-[A-Za-z0-9_-]{6,}$/u.test(projectId)) {
     fail('EDGEONE_PROJECT_ID_INVALID', 'EDGEONE_PROJECT_ID缺失或格式无效');
   }
   if (Buffer.byteLength(token, 'utf8') < 20) {
     fail('EDGEONE_API_TOKEN_INVALID', 'EDGEONE_API_TOKEN缺失或过短');
   }
-  if (confirmation !== CONFIRMATION) {
-    fail('BOOTSTRAP_CONFIRMATION_INVALID', '一次性初始化确认词不匹配');
+  if (Buffer.byteLength(unlock, 'utf8') < 32) {
+    fail('BOOTSTRAP_EXECUTION_LOCKED', '初始化执行解锁值缺失或过短');
+  }
+  if (unlock === token || unlock === projectId || token === projectId) {
+    fail('BOOTSTRAP_EXECUTION_VALUE_REUSED', '项目ID、API Token和执行解锁值不得复用');
   }
   return Object.freeze({ projectId, token });
 }
@@ -123,7 +152,7 @@ async function executeBootstrap() {
 
   return Object.freeze({
     schemaVersion: 1,
-    stage: '8F',
+    stage: '8G',
     operation: 'execute',
     status: result.status,
     publicStoreName: PUBLIC_STORE,
@@ -143,10 +172,19 @@ async function executeBootstrap() {
   });
 }
 
+function safeFailureMessage(error, executeRequested) {
+  if (!executeRequested) return error?.message || 'EdgeOne生产初始化计划生成失败';
+  if (error instanceof ProductionBootstrapError) {
+    return error.message || '生产空库初始化失败';
+  }
+  return 'EdgeOne生产初始化失败；请核对项目ID、API Token权限、网络和平台状态';
+}
+
+const executeRequested = process.argv.includes('--execute');
 try {
-  const report = process.argv.includes('--execute') ? await executeBootstrap() : buildPlan();
+  const report = executeRequested ? await executeBootstrap() : buildPlan();
   writeReport(report);
   process.stdout.write(`${JSON.stringify(report)}\n`);
 } catch (error) {
-  fail(error?.code || 'EDGEONE_PRODUCTION_BOOTSTRAP_FAILED', error?.message || 'EdgeOne生产初始化失败', 1);
+  fail(error?.code || 'EDGEONE_PRODUCTION_BOOTSTRAP_FAILED', safeFailureMessage(error, executeRequested), 1);
 }
