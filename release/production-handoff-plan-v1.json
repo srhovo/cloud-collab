@@ -1,12 +1,30 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "stage": "8E",
-  "revisedAtStage": "8G",
+  "revisedAtStage": "8I",
   "recordedAt": "2026-07-21",
-  "status": "code_complete_pre_domain_bootstrap_available_waiting_owner_domain_and_platform_configuration",
-  "recommendedBootstrapWorkflow": "stage8g-edgeone-production-bootstrap",
+  "status": "domain_selected_architecture_review_required_before_platform_write",
+  "recommendedBootstrapWorkflow": "stage8h-edgeone-production-bootstrap",
   "bootstrapRequiresOwnerDomain": false,
   "deploymentBootstrapPathDeprecated": true,
+  "domain": {
+    "registrableDomain": "xiaxue.site",
+    "publicHostname": "app.xiaxue.site",
+    "administratorHostname": "admin.xiaxue.site",
+    "publicOrigin": "https://app.xiaxue.site",
+    "administratorOrigin": "https://admin.xiaxue.site",
+    "ownershipConfirmed": false,
+    "dnsConfigured": false,
+    "httpsVerified": false
+  },
+  "architecture": {
+    "separateAdministratorProjectPlanned": true,
+    "currentProjectScopedBlobDetected": true,
+    "accountApiTokenInLongRunningRuntimeAllowed": false,
+    "administratorProjectCreationBlocked": true,
+    "realBootstrapBlocked": true,
+    "resolutionRequired": "signed_cross_project_admin_gateway_or_single_project_host_routing"
+  },
   "stablePromotionAuthorized": false,
   "stablePromotionPerformed": false,
   "productionActivationPerformed": false
