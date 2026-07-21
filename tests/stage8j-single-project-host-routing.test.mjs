@@ -104,3 +104,15 @@ test('EdgeOne构建组合普通与管理员产物但仍保持内部目录隔离'
   assert.equal(edgeone.headers.some(rule => rule.source === '/__admin/*'), true);
   assert.equal(edgeone.headers.some(rule => rule.source === '/__admin/production-console.js'), true);
 });
+
+test('README只指导一个EdgeOne项目和两个正式域名', () => {
+  const readme = read('README.md');
+  assert.match(readme, /阶段8J/u);
+  assert.match(readme, /app\.xiaxue\.site/u);
+  assert.match(readme, /admin\.xiaxue\.site/u);
+  assert.match(readme, /EdgeOne正式项目数量：1/u);
+  assert.match(readme, /不要创建独立管理员项目/u);
+  assert.match(readme, /stage8h-edgeone-production-bootstrap/u);
+  assert.doesNotMatch(readme, /管理员项目未来构建设置/u);
+  assert.doesNotMatch(readme, /管理员控制台 \| `deploy\/admin`独立来源/u);
+});
