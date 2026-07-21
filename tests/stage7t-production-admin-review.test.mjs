@@ -4,8 +4,14 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { createAdminSessionCookie, createAdminSessionToken } from '../src/server/admin_auth_v1.js';
-import { readProductionAdminAuthConfig } from '../src/server/production_admin_auth_http_v1.js';
+import { createAdminSessionCookie } from '../src/server/admin_auth_v1.js';
+import {
+  createProductionAdminSessionToken,
+  readProductionAdminAuthConfig,
+} from '../src/server/production_admin_auth_v1.js';
+import {
+  handleAdminExactReviewQueueByMode,
+} from '../src/server/admin_review_mode_dispatch_v1.js';
 import {
   handleProductionAdminExactReviewQueueRequest,
   handleProductionAdminOrdinaryReviewApproveRequest,
@@ -61,7 +67,7 @@ function env(overrides = {}) {
 
 function cookie(runtimeEnv = env()) {
   const config = readProductionAdminAuthConfig(runtimeEnv);
-  const session = createAdminSessionToken({
+  const session = createProductionAdminSessionToken({
     config,
     now: NOW,
     randomBytes: length => Buffer.alloc(length, 9),
@@ -89,7 +95,7 @@ test('正式审核配置绑定公共生产Store和正式协议作用域', () => 
   assert.equal(config.stablePromotionAuthorized, false);
 });
 
-test('精确价格正式队列使用公共Store并返回脱敏生产能力', async () => {
+test('精确价格正式队列接受正式issuer会话并返回脱敏生产能力', async () => {
   let storeName = null;
   const response = await handleProductionAdminExactReviewQueueRequest({
     env: env(),
@@ -194,6 +200,49 @@ test('管理员审核未开启时在Store创建前失败关闭', async () => {
   assert.equal(storeCreates, 0);
 });
 
+test('生产总开关开启时管理员子开关关闭不得回退预览审核', async () => {
+  let stores = 0;
+  const runtimeEnv = env({
+    CLOUD_ADMIN_PRODUCTION_ENABLED: '0',
+    CLOUD_PRODUCTION_ADMIN_REVIEW_ENABLED: '0',
+    CLOUD_ADMIN_PASSWORD: '',
+    CLOUD_ADMIN_SESSION_SECRET: '',
+    CLOUD_ADMIN_RATE_LIMIT_SALT: '',
+    CLOUD_ADMIN_PREVIEW_ENABLED: '1',
+    CLOUD_ADMIN_BLOB_STORE_NAME: 'cloud-collab-admin-preview-v1',
+    CLOUD_ADMIN_REVIEW_PREVIEW_ENABLED: '1',
+    CLOUD_ADMIN_REVIEW_BLOB_STORE_NAME: 'cloud-collab-preview-v1',
+    CLOUD_ADMIN_REVIEW_ALLOWED_GROUP_ID: 'group_fixture',
+    CLOUD_ADMIN_REVIEW_ALLOWED_LIBRARY_ID: 'lib_receive_fixture',
+  });
+  const response = await handleAdminExactReviewQueueByMode({
+    env: runtimeEnv,
+    request: new Request('https://admin.example.invalid/api/admin/reviews', {
+      method: 'GET',
+      headers: { 'Sec-Fetch-Site': 'same-origin' },
+    }),
+  }, {
+    createStore: () => { stores += 1; return {}; },
+    listQueue: async () => assert.fail('生产模式不得调用预览队列'),
+  });
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).error.code, 'PRODUCTION_ADMIN_DISABLED');
+  assert.equal(stores, 0);
+});
+
+test('非法生产总开关在进入任一审核处理器前失败', async () => {
+  let stores = 0;
+  const response = await handleAdminExactReviewQueueByMode({
+    env: { CLOUD_PRODUCTION_ENABLED: 'maybe', CLOUD_ADMIN_PRODUCTION_ENABLED: '1' },
+    request: new Request('https://admin.example.invalid/api/admin/reviews', { method: 'GET' }),
+  }, {
+    createStore: () => { stores += 1; return {}; },
+  });
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).error.code, 'PRODUCTION_FLAG_INVALID');
+  assert.equal(stores, 0);
+});
+
 test('十个Cloud Function审核入口只依赖模式分发器并保留旧处理器名', () => {
   const files = [
     ['cloud-functions/api/admin/reviews.js', 'handleAdminReviewQueueRequest'],
@@ -213,4 +262,13 @@ test('十个Cloud Function审核入口只依赖模式分发器并保留旧处理
     assert.match(source, new RegExp(handler, 'u'));
     assert.doesNotMatch(source, /from ['"][^'"]*(?:admin_review_http_v1|admin_review_mutation_http_v1|admin_ordinary_review_http_v1|admin_ordinary_review_mutation_http_v1)\.js['"]/u);
   }
+});
+
+test('正式审核HTTP只允许生产会话验证器且分发器只看生产总开关', () => {
+  const http = fs.readFileSync(path.join(root, 'src/server/production_admin_review_http_v1.js'), 'utf8');
+  const dispatch = fs.readFileSync(path.join(root, 'src/server/admin_review_mode_dispatch_v1.js'), 'utf8');
+  assert.match(http, /verifyProductionAdminSessionToken/u);
+  assert.doesNotMatch(http, /verifyAdminSessionToken/u);
+  assert.match(dispatch, /resolveAdminAuthMode/u);
+  assert.doesNotMatch(dispatch, /CLOUD_ADMIN_PRODUCTION_ENABLED/u);
 });

@@ -9,6 +9,8 @@ on:
       - 'src/server/admin_ordinary_review_mutation_v1.js'
       - 'src/server/production_admin_review_http_v1.js'
       - 'src/server/admin_review_mode_dispatch_v1.js'
+      - 'src/server/production_admin_auth_v1.js'
+      - 'src/server/admin_auth_mode_dispatch_v1.js'
       - 'cloud-functions/api/admin/reviews**'
       - 'cloud-functions/api/admin/ordinary-reviews**'
       - 'tests/stage7t-production-admin-review.test.mjs'
@@ -65,7 +67,11 @@ jobs:
           grep -q "runtime.scope.protocol.groupId" src/server/production_admin_review_http_v1.js
           grep -q "runtime.scope.protocol.libraryId" src/server/production_admin_review_http_v1.js
           grep -q "readProductionAdminAuthConfig" src/server/production_admin_review_http_v1.js
+          grep -q "verifyProductionAdminSessionToken" src/server/production_admin_review_http_v1.js
+          ! grep -q "verifyAdminSessionToken" src/server/production_admin_review_http_v1.js
           grep -q "readProductionRuntimeConfig" src/server/production_admin_review_http_v1.js
+          grep -q "resolveAdminAuthMode" src/server/admin_review_mode_dispatch_v1.js
+          ! grep -q "CLOUD_ADMIN_PRODUCTION_ENABLED" src/server/admin_review_mode_dispatch_v1.js
           grep -q "stablePromotionAuthorized: false" src/server/production_admin_review_http_v1.js
           grep -q "admin_review_key_v1" src/server/admin_ordinary_review_projection_v1.js
           grep -q "admin_review_key_v1" src/server/admin_ordinary_review_mutation_v1.js
