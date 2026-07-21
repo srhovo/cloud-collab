@@ -1,9 +1,9 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "stage": "8E",
-  "revisedAtStage": "8I",
+  "revisedAtStage": "8J",
   "recordedAt": "2026-07-21",
-  "status": "domain_selected_architecture_review_required_before_platform_write",
+  "status": "domain_selected_single_project_host_isolation_implemented_waiting_owner_domain_status",
   "recommendedBootstrapWorkflow": "stage8h-edgeone-production-bootstrap",
   "bootstrapRequiresOwnerDomain": false,
   "deploymentBootstrapPathDeprecated": true,
@@ -18,12 +18,16 @@
     "httpsVerified": false
   },
   "architecture": {
-    "separateAdministratorProjectPlanned": true,
-    "currentProjectScopedBlobDetected": true,
+    "topology": "single_edgeone_project_two_custom_domains",
+    "edgeOneProjectCount": 1,
+    "singleProjectHostIsolationImplemented": true,
+    "currentProjectScopedBlobResolved": true,
     "accountApiTokenInLongRunningRuntimeAllowed": false,
-    "administratorProjectCreationBlocked": true,
-    "realBootstrapBlocked": true,
-    "resolutionRequired": "signed_cross_project_admin_gateway_or_single_project_host_routing"
+    "administratorSeparateProjectRequired": false,
+    "administratorSeparateProjectCreationForbidden": true,
+    "realBootstrapBlockedByArchitecture": false,
+    "realBootstrapAuthorized": false,
+    "resolution": "single_project_two_domain_host_isolation"
   },
   "stablePromotionAuthorized": false,
   "stablePromotionPerformed": false,

@@ -170,12 +170,13 @@ test('互斥验证拒绝额外文件和管理员输出篡改', () => {
   }
 });
 
-test('package与忽略规则提供独立管理员构建命令且不改变普通构建', () => {
+test('package保留独立管理员审计命令并将正式EdgeOne构建切换为组合产物', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   assert.equal(pkg.scripts['admin:prepare'], 'node scripts/prepare-admin-console-v1.mjs');
   assert.equal(pkg.scripts['admin:verify:isolation'], 'node scripts/verify-admin-public-artifact-isolation-v1.mjs');
   assert.equal(pkg.scripts['edgeone:admin:build'], 'npm run ci && npm run admin:prepare -- --output .edgeone-admin-artifact');
-  assert.equal(pkg.scripts['edgeone:build'], 'npm run ci && npm run public:prepare -- --channel edgeone-primary --output .edgeone-artifact');
+  assert.equal(pkg.scripts['edgeone:production:prepare'], 'node scripts/prepare-edgeone-single-project-v1.mjs');
+  assert.equal(pkg.scripts['edgeone:build'], 'npm run ci && npm run edgeone:production:prepare -- --output .edgeone-artifact');
   const ignore = fs.readFileSync(path.join(root, '.gitignore'), 'utf8');
   assert.match(ignore, /^\.edgeone-admin-artifact\/$/mu);
 });
