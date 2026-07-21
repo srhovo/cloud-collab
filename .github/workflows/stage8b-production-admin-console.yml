@@ -34,7 +34,13 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Rebuild and audit ordinary public artifact in clean worktree
-        run: npm run public:prepare -- --channel edgeone-primary --output .edgeone-artifact --commit "$GITHUB_SHA"
+        shell: bash
+        run: |
+          set +e
+          npm run public:prepare -- --channel edgeone-primary --output .edgeone-artifact --commit "$GITHUB_SHA" > "$RUNNER_TEMP/stage8b-public-prepare.log" 2>&1
+          status=$?
+          cat "$RUNNER_TEMP/stage8b-public-prepare.log"
+          exit "$status"
 
       - name: Run administrator console and inherited service tests
         shell: bash
@@ -91,6 +97,7 @@ jobs:
         with:
           name: stage8b-admin-console-diagnostics
           path: |
+            ${{ runner.temp }}/stage8b-public-prepare.log
             ${{ runner.temp }}/stage8b-node-test.log
             ${{ runner.temp }}/stage8b-browser.log
           if-no-files-found: warn
