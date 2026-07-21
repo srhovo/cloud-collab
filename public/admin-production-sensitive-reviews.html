@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; object-src 'none'; frame-ancestors 'none'">
+  <title>码单器正式敏感审核控制台</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;color-scheme:light;--blue:#0969da;--green:#1a7f37;--red:#cf222e;--amber:#9a6700;--border:#d0d7de;--muted:#57606a}
+    *{box-sizing:border-box}body{margin:0;background:#f6f8fa;color:#1f2328}main{width:min(1080px,calc(100% - 24px));margin:22px auto 60px}.card{margin-bottom:14px;padding:18px;border:1px solid var(--border);border-radius:14px;background:#fff;box-shadow:0 6px 20px rgba(31,35,40,.06)}h1,h2{margin:0 0 10px}p{line-height:1.6}.muted{color:var(--muted);font-size:14px}.banner{padding:12px 14px;border-left:4px solid var(--amber);border-radius:8px;background:#fff8c5}label{display:block;margin:12px 0 5px;font-weight:750}input,textarea{width:100%;padding:10px 12px;border:1px solid #8c959f;border-radius:8px;background:#fff;font:15px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace}textarea{min-height:110px;resize:vertical}.row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}button{min-height:42px;border:0;border-radius:8px;padding:9px 14px;background:var(--blue);color:#fff;font-weight:750;cursor:pointer}button.secondary{background:#57606a}button.approve{background:var(--green)}button.reject{background:var(--red)}button:disabled{opacity:.45;cursor:not-allowed}.status{margin-top:12px;padding:11px;border:1px solid var(--border);border-radius:8px;background:#f6f8fa;white-space:pre-wrap}.ok{color:var(--green)}.error{color:var(--red)}table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:9px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}tr[data-id]{cursor:pointer}tr[data-id]:hover{background:#f6f8fa}pre{overflow:auto;padding:12px;border:1px solid var(--border);border-radius:8px;background:#f6f8fa;white-space:pre-wrap;word-break:break-word}.hidden{display:none!important}@media(max-width:720px){.row{grid-template-columns:1fr}.card{padding:14px}table{display:block;overflow:auto}}
+  </style>
+</head>
+<body>
+<main>
+  <section class="card">
+    <h1>正式敏感审核控制台</h1>
+    <p class="muted">独立管理员入口 · 不属于普通用户发布包</p>
+    <div class="banner"><strong>敏感变化全部人工审核。</strong>批准、拒绝和修改后批准都会生成不可变审核与公共事件；请先核对候选摘要和公共版本。</div>
+  </section>
+
+  <section id="loginCard" class="card">
+    <h2>管理员登录</h2>
+    <div class="row">
+      <div><label for="username">用户名</label><input id="username" autocomplete="username" autocapitalize="none" spellcheck="false"></div>
+      <div><label for="password">密码</label><input id="password" type="password" autocomplete="current-password"></div>
+    </div>
+    <div class="actions"><button id="loginBtn">登录</button><button id="sessionBtn" class="secondary">检查会话</button><button id="logoutBtn" class="reject">退出</button></div>
+    <div id="authStatus" class="status">正在检查管理员会话……</div>
+  </section>
+
+  <section id="queueCard" class="card hidden">
+    <h2>待审核队列</h2>
+    <div class="actions"><button id="refreshBtn">刷新队列</button><button id="moreBtn" class="secondary">加载更多</button></div>
+    <div id="queueStatus" class="status">尚未读取队列。</div>
+    <table><thead><tr><th>类型</th><th>操作</th><th>原因</th><th>提交时间</th><th>设备</th></tr></thead><tbody id="queueBody"></tbody></table>
+  </section>
+
+  <section id="detailCard" class="card hidden">
+    <h2>审核详情</h2>
+    <div class="row">
+      <div><label>reviewId</label><input id="reviewId" readonly></div>
+      <div><label>候选摘要</label><input id="candidateDigest" readonly></div>
+      <div><label>预期公共版本</label><input id="expectedPublicVersion" readonly></div>
+      <div><label>数据类型</label><input id="dataType" readonly></div>
+    </div>
+    <label>候选详情</label><pre id="detailJson">—</pre>
+    <label for="auditNote">审计备注</label><textarea id="auditNote" maxlength="500" placeholder="写明判断依据，不填写隐私信息"></textarea>
+    <label for="editedPayload">修改后批准的JSON正文</label><textarea id="editedPayload" placeholder='仅修改后批准使用，例如：{"mode":"fixed","unitPrice":66}'></textarea>
+    <div class="actions">
+      <button id="approveBtn" class="approve">批准</button>
+      <button id="rejectBtn" class="reject">拒绝</button>
+      <button id="editApproveBtn">修改后批准</button>
+    </div>
+    <div id="actionStatus" class="status">请选择一条候选。</div>
+  </section>
+</main>
+<script>
+(() => {
+  'use strict';
+  const ids=['loginCard','queueCard','detailCard','username','password','loginBtn','sessionBtn','logoutBtn','authStatus','refreshBtn','moreBtn','queueStatus','queueBody','reviewId','candidateDigest','expectedPublicVersion','dataType','detailJson','auditNote','editedPayload','approveBtn','rejectBtn','editApproveBtn','actionStatus'];
+  const el=Object.fromEntries(ids.map(id=>[id,document.getElementById(id)]));
+  let busy=false,nextCursor='',session=null,current=null;
+
+  function setBusy(value){busy=value;for(const b of document.querySelectorAll('button'))b.disabled=value;}
+  function status(node,message,kind=''){node.textContent=message;node.className=`status ${kind}`.trim();}
+  function showAuthenticated(data){session=data;el.queueCard.classList.remove('hidden');status(el.authStatus,`已登录：${data.username}；会话到期 ${new Date(data.expiresAt).toLocaleString()}`,'ok');}
+  function clearAuthenticated(){session=null;current=null;el.queueCard.classList.add('hidden');el.detailCard.classList.add('hidden');el.queueBody.textContent='';nextCursor='';}
+  async function api(path,init={}){
+    const response=await fetch(path,{credentials:'same-origin',cache:'no-store',redirect:'error',referrerPolicy:'no-referrer',...init,headers:init.body?{'Content-Type':'application/json'}:undefined});
+    let payload=null;try{payload=await response.json();}catch(_){}
+    if(!response.ok||!payload?.ok){const e=new Error(payload?.error?.message||`请求失败（HTTP ${response.status}）`);e.code=payload?.error?.code||`HTTP_${response.status}`;throw e;}
+    return payload.data;
+  }
+  async function checkSession(){
+    if(busy)return;setBusy(true);
+    try{showAuthenticated(await api('/api/admin/auth/session'));await loadQueue(true);}
+    catch(error){clearAuthenticated();status(el.authStatus,['ADMIN_SESSION_MISSING','ADMIN_SESSION_INVALID','ADMIN_SESSION_EXPIRED','PRODUCTION_ADMIN_DISABLED'].includes(error.code)?'当前没有有效管理员会话。':error.message,error.code?.startsWith('ADMIN_SESSION_')?'':'error');}
+    finally{setBusy(false);}
+  }
+  async function login(){
+    if(busy)return;const username=el.username.value.trim();let password=el.password.value;if(!username||!password){status(el.authStatus,'请输入用户名和密码。','error');return;}
+    let body=JSON.stringify({schemaVersion:1,username,password});password='';el.password.value='';setBusy(true);
+    try{const data=await api('/api/admin/auth/login',{method:'POST',body});body='';showAuthenticated(data);await loadQueue(true);}
+    catch(error){body='';clearAuthenticated();status(el.authStatus,error.message,'error');}
+    finally{setBusy(false);}
+  }
+  async function logout(){
+    if(busy)return;setBusy(true);
+    try{await api('/api/admin/auth/logout',{method:'POST'});clearAuthenticated();status(el.authStatus,'已退出，管理员会话已清除。','ok');}
+    catch(error){status(el.authStatus,error.message,'error');}
+    finally{setBusy(false);}
+  }
+  function renderRows(items,append){
+    if(!append)el.queueBody.textContent='';
+    for(const item of items||[]){const tr=document.createElement('tr');tr.dataset.id=item.reviewId;for(const value of [item.dataType,item.operation,item.reason,item.clientCreatedAt||item.receivedAt||'—',item.deviceRef||'—']){const td=document.createElement('td');td.textContent=String(value??'—');tr.appendChild(td);}tr.addEventListener('click',()=>loadDetail(item.reviewId));el.queueBody.appendChild(tr);}
+  }
+  async function loadQueue(reset=false){
+    if(!session)return;if(reset)nextCursor='';
+    const query=new URLSearchParams({limit:'20'});if(!reset&&nextCursor)query.set('cursor',nextCursor);
+    try{const data=await api(`/api/admin/sensitive-reviews?${query}`);renderRows(data.items,!reset);nextCursor=data.nextCursor||'';el.moreBtn.disabled=!nextCursor;status(el.queueStatus,`已读取 ${data.items?.length||0} 条；${nextCursor?'仍有下一页':'已到末尾'}`,'ok');}
+    catch(error){status(el.queueStatus,error.message,'error');}
+  }
+  async function loadDetail(reviewId){
+    setBusy(true);
+    try{const data=await api(`/api/admin/sensitive-reviews/detail?id=${encodeURIComponent(reviewId)}`);current=data;el.reviewId.value=data.reviewId||reviewId;el.candidateDigest.value=data.candidateDigest||data.candidate?.candidateDigest||'';el.expectedPublicVersion.value=String(data.publicVersion??data.expectedPublicVersion??0);el.dataType.value=data.dataType||data.candidate?.dataType||'';el.detailJson.textContent=JSON.stringify(data,null,2);el.editedPayload.value=JSON.stringify(data.candidate?.payload||data.payload||{},null,2);el.detailCard.classList.remove('hidden');status(el.actionStatus,'详情已读取，请核对后执行人工审核。','ok');}
+    catch(error){status(el.queueStatus,error.message,'error');}
+    finally{setBusy(false);}
+  }
+  function commonAction(action,confirmation){return{schemaVersion:1,action,reviewId:el.reviewId.value,expectedCandidateDigest:el.candidateDigest.value,expectedPublicVersion:Number(el.expectedPublicVersion.value),confirmation,auditNote:el.auditNote.value.trim()};}
+  async function executeAction(kind){
+    if(!current||busy)return;let path,body;
+    if(kind==='approve'){path='/api/admin/sensitive-reviews/approve';body=commonAction('approve','APPROVE_SENSITIVE_CANDIDATE');}
+    else if(kind==='reject'){path='/api/admin/sensitive-reviews/reject';body=commonAction('reject','REJECT_SENSITIVE_CANDIDATE');}
+    else{path='/api/admin/sensitive-reviews/edit-and-approve';body=commonAction('edit_and_approve','EDIT_AND_APPROVE_SENSITIVE_CANDIDATE');try{body.editedPayload=JSON.parse(el.editedPayload.value);}catch(_){status(el.actionStatus,'修改后正文不是有效JSON。','error');return;}}
+    setBusy(true);try{const data=await api(path,{method:'POST',body:JSON.stringify(body)});status(el.actionStatus,`操作完成：${data.status||kind}`,'ok');el.detailCard.classList.add('hidden');current=null;await loadQueue(true);}
+    catch(error){status(el.actionStatus,error.message,'error');}
+    finally{setBusy(false);}
+  }
+  el.loginBtn.addEventListener('click',login);el.sessionBtn.addEventListener('click',checkSession);el.logoutBtn.addEventListener('click',logout);el.refreshBtn.addEventListener('click',()=>loadQueue(true));el.moreBtn.addEventListener('click',()=>loadQueue(false));el.approveBtn.addEventListener('click',()=>executeAction('approve'));el.rejectBtn.addEventListener('click',()=>executeAction('reject'));el.editApproveBtn.addEventListener('click',()=>executeAction('edit'));
+  checkSession();
+})();
+</script>
+</body>
+</html>
