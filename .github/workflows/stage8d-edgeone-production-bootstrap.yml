@@ -1,0 +1,81 @@
+name: stage8d-edgeone-production-bootstrap
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: '先选择plan；只有确认计划后才选择execute'
+        required: true
+        default: plan
+        type: choice
+        options:
+          - plan
+          - execute
+      confirmation:
+        description: 'execute时必须输入INITIALIZE-see-see_cz-V1；plan可留空'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.11.0'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Build sanitized production handoff
+        run: node scripts/build-production-handoff-v1.mjs
+      - name: Produce zero-write bootstrap plan
+        env:
+          BOOTSTRAP_REPORT_PATH: dist/stage8d-bootstrap-plan.json
+        run: node scripts/run-edgeone-production-bootstrap-v1.mjs
+      - name: Upload plan and handoff package
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage8d-production-handoff-and-bootstrap-plan
+          path: |
+            dist/production-handoff-v1
+            dist/stage8d-bootstrap-plan.json
+          if-no-files-found: error
+          retention-days: 7
+
+  execute:
+    if: ${{ inputs.operation == 'execute' }}
+    needs: plan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.11.0'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Validate explicit write confirmation
+        shell: bash
+        env:
+          REQUESTED_CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          test "$REQUESTED_CONFIRMATION" = 'INITIALIZE-see-see_cz-V1'
+      - name: Execute one-time immutable bootstrap
+        env:
+          EDGEONE_PROJECT_ID: ${{ secrets.EDGEONE_PROJECT_ID }}
+          EDGEONE_API_TOKEN: ${{ secrets.EDGEONE_API_TOKEN }}
+          CLOUD_PRODUCTION_BOOTSTRAP_CONFIRMATION: ${{ inputs.confirmation }}
+          BOOTSTRAP_REPORT_PATH: dist/stage8d-bootstrap-execution.json
+        run: node scripts/run-edgeone-production-bootstrap-v1.mjs --execute
+      - name: Upload sanitized execution evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage8d-production-bootstrap-execution
+          path: dist/stage8d-bootstrap-execution.json
+          if-no-files-found: warn
+          retention-days: 7
