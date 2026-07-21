@@ -4,8 +4,15 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { createAdminSessionCookie, createAdminSessionToken } from '../src/server/admin_auth_v1.js';
-import { readProductionAdminAuthConfig } from '../src/server/production_admin_auth_http_v1.js';
+import {
+  createAdminSessionCookie,
+  verifyAdminSessionToken,
+} from '../src/server/admin_auth_v1.js';
+import {
+  createProductionAdminSessionToken,
+  readProductionAdminAuthConfig,
+  verifyProductionAdminSessionToken,
+} from '../src/server/production_admin_auth_v1.js';
 import {
   handleProductionAdminExactReviewQueueRequest,
   handleProductionAdminOrdinaryReviewApproveRequest,
@@ -59,13 +66,18 @@ function env(overrides = {}) {
   };
 }
 
-function cookie(runtimeEnv = env()) {
+function productionSession(runtimeEnv = env()) {
   const config = readProductionAdminAuthConfig(runtimeEnv);
-  const session = createAdminSessionToken({
+  const session = createProductionAdminSessionToken({
     config,
     now: NOW,
     randomBytes: length => Buffer.alloc(length, 9),
   });
+  return { config, session };
+}
+
+function cookie(runtimeEnv = env()) {
+  const { session } = productionSession(runtimeEnv);
   return createAdminSessionCookie(session.token).split(';')[0];
 }
 
@@ -87,6 +99,16 @@ test('正式审核配置绑定公共生产Store和正式协议作用域', () => 
   assert.equal(config.ordinaryTypesEnabled, true);
   assert.equal(config.mutationPreviewEnabled, true);
   assert.equal(config.stablePromotionAuthorized, false);
+});
+
+test('正式审核只接受正式issuer会话并拒绝预览验证器', () => {
+  const { config, session } = productionSession();
+  const identity = verifyProductionAdminSessionToken(session.token, config, { now: NOW + 1000 });
+  assert.equal(identity.username, 'xiaxue');
+  assert.throws(
+    () => verifyAdminSessionToken(session.token, config, { now: NOW + 1000 }),
+    error => error.code === 'ADMIN_SESSION_INVALID',
+  );
 });
 
 test('精确价格正式队列使用公共Store并返回脱敏生产能力', async () => {
@@ -155,6 +177,41 @@ test('普通审核批准使用正式会话、正式公共Store和显式动作', 
   assert.equal(body.data.stablePromotionAuthorized, false);
 });
 
+test('伪造的预览issuer令牌不能访问正式审核', async () => {
+  const production = productionSession();
+  const forgedPreviewToken = (() => {
+    const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' }), 'utf8').toString('base64url');
+    const payload = Buffer.from(JSON.stringify({
+      v: 1,
+      iss: 'cloud-collab-admin-preview',
+      aud: 'cloud-collab-admin-preview',
+      sub: 'xiaxue',
+      iat: Math.floor(NOW / 1000),
+      exp: Math.floor(NOW / 1000) + 900,
+      jti: Buffer.alloc(16, 9).toString('base64url'),
+    }), 'utf8').toString('base64url');
+    const signature = production.session.token.split('.')[2];
+    return `${header}.${payload}.${signature}`;
+  })();
+  let storeCreates = 0;
+  const response = await handleProductionAdminExactReviewQueueRequest({
+    env: env(),
+    request: new Request('https://admin.example.invalid/api/admin/reviews', {
+      method: 'GET',
+      headers: {
+        Cookie: `cloud_admin_session=${forgedPreviewToken}`,
+        'Sec-Fetch-Site': 'same-origin',
+      },
+    }),
+  }, {
+    now: () => NOW + 1000,
+    createStore: () => { storeCreates += 1; return {}; },
+  });
+  assert.equal(response.status, 401);
+  assert.equal(storeCreates, 0);
+  assert.match(response.headers.get('set-cookie'), /Max-Age=0/u);
+});
+
 test('跨站管理员写入在创建公共Store前被拒绝', async () => {
   let storeCreates = 0;
   const response = await handleProductionAdminOrdinaryReviewApproveRequest({
@@ -192,6 +249,14 @@ test('管理员审核未开启时在Store创建前失败关闭', async () => {
   });
   assert.equal(response.status, 503);
   assert.equal(storeCreates, 0);
+});
+
+test('正式审核源代码不再导入预览会话验证器', () => {
+  const source = fs.readFileSync(path.join(root, 'src/server/production_admin_review_http_v1.js'), 'utf8');
+  assert.match(source, /verifyProductionAdminSessionToken/u);
+  assert.match(source, /production_admin_auth_v1/u);
+  assert.doesNotMatch(source, /\bverifyAdminSessionToken\b/u);
+  assert.doesNotMatch(source, /readProductionAdminAuthConfig[^\n]*production_admin_auth_http_v1/u);
 });
 
 test('十个Cloud Function审核入口只依赖模式分发器并保留旧处理器名', () => {
