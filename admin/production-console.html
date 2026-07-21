@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src 'self'; style-src 'self'; script-src 'self'; img-src 'none'; font-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>码单器正式管理员控制台</title>
+  <link rel="stylesheet" href="./production-console.css">
+  <script src="./production-console.js" defer></script>
+</head>
+<body>
+<header class="top"><div class="top-inner"><div class="brand"><h1>码单器正式管理员控制台</h1><p>独立管理入口 · 不属于普通用户三文件公开产物</p></div><div id="sessionChip" class="session-chip">未登录</div></div></header>
+<div class="layout">
+  <aside class="sidebar" aria-label="管理员功能导航"><nav class="nav">
+    <button type="button" data-module="auth" aria-selected="true">登录与会话</button>
+    <button type="button" data-module="exact" disabled>精确价格审核</button>
+    <button type="button" data-module="ordinary" disabled>普通资料审核</button>
+    <button type="button" data-module="sensitive" disabled>敏感人工审核</button>
+    <button type="button" data-module="devices" disabled>设备治理</button>
+    <button type="button" data-module="rollback" disabled>公共数据回滚</button>
+    <button type="button" data-module="export" disabled>完整迁移导出</button>
+  </nav></aside>
+  <main class="main">
+    <section id="module-auth" class="module">
+      <div class="card"><h2>管理员安全登录</h2><p class="banner"><strong>正式控制面。</strong>密码在请求发出后立即从输入框清空；会话只由服务端的 HttpOnly、Secure、SameSite=Strict Cookie 保存。本页不使用浏览器持久化存储。</p>
+        <div class="grid"><div class="field"><label for="username">管理员用户名</label><input id="username" type="text" maxlength="128" autocomplete="username" autocapitalize="none" spellcheck="false"></div><div class="field"><label for="password">管理员密码</label><input id="password" type="password" maxlength="256" autocomplete="current-password" spellcheck="false"></div></div>
+        <div class="actions"><button id="loginBtn" type="button">同源安全登录</button><button id="sessionBtn" class="secondary" type="button">检查当前会话</button><button id="logoutBtn" class="danger" type="button">退出并清除会话</button></div><div id="authStatus" class="status" aria-live="polite">正在检查管理员会话……</div>
+      </div>
+      <div class="card"><h2>固定边界</h2><dl class="facts"><dt>用户可见作用域</dt><dd>club=see / library=see_cz</dd><dt>协议作用域</dt><dd>group_see / lib_see_cz</dd><dt>公共Blob</dt><dd>cloud-collab-production-v1</dd><dt>管理员Blob</dt><dd>cloud-collab-admin-production-v1</dd><dt>稳定晋升</dt><dd>未授权；稳定版仍为8.2.25</dd></dl></div>
+    </section>
+
+    <section id="module-exact" class="module" hidden><div class="card"><h2>精确价格人工审核</h2><p class="banner danger"><strong>会修改公共版本。</strong>服务端会重新校验公共基线并写入不可变决定、审计和完成记录。</p><div class="toolbar"><button data-refresh="exact" type="button">刷新队列</button></div><div id="exactStatus" class="status" aria-live="polite">尚未读取。</div><div id="exactList" class="list"></div></div></section>
+
+    <section id="module-ordinary" class="module" hidden><div class="card"><h2>陪玩名字与老板普通资料审核</h2><p class="banner">只处理普通范围候选；老板身份、直属、升折和异常降折等敏感变化必须进入敏感审核。</p><div class="toolbar"><button data-refresh="ordinary" type="button">刷新队列</button></div><div id="ordinaryStatus" class="status" aria-live="polite">尚未读取。</div><div id="ordinaryList" class="list"></div></div></section>
+
+    <section id="module-sensitive" class="module" hidden><div class="card danger-zone"><h2>敏感变更人工审核</h2><p class="banner danger"><strong>高风险操作。</strong>区间、加价、礼物、老板敏感变化和显式删除绝不自动批准；删除批准会发布墓碑，不会物理删除历史。</p><div class="toolbar"><button data-refresh="sensitive" class="danger" type="button">刷新敏感队列</button></div><div id="sensitiveStatus" class="status" aria-live="polite">尚未读取。</div><div id="sensitiveList" class="list"></div></div></section>
+
+    <section id="module-devices" class="module" hidden><div class="card"><h2>设备治理</h2><p class="banner">封禁会撤销可信；解除封禁不会自动恢复可信。页面只显示不可逆设备引用。</p><div class="toolbar"><button data-refresh="devices" type="button">刷新设备列表</button></div><div id="devicesStatus" class="status" aria-live="polite">尚未读取。</div><div id="devicesList" class="list"></div></div><div id="deviceDetailCard" class="card hidden"><h2>设备详情与治理</h2><div id="deviceDetail"></div><div class="field"><label for="blockReason">封禁原因</label><select id="blockReason"><option value="manual_safety">人工安全处理</option><option value="abuse">滥用</option><option value="credential_compromise">凭据疑似泄露</option><option value="rate_abuse">异常频率</option></select></div><div class="actions"><button id="trustBtn" class="good" type="button">设为可信</button><button id="revokeTrustBtn" class="warn" type="button">撤销可信</button><button id="blockBtn" class="danger" type="button">封禁设备</button><button id="unblockBtn" class="secondary" type="button">解除封禁</button></div><div id="deviceMutationStatus" class="status" aria-live="polite">请选择设备。</div></div></section>
+
+    <section id="module-rollback" class="module" hidden><div class="card danger-zone"><h2>公共数据回滚</h2><p class="banner danger"><strong>高风险操作。</strong>回滚通过追加补偿事件恢复紧邻的上一批准值，不删除或改写历史。</p><div class="toolbar"><button data-refresh="rollback" class="danger" type="button">刷新可回滚项目</button></div><div id="rollbackStatus" class="status" aria-live="polite">尚未读取。</div><div id="rollbackList" class="list"></div></div></section>
+
+    <section id="module-export" class="module" hidden><div class="card"><h2>完整公共数据库迁移导出</h2><p class="banner"><strong>只导出公共数据。</strong>ZIP不包含密码、会话、设备令牌、访问密钥或盐值；下载会写入私有不可变审计。</p><div class="toolbar"><button data-refresh="export" type="button">刷新导出摘要</button><button id="downloadBtn" class="purple" type="button">生成并下载迁移ZIP</button></div><div id="exportStatus" class="status" aria-live="polite">尚未读取。</div><dl id="exportFacts" class="facts hidden"><dt>公共版本</dt><dd id="exportPublicVersion">—</dd><dt>当前记录</dt><dd id="exportRecordCount">—</dd><dt>墓碑</dt><dd id="exportTombstoneCount">—</dd><dt>普通事件</dt><dd id="exportOrdinaryEventCount">—</dd><dt>敏感事件</dt><dd id="exportSensitiveEventCount">—</dd><dt>ZIP文件数</dt><dd id="exportFileCount">—</dd><dt>ZIP大小</dt><dd id="exportBytes">—</dd><dt>内容包尾标</dt><dd id="exportPackageSuffix" class="mono">—</dd></dl><a id="downloadLink" class="download-link" aria-hidden="true"></a></div></section>
+  </main>
+</div>
+<noscript>正式管理员控制台需要启用JavaScript。</noscript>
+</body>
+</html>
