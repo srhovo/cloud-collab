@@ -20,6 +20,28 @@ function fail(code, message, exitCode = 2) {
   process.exit(exitCode);
 }
 
+function replaceLiteral(value, secret) {
+  const normalized = String(secret || '');
+  if (!normalized) return value;
+  return value.split(normalized).join('[REDACTED]');
+}
+
+export function sanitizeFailureMessage(message, {
+  token = process.env.EDGEONE_API_TOKEN,
+  projectId = process.env.EDGEONE_PROJECT_ID,
+} = {}) {
+  let safe = String(message || 'EdgeOne生产初始化失败');
+  for (const secret of [token, projectId]) {
+    const normalized = String(secret || '');
+    safe = replaceLiteral(safe, normalized);
+    if (normalized) safe = replaceLiteral(safe, encodeURIComponent(normalized));
+  }
+  return safe
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/giu, 'Bearer [REDACTED]')
+    .replace(/((?:api[_-]?token|token|authorization)\s*[=:]\s*)[^\s,;"']+/giu, '$1[REDACTED]')
+    .replace(/\bpages-[A-Za-z0-9_-]{6,}\b/gu, 'pages-[REDACTED]');
+}
+
 function bootstrapEnv() {
   return Object.freeze({
     CLOUD_PRODUCTION_ENABLED: '0',
@@ -58,7 +80,7 @@ function buildPlan() {
   const plan = buildProductionBootstrapResources(config);
   return Object.freeze({
     schemaVersion: 1,
-    stage: '8F',
+    stage: '8G',
     operation: 'plan',
     status: 'ready_not_executed',
     projectIdConfigured: Boolean(String(process.env.EDGEONE_PROJECT_ID || '').trim()),
@@ -123,7 +145,7 @@ async function executeBootstrap() {
 
   return Object.freeze({
     schemaVersion: 1,
-    stage: '8F',
+    stage: '8G',
     operation: 'execute',
     status: result.status,
     publicStoreName: PUBLIC_STORE,
@@ -143,10 +165,20 @@ async function executeBootstrap() {
   });
 }
 
-try {
-  const report = process.argv.includes('--execute') ? await executeBootstrap() : buildPlan();
-  writeReport(report);
-  process.stdout.write(`${JSON.stringify(report)}\n`);
-} catch (error) {
-  fail(error?.code || 'EDGEONE_PRODUCTION_BOOTSTRAP_FAILED', error?.message || 'EdgeOne生产初始化失败', 1);
+async function main() {
+  try {
+    const report = process.argv.includes('--execute') ? await executeBootstrap() : buildPlan();
+    writeReport(report);
+    process.stdout.write(`${JSON.stringify(report)}\n`);
+  } catch (error) {
+    fail(
+      error?.code || 'EDGEONE_PRODUCTION_BOOTSTRAP_FAILED',
+      sanitizeFailureMessage(error?.message || 'EdgeOne生产初始化失败'),
+      1,
+    );
+  }
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  await main();
 }
