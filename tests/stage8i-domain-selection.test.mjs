@@ -9,8 +9,8 @@ const readJson = relative => JSON.parse(fs.readFileSync(path.join(root, relative
 
 test('xiaxue.site域名选择已固定但平台状态仍未伪造为完成', () => {
   const plan = readJson('release/production-domain-selection-v1.json');
-  assert.equal(plan.schemaVersion, 1);
-  assert.equal(plan.stage, '8I');
+  assert.equal(plan.schemaVersion, 2);
+  assert.equal(plan.stage, '8J');
   assert.equal(plan.registrableDomain, 'xiaxue.site');
   assert.equal(plan.publicHostname, 'app.xiaxue.site');
   assert.equal(plan.administratorHostname, 'admin.xiaxue.site');
@@ -22,9 +22,13 @@ test('xiaxue.site域名选择已固定但平台状态仍未伪造为完成', () 
   assert.equal(plan.httpsVerified, false);
 });
 
-test('架构未闭环前管理员项目、真实初始化和生产启用全部禁止', () => {
+test('单项目双域名拓扑已解决跨项目Blob边界且不需要运行时平台令牌', () => {
   const plan = readJson('release/production-domain-selection-v1.json');
-  assert.equal(plan.administratorProjectCreationAllowed, false);
+  assert.equal(plan.topology, 'single_edgeone_project_two_custom_domains');
+  assert.equal(plan.edgeOneProjectCount, 1);
+  assert.equal(plan.administratorSeparateProjectRequired, false);
+  assert.equal(plan.singleProjectHostIsolationImplemented, true);
+  assert.equal(plan.accountApiTokenRequiredAtRuntime, false);
   assert.equal(plan.realBlobBootstrapAllowed, false);
   assert.equal(plan.productionActivationAllowed, false);
   assert.equal(plan.stablePromotionAuthorized, false);
