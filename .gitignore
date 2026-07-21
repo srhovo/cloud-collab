@@ -18,4 +18,7 @@ deploy/admin/package-lock.json
 release-output/
 dist/release-readiness-audit.json
 dist/stage7h-release-rehearsal.json
+dist/production-handoff-v1.json
+dist/production-owner-actions-v1.md
+dist/production-edgeone-env-template-v1.txt
 test-results/*
