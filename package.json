@@ -18,6 +18,7 @@
     "public:verify": "node scripts/verify-public-deployment-v1.mjs",
     "admin:prepare": "node scripts/prepare-admin-console-v1.mjs",
     "admin:verify:isolation": "node scripts/verify-admin-public-artifact-isolation-v1.mjs",
+    "admin:verify:deployment": "node scripts/verify-admin-deployment-v1.mjs",
     "stage7h:audit": "node scripts/stage7h-release-rehearsal-v1.mjs --audit-only",
     "production:validate": "node scripts/validate-production-launch-plan-v1.mjs",
     "production:bootstrap:plan": "node scripts/build-production-bootstrap-plan-v1.mjs",
