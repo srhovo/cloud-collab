@@ -1,0 +1,79 @@
+name: stage8c-production-admin-console
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'admin/**'
+      - 'tests/stage8c-production-admin-console.test.mjs'
+      - 'tests/stage8c_browser_production_admin_console.py'
+      - '.github/workflows/stage8c-production-admin-console.yml'
+      - '.github/workflows/ci.yml'
+      - 'docs/阶段8C_正式管理员控制台.md'
+      - 'README.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production-admin-console:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Run console and inherited administrator contract tests
+        shell: bash
+        run: |
+          set -o pipefail
+          node --test \
+            tests/stage8c-production-admin-console.test.mjs \
+            tests/stage8b-export-consistency-hardening.test.mjs \
+            tests/stage8a-production-complete-export.test.mjs \
+            tests/stage7x-production-rollback.test.mjs \
+            tests/stage7w-production-device-governance.test.mjs \
+            tests/stage7v-production-sensitive-review.test.mjs \
+            tests/stage7t-production-admin-review.test.mjs \
+            tests/stage7s-production-admin-auth.test.mjs \
+            2>&1 | tee stage8c-test.log
+      - name: Install browser runtime
+        run: |
+          python3 -m pip install --disable-pip-version-check playwright
+          python3 -m playwright install --with-deps chromium
+          CHROMIUM_PATH="$(find "$HOME/.cache/ms-playwright" -type f -name chrome | head -n 1)"
+          test -n "$CHROMIUM_PATH"
+          sudo ln -sf "$CHROMIUM_PATH" /usr/bin/chromium
+      - name: Run console browser regression
+        run: python3 tests/stage8c_browser_production_admin_console.py 2>&1 | tee stage8c-browser.log
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage8c-admin-console-diagnostic
+          path: |
+            stage8c-test.log
+            stage8c-browser.log
+          if-no-files-found: error
+          retention-days: 7
+      - name: Audit console boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "default-src 'none'" admin/production-console.html
+          grep -q "connect-src 'self'" admin/production-console.html
+          grep -q "script-src 'self'" admin/production-console.html
+          grep -q "credentials: 'same-origin'" admin/production-console.js
+          grep -q "data.summary" admin/production-console.js
+          grep -q "result.byteLength" admin/production-console.js
+          grep -q "x-cloud-collab-stable-promotion-authorized" admin/production-console.js
+          ! grep -R "localStorage\|sessionStorage\|indexedDB\|document.cookie\|innerHTML\|outerHTML" admin
+          ! grep -R "x-mdq-\|packageByteLength" admin
+          ! grep -R "https\?://" admin
+          ! grep -q "admin/production-console" scripts/prepare-public-candidate-v1.mjs
+      - name: Confirm Cloud Function imports
+        run: node --test tests/cloud-functions-relative-imports.test.mjs
