@@ -1,6 +1,6 @@
 import { resolveCloudFunctionContext } from '../../../_shared/runtime_env.js';
-import { handleAdminDeviceBlockRequest } from '../../../../src/server/device_governance_http_v1.js';
+import { handleAdminDeviceBlockByMode } from '../../../../src/server/device_governance_mode_dispatch_v1.js';
 
 export default async function onRequest(context) {
-  return handleAdminDeviceBlockRequest(resolveCloudFunctionContext(context));
+  return handleAdminDeviceBlockByMode(resolveCloudFunctionContext(context));
 }
