@@ -118,31 +118,109 @@ function sanitizeSensitiveEvent(event) {
   });
 }
 
-async function loadValidatedPublicState({ store, config, now }) {
-  let ordinaryEvents;
-  let sensitiveEvents;
-  let snapshot;
+function latestOrdinaryVersion(events) {
+  return events.length ? events[events.length - 1].version : 0;
+}
+
+function latestPublicVersion(ordinaryEvents, sensitiveEvents) {
+  return sensitiveEvents.length
+    ? sensitiveEvents[sensitiveEvents.length - 1].version
+    : latestOrdinaryVersion(ordinaryEvents);
+}
+
+function publicStateFingerprint(ordinaryEvents, sensitiveEvents) {
+  return canonicalize({ ordinaryEvents, sensitiveEvents });
+}
+
+function moved(details = null, cause = null) {
+  return new ProductionAdminExportBundleError(
+    'PRODUCTION_EXPORT_PUBLIC_STATE_MOVED',
+    '导出期间公共数据库发生变化，请重新发起导出',
+    409,
+    details,
+    cause,
+  );
+}
+
+async function readValidatedEventState({
+  store,
+  config,
+  listOrdinaryEvents,
+  listSensitiveEvents,
+}) {
+  const ordinaryEvents = await listOrdinaryEvents({
+    store,
+    libraryId: config.libraryId,
+  });
+  const ordinaryVersion = latestOrdinaryVersion(ordinaryEvents);
+  const sensitiveEvents = await listSensitiveEvents({
+    store,
+    libraryId: config.libraryId,
+    ordinaryVersion,
+  });
+  return Object.freeze({ ordinaryEvents, sensitiveEvents, ordinaryVersion });
+}
+
+async function loadValidatedPublicState({
+  store,
+  config,
+  now,
+  listOrdinaryEvents,
+  listSensitiveEvents,
+  buildSnapshot,
+}) {
   try {
-    ordinaryEvents = await listValidOrdinaryPublicEvents({
+    const before = await readValidatedEventState({
       store,
-      libraryId: config.libraryId,
+      config,
+      listOrdinaryEvents,
+      listSensitiveEvents,
     });
-    const ordinaryVersion = ordinaryEvents.length
-      ? ordinaryEvents[ordinaryEvents.length - 1].version
-      : 0;
-    sensitiveEvents = await listValidSensitivePublicEvents({
-      store,
-      libraryId: config.libraryId,
-      ordinaryVersion,
-    });
-    snapshot = await buildUnifiedSensitivePublicSnapshot({
+    const snapshot = await buildSnapshot({
       store,
       groupId: config.groupId,
       libraryId: config.libraryId,
       now,
     });
-    return { ordinaryEvents, sensitiveEvents, snapshot };
+    const after = await readValidatedEventState({
+      store,
+      config,
+      listOrdinaryEvents,
+      listSensitiveEvents,
+    });
+
+    if (publicStateFingerprint(before.ordinaryEvents, before.sensitiveEvents)
+        !== publicStateFingerprint(after.ordinaryEvents, after.sensitiveEvents)) {
+      throw moved({
+        beforeOrdinaryVersion: before.ordinaryVersion,
+        afterOrdinaryVersion: after.ordinaryVersion,
+        beforePublicVersion: latestPublicVersion(before.ordinaryEvents, before.sensitiveEvents),
+        afterPublicVersion: latestPublicVersion(after.ordinaryEvents, after.sensitiveEvents),
+      });
+    }
+
+    const expectedPublicVersion = latestPublicVersion(after.ordinaryEvents, after.sensitiveEvents);
+    if (snapshot.groupId !== config.groupId
+        || snapshot.libraryId !== config.libraryId
+        || snapshot.baseOrdinaryVersion !== after.ordinaryVersion
+        || snapshot.publicVersion !== expectedPublicVersion
+        || snapshot.snapshotVersion !== snapshot.publicVersion) {
+      throw moved({
+        expectedOrdinaryVersion: after.ordinaryVersion,
+        actualOrdinaryVersion: snapshot.baseOrdinaryVersion,
+        expectedPublicVersion,
+        actualPublicVersion: snapshot.publicVersion,
+      });
+    }
+
+    return Object.freeze({
+      ordinaryEvents: after.ordinaryEvents,
+      sensitiveEvents: after.sensitiveEvents,
+      snapshot,
+    });
   } catch (error) {
+    if (error instanceof ProductionAdminExportBundleError) throw error;
+    if (error?.status === 409) throw moved(error?.details || null, error);
     throw new ProductionAdminExportBundleError(
       'PRODUCTION_EXPORT_PUBLIC_STATE_INVALID',
       '公共事件或统一快照无法通过正式导出校验',
@@ -224,6 +302,9 @@ export async function buildProductionAdminExportBundle({
   store,
   config,
   now = Date.now(),
+  listOrdinaryEvents = listValidOrdinaryPublicEvents,
+  listSensitiveEvents = listValidSensitivePublicEvents,
+  buildSnapshot = buildUnifiedSensitivePublicSnapshot,
 } = {}) {
   validateConfig(config);
   assertTime(now);
@@ -232,6 +313,9 @@ export async function buildProductionAdminExportBundle({
     store,
     config,
     now,
+    listOrdinaryEvents,
+    listSensitiveEvents,
+    buildSnapshot,
   });
   const content = buildFiles({ config, snapshot, ordinaryEvents, sensitiveEvents, generatedAt });
   const files = descriptorMap(content.files);
