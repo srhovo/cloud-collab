@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 from playwright.sync_api import expect, sync_playwright
@@ -10,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 HTML = (ROOT / 'admin' / 'production-console.html').read_text(encoding='utf-8')
 CSS = (ROOT / 'admin' / 'production-console.css').read_text(encoding='utf-8')
 JS = (ROOT / 'admin' / 'production-console.js').read_text(encoding='utf-8')
+ORIGIN = 'http://stage8c.test'
 
 MOCK = r'''
 (() => {
@@ -79,12 +79,18 @@ MOCK = r'''
 '''
 
 
-def test_document() -> str:
-    source = re.sub(r'<meta http-equiv="Content-Security-Policy"[^>]*>\s*', '', HTML, count=1)
-    source = source.replace('<link rel="stylesheet" href="./production-console.css">', f'<style>{CSS}</style>')
-    source = source.replace('<script src="./production-console.js" defer></script>', '')
-    source = source.replace('</body>', f'<script>{MOCK}\n{JS}</script>\n</body>')
-    return source
+def serve_console(route) -> None:
+    path = route.request.url.removeprefix(ORIGIN)
+    if path == '/admin/production-console.html':
+        route.fulfill(status=200, content_type='text/html; charset=utf-8', body=HTML)
+        return
+    if path == '/admin/production-console.css':
+        route.fulfill(status=200, content_type='text/css; charset=utf-8', body=CSS)
+        return
+    if path == '/admin/production-console.js':
+        route.fulfill(status=200, content_type='application/javascript; charset=utf-8', body=f'{MOCK}\n{JS}')
+        return
+    route.abort()
 
 
 def main() -> None:
@@ -92,10 +98,15 @@ def main() -> None:
       browser = playwright.chromium.launch(executable_path='/usr/bin/chromium', headless=True, args=['--no-sandbox'])
       page = browser.new_page(accept_downloads=True)
       page.set_default_timeout(5000)
-      page.set_content(test_document(), wait_until='domcontentloaded')
+      page.route(f'{ORIGIN}/**', serve_console)
+      page.goto(f'{ORIGIN}/admin/production-console.html', wait_until='domcontentloaded')
 
       expect(page.locator('#sessionChip')).to_have_text('未登录')
       expect(page.locator('#loginBtn')).to_be_enabled()
+      assert page.evaluate('location.origin') == ORIGIN
+      assert page.evaluate('localStorage.length') == 0
+      assert page.evaluate('sessionStorage.length') == 0
+
       page.fill('#username', 'xiaxue')
       page.fill('#password', 'secret-value')
       page.click('#loginBtn')
