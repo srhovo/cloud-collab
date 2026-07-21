@@ -82,7 +82,8 @@ MOCK = r'''
 def test_document() -> str:
     source = re.sub(r'<meta http-equiv="Content-Security-Policy"[^>]*>\s*', '', HTML, count=1)
     source = source.replace('<link rel="stylesheet" href="./production-console.css">', f'<style>{CSS}</style>')
-    source = source.replace('<script src="./production-console.js" defer></script>', f'<script>{MOCK}\n{JS}</script>')
+    source = source.replace('<script src="./production-console.js" defer></script>', '')
+    source = source.replace('</body>', f'<script>{MOCK}\n{JS}</script>\n</body>')
     return source
 
 
@@ -94,6 +95,7 @@ def main() -> None:
       page.set_content(test_document(), wait_until='domcontentloaded')
 
       expect(page.locator('#sessionChip')).to_have_text('未登录')
+      expect(page.locator('#loginBtn')).to_be_enabled()
       page.fill('#username', 'xiaxue')
       page.fill('#password', 'secret-value')
       page.click('#loginBtn')
@@ -115,7 +117,9 @@ def main() -> None:
       expect(page.locator('#exportPackageSuffix')).to_contain_text('AAAAAAAAAA')
 
       page.on('dialog', lambda dialog: dialog.accept())
-      page.click('#downloadBtn')
+      with page.expect_download() as download_info:
+        page.click('#downloadBtn')
+      assert download_info.value.suggested_filename == '码单器公共数据库完整导出.zip'
       expect(page.locator('#exportStatus')).to_contain_text('公共版本 12')
       expect(page.locator('#exportStatus')).to_contain_text('BBBBBBBBBB')
       requests = page.evaluate('window.__stage8cRequests')
