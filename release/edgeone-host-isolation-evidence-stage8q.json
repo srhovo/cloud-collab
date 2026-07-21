@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "stage": "8Q",
+  "recordedAt": "2026-07-21",
+  "evidenceSource": "owner_reported_real_browser_checks",
+  "project": {
+    "name": "cloud-collab",
+    "edgeOneProjectCount": 1,
+    "accelerationRegion": "global_excluding_chinese_mainland"
+  },
+  "origins": {
+    "public": "https://app.xiaxue.site",
+    "admin": "https://admin.xiaxue.site"
+  },
+  "checks": {
+    "publicOriginServesPublicUi": true,
+    "adminOriginServesAdminUi": true,
+    "publicOriginInternalAdminPathFailsClosed": true,
+    "publicOriginAdminSessionApiFailsClosed": true,
+    "adminOriginPublicBootstrapApiFailsClosed": true,
+    "certificateWarningsObserved": false
+  },
+  "originTemplateFrozen": true,
+  "privateValuesGenerated": false,
+  "environmentVariablesWrittenToEdgeOne": false,
+  "realBlobOperationsPerformed": 0,
+  "productionActivationAllowed": false,
+  "productionActivationPerformed": false,
+  "stablePromotionAuthorized": false,
+  "stablePromotionPerformed": false,
+  "nextOwnerAction": "generate_private_values_locally_and_import_all_variables_with_every_feature_flag_kept_at_zero"
+}
