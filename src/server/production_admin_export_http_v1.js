@@ -1,3 +1,5 @@
+import { createHmac } from 'node:crypto';
+
 import { createEdgeOneNamedBlobStore } from './edgeone_blob_runtime_v1.js';
 import {
   assertAdminSameOriginRequest,
@@ -18,7 +20,7 @@ import {
 } from './production_admin_export_v1.js';
 
 const SERVICE_ID = 'cloud-collab-admin-export-production';
-const API_VERSION = '2026-07-21-stage8a';
+const API_VERSION = '2026-07-21-stage8b';
 
 export class ProductionAdminExportHttpError extends Error {
   constructor(code, message, status = 503, details = null, cause = null) {
@@ -193,6 +195,25 @@ function viewer(identity) {
   });
 }
 
+export function buildProductionExportAuditIdentity(identity, config) {
+  const username = String(identity?.username || '').trim().toLowerCase();
+  const auditSalt = String(config?.auditSalt || '');
+  if (!username || Buffer.byteLength(auditSalt, 'utf8') < 32) {
+    throw new ProductionAdminExportHttpError(
+      'PRODUCTION_ADMIN_EXPORT_AUDIT_IDENTITY_INVALID',
+      '正式导出审计身份无法安全脱敏',
+      503,
+    );
+  }
+  const pseudonym = createHmac('sha256', Buffer.from(auditSalt, 'utf8'))
+    .update(username, 'utf8')
+    .digest('base64url');
+  return Object.freeze({
+    ...identity,
+    username: `export-audit-${pseudonym}`,
+  });
+}
+
 export async function handleProductionAdminExportSummaryRequest(context, dependencies = {}) {
   const method = requestMethod(context?.request);
   if (method !== 'GET') return methodNotAllowed(method, 'GET');
@@ -240,7 +261,7 @@ export async function handleProductionAdminExportDownloadRequest(context, depend
     const result = await createDownload({
       store: createExportStore(exportConfig, dependencies),
       config: exportConfig,
-      identity,
+      identity: buildProductionExportAuditIdentity(identity, exportConfig),
       command,
       now: dependencies.now?.() ?? Date.now(),
       ...(dependencies.buildBundle ? { buildBundle: dependencies.buildBundle } : {}),
@@ -254,6 +275,7 @@ export async function handleProductionAdminExportDownloadRequest(context, depend
         'X-Cloud-Collab-Package-Id': result.packageId,
         'X-Cloud-Collab-Public-Version': String(result.publicVersion),
         'X-Cloud-Collab-Export-Duplicate': result.duplicate ? '1' : '0',
+        'X-Cloud-Collab-Stable-Promotion-Authorized': '0',
       }),
     });
   } catch (error) {
