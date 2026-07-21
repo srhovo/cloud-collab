@@ -165,6 +165,30 @@ function assertRequestIndex(value, expectedToken) {
   return Object.freeze({ ...value });
 }
 
+async function claimRequestIndex(store, key, proposed) {
+  try {
+    await putJSONOnlyIfNew(store, key, proposed);
+    return assertRequestIndex(proposed, proposed.requestToken);
+  } catch (error) {
+    if (!isAlreadyExists(error)) throw error;
+    const existing = assertRequestIndex(
+      await getJSONStrong(store, key),
+      proposed.requestToken,
+    );
+    if (existing.requestHash !== proposed.requestHash
+        || existing.exportId !== proposed.exportId) {
+      throw new ProductionAdminExportError(
+        'PRODUCTION_EXPORT_REQUEST_CONFLICT',
+        '同一正式导出请求ID对应了不同正文',
+        409,
+        null,
+        error,
+      );
+    }
+    return existing;
+  }
+}
+
 function assertDecision(value, expected) {
   assertExactKeys(
     value,
@@ -319,14 +343,11 @@ export async function createProductionAdminExportDownload({
   });
   let index;
   try {
-    const claimed = await putImmutableExact(
+    index = await claimRequestIndex(
       store,
       requestKey(config, requestToken),
       proposedIndex,
-      'PRODUCTION_EXPORT_REQUEST_CONFLICT',
-      '同一正式导出请求ID对应了不同正文',
     );
-    index = assertRequestIndex(claimed.value, requestToken);
   } catch (error) {
     if (error instanceof ProductionAdminExportError) throw error;
     throw new ProductionAdminExportError('PRODUCTION_EXPORT_REQUEST_CLAIM_FAILED', '无法登记正式导出请求', 503, null, error);
@@ -387,9 +408,37 @@ export async function createProductionAdminExportDownload({
 }
 
 export function isProductionAdminExportProjectionSafe(value) {
-  const text = JSON.stringify(value);
-  return !/dev_[0-9A-HJKMNP-TV-Z]{26}/.test(text)
-    && !/sub_[0-9A-HJKMNP-TV-Z]{26}/.test(text)
-    && !/cloud_admin_session|authorization|password|secret|salt/i.test(text)
-    && !/exports\/|audit\//.test(text);
+  const forbiddenKeys = new Set([
+    'password',
+    'sessionSecret',
+    'rateLimitSalt',
+    'auditSalt',
+    'secret',
+    'salt',
+    'authorization',
+    'token',
+    'requestHash',
+    'requestToken',
+    'exportId',
+    'auditId',
+    'blobKey',
+    'deviceId',
+    'submissionId',
+  ]);
+  const visit = (item, depth = 0) => {
+    if (depth > 12) return false;
+    if (item === null || typeof item === 'number' || typeof item === 'boolean') return true;
+    if (typeof item === 'string') {
+      return !/dev_[0-9A-HJKMNP-TV-Z]{26}/.test(item)
+        && !/sub_[0-9A-HJKMNP-TV-Z]{26}/.test(item)
+        && !/cloud_admin_session|authorization:\s*bearer/i.test(item)
+        && !/exports\/|audit\//.test(item);
+    }
+    if (Array.isArray(item)) return item.every(entry => visit(entry, depth + 1));
+    if (!isPlainObject(item)) return false;
+    return Object.entries(item).every(
+      ([key, entry]) => !forbiddenKeys.has(key) && visit(entry, depth + 1),
+    );
+  };
+  return visit(value);
 }
