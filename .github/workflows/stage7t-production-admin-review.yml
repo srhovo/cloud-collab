@@ -1,0 +1,77 @@
+name: stage7t-production-admin-review
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/server/admin_review_key_v1.js'
+      - 'src/server/admin_ordinary_review_projection_v1.js'
+      - 'src/server/admin_ordinary_review_mutation_v1.js'
+      - 'src/server/production_admin_review_http_v1.js'
+      - 'src/server/admin_review_mode_dispatch_v1.js'
+      - 'cloud-functions/api/admin/reviews**'
+      - 'cloud-functions/api/admin/ordinary-reviews**'
+      - 'tests/stage7t-production-admin-review.test.mjs'
+      - '.github/workflows/stage7t-production-admin-review.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production-admin-review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Run Stage7T and inherited administrator review tests
+        shell: bash
+        run: |
+          set -o pipefail
+          node --test \
+            tests/stage7t-production-admin-review.test.mjs \
+            tests/stage7s-production-admin-auth.test.mjs \
+            tests/stage5b-admin-review.test.mjs \
+            tests/stage5c-admin-review-mutation.test.mjs \
+            tests/stage5g-admin-ordinary-review.test.mjs \
+            tests/stage5g-admin-ordinary-review-mutation.test.mjs \
+            tests/stage7n-production-runtime-and-bootstrap.test.mjs \
+            2>&1 | tee stage7t-test.log
+
+      - name: Upload Stage7T diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage7t-test-diagnostic
+          path: stage7t-test.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Audit production administrator review boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "runtime.storeName" src/server/production_admin_review_http_v1.js
+          grep -q "readProductionAdminAuthConfig" src/server/production_admin_review_http_v1.js
+          grep -q "readProductionRuntimeConfig" src/server/production_admin_review_http_v1.js
+          grep -q "stablePromotionAuthorized: false" src/server/production_admin_review_http_v1.js
+          grep -q "admin_review_key_v1" src/server/admin_ordinary_review_projection_v1.js
+          grep -q "admin_review_key_v1" src/server/admin_ordinary_review_mutation_v1.js
+          ! test -e .github/workflows/stage7t-one-time-import-patch.yml
+          ! test -e scripts/stage7t-patch-admin-review-imports.mjs
+          ! grep -R "xiaxue76\|2406048740@qq.com" src cloud-functions tests config docs README.md
+          ! grep -R "Access-Control-Allow-Origin.*\*" src/server/production_admin_review_http_v1.js
+          ! grep -R "CLOUD_ADMIN_PASSWORD=.*[^=]" config/production.env.template
+
+      - name: Confirm all Cloud Function imports resolve
+        run: node --test tests/cloud-functions-relative-imports.test.mjs
