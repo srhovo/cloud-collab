@@ -115,8 +115,12 @@ function authenticate(context, dependencies) {
   const identity = verifyProductionAdminSessionToken(token, authConfig, {
     now: dependencies.now?.() ?? Date.now(),
   });
+  return { config, identity };
+}
+
+function storeFor(config, dependencies) {
   const factory = dependencies.createStore || createEdgeOneNamedBlobStore;
-  return { config, identity, store: factory(config.storeName) };
+  return factory(config.storeName);
 }
 
 function viewer(identity) {
@@ -157,17 +161,17 @@ function ok(kind, data, capabilities) {
 async function ordinaryQueue(context, dependencies) {
   const state = authenticate(context, dependencies);
   noQuery(context.request);
+  const store = storeFor(state.config, dependencies);
   const list = dependencies.listOrdinaryQueue || listProductionOrdinaryReviewQueue;
-  return { ...state, queue: await list({ store: state.store, config: state.config }) };
+  return { ...state, queue: await list({ store, config: state.config }) };
 }
 
 async function ordinaryDetail(context, dependencies) {
   const state = authenticate(context, dependencies);
+  const reviewId = detailId(context.request);
+  const store = storeFor(state.config, dependencies);
   const get = dependencies.getOrdinaryDetail || getProductionOrdinaryReviewDetail;
-  return {
-    ...state,
-    detail: await get({ store: state.store, config: state.config, reviewId: detailId(context.request) }),
-  };
+  return { ...state, detail: await get({ store, config: state.config, reviewId }) };
 }
 
 async function handle(kind, view, context, dependencies = {}) {
@@ -187,14 +191,17 @@ async function handle(kind, view, context, dependencies = {}) {
       let result;
       if (view === 'queue') {
         noQuery(context.request);
+        const store = storeFor(state.config, dependencies);
         const list = dependencies.listSensitiveQueue || listAdminSensitiveReviewQueue;
-        result = await list({ store: state.store, config: state.config });
+        result = await list({ store, config: state.config });
       } else {
+        const reviewId = detailId(context.request);
+        const store = storeFor(state.config, dependencies);
         const get = dependencies.getSensitiveDetail || getAdminSensitiveReviewDetail;
         result = await get({
-          store: state.store,
+          store,
           config: state.config,
-          reviewId: detailId(context.request),
+          reviewId,
           now: dependencies.now?.() ?? Date.now(),
         });
       }
