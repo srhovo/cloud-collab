@@ -52,18 +52,32 @@ test('管理员子项目生成四文件产物并显示初始无会话状态', ()
   assert.equal(script.includes(ADMIN_SESSION_RENDERED), true);
   assert.equal(script.includes(ADMIN_SESSION_TEMPLATE), false);
   const html = fs.readFileSync(path.join(output, 'index.html'), 'utf8');
+  assert.match(html, /<title>码单器正式管理员控制台<\/title>/u);
   assert.match(html, /\.\/production-console\.css/u);
   assert.match(html, /\.\/production-console\.js/u);
+
   const release = JSON.parse(fs.readFileSync(path.join(output, 'admin-release.json'), 'utf8'));
   assert.equal(release.kind, 'production_admin_console_deployment');
+  assert.equal(release.deploymentStatus, 'code_complete_not_deployed');
   assert.equal(release.sourceCommit, 'a'.repeat(40));
+  assert.equal(release.title, '码单器正式管理员控制台');
   assert.equal(release.projectRoot, ADMIN_DEPLOYMENT_ROOT);
+  assert.equal(release.projectConfig, 'deploy/admin/edgeone.json');
   assert.equal(release.outputDirectory, ADMIN_STATIC_OUTPUT);
+  assert.deepEqual(release.outputFiles, ADMIN_STATIC_FILES);
   assert.equal(release.contentFiles.length, 3);
+  assert.equal(release.contentFiles.find(item => item.filename === 'production-console.js').contentType, 'application/javascript; charset=utf-8');
   assert.equal(release.anonymousPublicApiIncluded, false);
+  assert.equal(release.intendedOriginEnv, 'CLOUD_ADMIN_PUBLIC_ORIGIN');
+  assert.equal(release.platformResponseHeadersRequired, true);
   assert.equal(release.initialSessionProbeVisible, true);
   assert.equal(release.includesOrdinaryUserCandidate, false);
   assert.equal(release.includesSecretValues, false);
+  assert.equal(release.productionCapabilitiesDefaultOff, true);
+  assert.deepEqual(release.frozenPublicCandidate, {
+    version: '8.2.31',
+    sha256: '9a9719e70dce94d875befb287d247fca0755183da7c813779310abb57ba3882b',
+  });
   assert.equal(release.stableVersion, '8.2.25');
   assert.equal(release.candidateVersion, '8.2.31');
   assert.equal(release.stablePromotionAuthorized, false);
@@ -87,6 +101,7 @@ test('管理员子项目只复制管理员API并完成相对导入审计', () =>
   assert.equal(apiFiles.includes('device/register.js'), false);
   assert.equal(apiFiles.includes('submissions/create.js'), false);
   assert.equal(apiFiles.includes('sensitive-submissions/create.js'), false);
+  assert.equal(result.release.runtimeAudit.administratorApiFileCount, apiFiles.length);
   assert.equal(result.release.runtimeAudit.cloudFunctionFileCount > apiFiles.length, true);
   assert.equal(result.release.runtimeAudit.serverFileCount > 20, true);
   assert.equal(fs.existsSync(path.join(project, 'cloud-functions', '_shared', 'runtime_env.js')), true);
