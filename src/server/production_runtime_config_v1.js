@@ -76,7 +76,8 @@ function readHttpsOrigin(value, name, { required }) {
 
 function assertDependencies(flags) {
   const childEnabled = flags.readSync || flags.ordinarySubmission || flags.autoApproval
-    || flags.sensitiveSubmission || flags.adminReview || flags.deviceGovernance || flags.admin;
+    || flags.sensitiveSubmission || flags.adminReview || flags.deviceGovernance
+    || flags.export || flags.admin;
   if (!flags.production && childEnabled) {
     throw new ProductionRuntimeConfigError(
       'PRODUCTION_MASTER_GATE_CLOSED',
@@ -95,6 +96,9 @@ function assertDependencies(flags) {
   if (flags.deviceGovernance && !flags.admin) {
     throw new ProductionRuntimeConfigError('PRODUCTION_ROLLOUT_ORDER_INVALID', '设备治理必须先开启管理员身份能力');
   }
+  if (flags.export && (!flags.readSync || !flags.admin)) {
+    throw new ProductionRuntimeConfigError('PRODUCTION_ROLLOUT_ORDER_INVALID', '正式导出必须同时具备只读同步和管理员身份能力');
+  }
   if (flags.sensitiveSubmission && (!flags.readSync || !flags.adminReview || !flags.admin)) {
     throw new ProductionRuntimeConfigError('PRODUCTION_ROLLOUT_ORDER_INVALID', '敏感提交必须在管理员人工审核已就绪后开启');
   }
@@ -103,7 +107,8 @@ function assertDependencies(flags) {
 function assertBootstrapIsolation(flags, confirmation) {
   if (!flags.bootstrap) return;
   if (flags.production || flags.readSync || flags.ordinarySubmission || flags.autoApproval
-      || flags.sensitiveSubmission || flags.adminReview || flags.deviceGovernance || flags.admin) {
+      || flags.sensitiveSubmission || flags.adminReview || flags.deviceGovernance
+      || flags.export || flags.admin) {
     throw new ProductionRuntimeConfigError(
       'PRODUCTION_BOOTSTRAP_NOT_ISOLATED',
       '一次性初始化只能在全部生产能力关闭时执行',
@@ -142,6 +147,7 @@ export function readProductionRuntimeConfig(env = {}) {
     sensitiveSubmission: readFlag(env, 'CLOUD_PRODUCTION_SENSITIVE_SUBMISSION_ENABLED'),
     adminReview: readFlag(env, 'CLOUD_PRODUCTION_ADMIN_REVIEW_ENABLED'),
     deviceGovernance: readCompatibleFlag(env, 'CLOUD_PRODUCTION_DEVICE_GOVERNANCE_ENABLED'),
+    export: readCompatibleFlag(env, 'CLOUD_PRODUCTION_EXPORT_ENABLED'),
     admin: readFlag(env, 'CLOUD_ADMIN_PRODUCTION_ENABLED'),
     bootstrap: readFlag(env, 'CLOUD_PRODUCTION_BOOTSTRAP_ENABLED'),
   });
@@ -177,7 +183,7 @@ export function readProductionRuntimeConfig(env = {}) {
     CLOUD_ADMIN_RATE_LIMIT_SALT: flags.admin,
     CLOUD_ADMIN_DEVICE_REF_SALT: flags.adminReview || flags.deviceGovernance,
     CLOUD_ADMIN_ROLLBACK_REF_SALT: flags.adminReview,
-    CLOUD_ADMIN_EXPORT_AUDIT_SALT: flags.adminReview,
+    CLOUD_ADMIN_EXPORT_AUDIT_SALT: flags.adminReview || flags.export,
   });
   const secrets = {};
   for (const name of SECRET_NAMES) {
