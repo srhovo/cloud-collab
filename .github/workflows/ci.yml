@@ -18,16 +18,23 @@ jobs:
           cache: npm
       - name: Run npm install --ignore-scripts
         run: npm install --ignore-scripts
-      - name: Run npm run ci
+      - name: Run npm run ci and verify Node summary
         shell: bash
         run: |
           set +e
           npm run ci > ci.log 2>&1
-          status=$?
+          command_status=$?
+          summary_status=0
+          node scripts/verify-node-test-summary-v1.mjs ci.log >> ci.log 2>&1 || summary_status=$?
+          status=$command_status
+          if [ "$status" -eq 0 ] && [ "$summary_status" -ne 0 ]; then
+            status=$summary_status
+          fi
           if [ "$status" -eq 0 ]; then
             tail -n 100 ci.log
           else
-            echo "npm run ci failed; showing the final 260 log lines."
+            echo "npm run ci or its Node summary audit failed; showing the final 260 log lines."
+            echo "command_status=$command_status summary_status=$summary_status"
             tail -n 260 ci.log
           fi
           exit "$status"
