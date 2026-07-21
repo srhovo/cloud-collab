@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "stage": "8E",
+  "recordedAt": "2026-07-21",
+  "status": "code_complete_waiting_owner_domain_and_platform_configuration",
+  "stablePromotionAuthorized": false,
+  "stablePromotionPerformed": false,
+  "productionActivationPerformed": false
+}
