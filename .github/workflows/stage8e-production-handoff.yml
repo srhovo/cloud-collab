@@ -1,0 +1,84 @@
+name: stage8e-production-handoff
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/build-production-handoff-v1.mjs'
+      - 'scripts/run-edgeone-production-bootstrap-v1.mjs'
+      - 'tests/stage8e-production-handoff.test.mjs'
+      - '.github/workflows/stage8e-production-handoff.yml'
+      - '.github/workflows/stage8e-edgeone-production-bootstrap.yml'
+      - 'scripts/prepare-admin-console-v1.mjs'
+      - 'config/edgeone-admin.project.json'
+      - 'config/production.env.template'
+      - 'release/production-launch-plan-v1.json'
+      - 'docs/阶段8E_生产部署交接包.md'
+      - 'package.json'
+      - 'README.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production-handoff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.11.0'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Run Stage8E and inherited production boundary tests
+        shell: bash
+        run: |
+          set -o pipefail
+          node --test \
+            tests/stage8e-production-handoff.test.mjs \
+            tests/stage8d-admin-artifact-isolation.test.mjs \
+            tests/stage8d-no-deploy-audit.test.mjs \
+            tests/stage8c-production-admin-console.test.mjs \
+            tests/stage8b-export-consistency-hardening.test.mjs \
+            tests/stage8a-production-complete-export.test.mjs \
+            tests/stage7x-production-rollback.test.mjs \
+            tests/stage7w-production-device-governance.test.mjs \
+            tests/stage7v-production-sensitive-review.test.mjs \
+            tests/stage7n-production-runtime-and-bootstrap.test.mjs \
+            2>&1 | tee stage8e-test.log
+      - name: Build production handoff package
+        run: node scripts/build-production-handoff-v1.mjs
+      - name: Build zero-write bootstrap plan
+        env:
+          BOOTSTRAP_REPORT_PATH: dist/stage8e-bootstrap-plan.json
+        run: node scripts/run-edgeone-production-bootstrap-v1.mjs
+      - name: Audit handoff boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f dist/production-handoff-v1/handoff-manifest.json
+          test -f dist/production-handoff-v1/activation-phases.json
+          test -f dist/production-handoff-v1/人工操作清单.md
+          test -f dist/production-handoff-v1/admin-artifact/admin-release.json
+          test ! -e dist/production-handoff-v1/index.html
+          grep -q '"containsRealSecrets": false' dist/production-handoff-v1/handoff-manifest.json
+          grep -q '"blobWritesPerformed": 0' dist/production-handoff-v1/handoff-manifest.json
+          grep -q '"stablePromotionAuthorized": false' dist/production-handoff-v1/handoff-manifest.json
+          grep -q '"includesOrdinaryUserCandidate": false' dist/production-handoff-v1/admin-artifact/admin-release.json
+          ! grep -R 'eo_token=' dist/production-handoff-v1
+          ! grep -R 'xiaxue76\|2406048740@qq.com' dist/production-handoff-v1
+          ! grep -R -E 'CLOUD_ADMIN_PASSWORD=.+|EDGEONE_API_TOKEN=.+' dist/production-handoff-v1
+          grep -q "inputs.operation == 'execute'" .github/workflows/stage8e-edgeone-production-bootstrap.yml
+          grep -q 'INITIALIZE-see-see_cz-V1' .github/workflows/stage8e-edgeone-production-bootstrap.yml
+      - name: Upload sanitized handoff evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage8e-production-handoff
+          path: |
+            dist/production-handoff-v1
+            dist/stage8e-bootstrap-plan.json
+            stage8e-test.log
+          if-no-files-found: error
+          retention-days: 7
