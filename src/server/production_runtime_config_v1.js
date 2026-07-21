@@ -37,6 +37,14 @@ function readFlag(env, name) {
   return raw === '1';
 }
 
+function readCompatibleFlag(env, name) {
+  const raw = String(env?.[name] ?? '0').trim();
+  if (raw !== '0' && raw !== '1') {
+    throw new ProductionRuntimeConfigError('PRODUCTION_FLAG_INVALID', `${name}必须明确为0或1`, { name });
+  }
+  return raw === '1';
+}
+
 function secretBytes(value) {
   return Buffer.byteLength(String(value || ''), 'utf8');
 }
@@ -68,7 +76,7 @@ function readHttpsOrigin(value, name, { required }) {
 
 function assertDependencies(flags) {
   const childEnabled = flags.readSync || flags.ordinarySubmission || flags.autoApproval
-    || flags.sensitiveSubmission || flags.adminReview || flags.admin;
+    || flags.sensitiveSubmission || flags.adminReview || flags.deviceGovernance || flags.admin;
   if (!flags.production && childEnabled) {
     throw new ProductionRuntimeConfigError(
       'PRODUCTION_MASTER_GATE_CLOSED',
@@ -84,6 +92,9 @@ function assertDependencies(flags) {
   if (flags.adminReview && (!flags.readSync || !flags.admin)) {
     throw new ProductionRuntimeConfigError('PRODUCTION_ROLLOUT_ORDER_INVALID', '管理员审核必须同时具备只读同步和管理员身份能力');
   }
+  if (flags.deviceGovernance && !flags.admin) {
+    throw new ProductionRuntimeConfigError('PRODUCTION_ROLLOUT_ORDER_INVALID', '设备治理必须先开启管理员身份能力');
+  }
   if (flags.sensitiveSubmission && (!flags.readSync || !flags.adminReview || !flags.admin)) {
     throw new ProductionRuntimeConfigError('PRODUCTION_ROLLOUT_ORDER_INVALID', '敏感提交必须在管理员人工审核已就绪后开启');
   }
@@ -92,7 +103,7 @@ function assertDependencies(flags) {
 function assertBootstrapIsolation(flags, confirmation) {
   if (!flags.bootstrap) return;
   if (flags.production || flags.readSync || flags.ordinarySubmission || flags.autoApproval
-      || flags.sensitiveSubmission || flags.adminReview || flags.admin) {
+      || flags.sensitiveSubmission || flags.adminReview || flags.deviceGovernance || flags.admin) {
     throw new ProductionRuntimeConfigError(
       'PRODUCTION_BOOTSTRAP_NOT_ISOLATED',
       '一次性初始化只能在全部生产能力关闭时执行',
@@ -130,6 +141,7 @@ export function readProductionRuntimeConfig(env = {}) {
     autoApproval: readFlag(env, 'CLOUD_PRODUCTION_AUTO_APPROVAL_ENABLED'),
     sensitiveSubmission: readFlag(env, 'CLOUD_PRODUCTION_SENSITIVE_SUBMISSION_ENABLED'),
     adminReview: readFlag(env, 'CLOUD_PRODUCTION_ADMIN_REVIEW_ENABLED'),
+    deviceGovernance: readCompatibleFlag(env, 'CLOUD_PRODUCTION_DEVICE_GOVERNANCE_ENABLED'),
     admin: readFlag(env, 'CLOUD_ADMIN_PRODUCTION_ENABLED'),
     bootstrap: readFlag(env, 'CLOUD_PRODUCTION_BOOTSTRAP_ENABLED'),
   });
@@ -163,7 +175,7 @@ export function readProductionRuntimeConfig(env = {}) {
     CLOUD_PRODUCTION_RATE_LIMIT_SALT: flags.production,
     CLOUD_ADMIN_SESSION_SECRET: flags.admin,
     CLOUD_ADMIN_RATE_LIMIT_SALT: flags.admin,
-    CLOUD_ADMIN_DEVICE_REF_SALT: flags.adminReview,
+    CLOUD_ADMIN_DEVICE_REF_SALT: flags.adminReview || flags.deviceGovernance,
     CLOUD_ADMIN_ROLLBACK_REF_SALT: flags.adminReview,
     CLOUD_ADMIN_EXPORT_AUDIT_SALT: flags.adminReview,
   });
