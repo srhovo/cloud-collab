@@ -6,6 +6,7 @@ on:
     paths:
       - 'dist/admin-production-console.html'
       - 'scripts/prepare-admin-console-v1.mjs'
+      - 'scripts/verify-admin-public-artifact-isolation-v1.mjs'
       - 'tests/stage8b-production-admin-console.test.mjs'
       - 'tests/stage8b_browser_production_admin_console.py'
       - 'package.json'
@@ -49,19 +50,11 @@ jobs:
       - name: Build isolated administrator artifact
         run: npm run admin:prepare -- --output .edgeone-admin-artifact --commit "$GITHUB_SHA"
 
-      - name: Rebuild ordinary public artifact and verify mutual exclusion
-        shell: bash
-        run: |
-          npm run public:prepare -- --channel edgeone-primary --output .edgeone-artifact --commit "$GITHUB_SHA"
-          test "$(find .edgeone-admin-artifact -maxdepth 1 -type f -printf '%f\n' | sort | paste -sd, -)" = "admin-release.json,index.html"
-          test "$(find .edgeone-artifact -maxdepth 1 -type f -printf '%f\n' | sort | paste -sd, -)" = "build-manifest.json,index.html,pages-release.json"
-          test ! -e .edgeone-admin-artifact/build-manifest.json
-          test ! -e .edgeone-admin-artifact/pages-release.json
-          test ! -e .edgeone-artifact/admin-release.json
-          cmp dist/admin-production-console.html .edgeone-admin-artifact/index.html
-          ! cmp -s dist/admin-production-console.html .edgeone-artifact/index.html
-          ! grep -R "码单器正式管理员控制台" .edgeone-artifact
-          ! grep -R "码单器8.2.31（公共协作发布候选版）" .edgeone-admin-artifact
+      - name: Rebuild ordinary public artifact
+        run: npm run public:prepare -- --channel edgeone-primary --output .edgeone-artifact --commit "$GITHUB_SHA"
+
+      - name: Verify administrator and ordinary artifact isolation
+        run: node scripts/verify-admin-public-artifact-isolation-v1.mjs
 
       - name: Audit administrator console boundaries
         shell: bash
