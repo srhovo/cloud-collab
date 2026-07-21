@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "stage": "8O",
+  "recordedAt": "2026-07-21",
+  "evidenceSource": "owner_provided_edgeone_domain_management_screenshot",
+  "project": {
+    "name": "cloud-collab",
+    "edgeOneProjectCount": 1,
+    "accelerationRegion": "global_excluding_chinese_mainland"
+  },
+  "domains": {
+    "app.xiaxue.site": {
+      "edgeOneStatus": "active",
+      "cnameValidationStatus": "active",
+      "httpsConsoleStatus": "configured",
+      "associatedEnvironment": "production",
+      "ownerBrowserContentVerified": false,
+      "assistantExternalProbeVerified": false
+    },
+    "admin.xiaxue.site": {
+      "edgeOneStatus": "active",
+      "cnameValidationStatus": "active",
+      "httpsConsoleStatus": "configured",
+      "associatedEnvironment": "production",
+      "ownerBrowserContentVerified": false,
+      "assistantExternalProbeVerified": false
+    }
+  },
+  "assistantProbe": {
+    "attempted": true,
+    "result": "inconclusive_due_to_sandbox_dns_resolution_unavailable",
+    "mustNotOverridePlatformEvidence": true
+  },
+  "nextOwnerAction": "open_both_https_origins_and_capture_zero_flag_content_and_host_isolation_results",
+  "environmentVariablesWritten": false,
+  "realBlobOperationsPerformed": 0,
+  "productionActivationAllowed": false,
+  "productionActivationPerformed": false,
+  "stablePromotionAuthorized": false,
+  "stablePromotionPerformed": false
+}
