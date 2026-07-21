@@ -5,9 +5,11 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+import { sanitizeFailureMessage } from '../scripts/run-edgeone-production-bootstrap-v1.mjs';
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const script = 'scripts/run-edgeone-production-bootstrap-v1.mjs';
-const workflowPath = '.github/workflows/stage8f-edgeone-production-bootstrap.yml';
+const workflowPath = '.github/workflows/stage8g-edgeone-production-bootstrap.yml';
 
 function run(args = [], env = {}) {
   return spawnSync(process.execPath, [script, ...args], {
@@ -17,14 +19,14 @@ function run(args = [], env = {}) {
   });
 }
 
-test('默认模式只生成10项零写入初始化计划', () => {
-  const report = 'dist/stage8f-test-bootstrap-plan.json';
+test('默认模式只生成10项阶段8G零写入初始化计划', () => {
+  const report = 'dist/stage8g-test-bootstrap-plan.json';
   fs.rmSync(path.join(root, report), { force: true });
   const result = run([], { BOOTSTRAP_REPORT_PATH: report });
   assert.equal(result.status, 0, result.stderr);
 
   const payload = JSON.parse(result.stdout);
-  assert.equal(payload.stage, '8F');
+  assert.equal(payload.stage, '8G');
   assert.equal(payload.operation, 'plan');
   assert.equal(payload.status, 'ready_not_executed');
   assert.equal(payload.projectIdConfigured, false);
@@ -48,8 +50,9 @@ test('默认模式只生成10项零写入初始化计划', () => {
 
 test('计划模式即使环境中存在凭据也不访问Blob或输出凭据', () => {
   const token = `secret-token-${'x'.repeat(40)}`;
+  const projectId = 'pages-urtsvuwmfvli';
   const result = run([], {
-    EDGEONE_PROJECT_ID: 'pages-urtsvuwmfvli',
+    EDGEONE_PROJECT_ID: projectId,
     EDGEONE_API_TOKEN: token,
   });
   assert.equal(result.status, 0, result.stderr);
@@ -60,6 +63,7 @@ test('计划模式即使环境中存在凭据也不访问Blob或输出凭据', (
   assert.equal(payload.realBlobWritesPerformed, 0);
   assert.equal(payload.realBlobDeletesPerformed, 0);
   assert.doesNotMatch(result.stdout, new RegExp(token, 'u'));
+  assert.doesNotMatch(result.stdout, new RegExp(projectId, 'u'));
 });
 
 test('真实执行缺少项目ID时在创建Store前失败', () => {
@@ -91,11 +95,26 @@ test('真实执行缺少Token或确认词时失败关闭', () => {
   assert.match(wrongConfirmation.stderr, /BOOTSTRAP_CONFIRMATION_INVALID/u);
 });
 
+test('SDK失败信息在写入日志前主动脱敏', () => {
+  const token = `eo_token_${'a'.repeat(36)}`;
+  const projectId = 'pages-secretproject123';
+  const encodedToken = encodeURIComponent(token);
+  const safe = sanitizeFailureMessage(
+    `request failed: Authorization: Bearer ${token}; token=${encodedToken}; project=${projectId}`,
+    { token, projectId },
+  );
+  assert.doesNotMatch(safe, new RegExp(token, 'u'));
+  assert.doesNotMatch(safe, new RegExp(encodedToken, 'u'));
+  assert.doesNotMatch(safe, new RegExp(projectId, 'u'));
+  assert.match(safe, /\[REDACTED\]/u);
+});
+
 test('初始化器使用官方外部SDK参数和强一致模式', () => {
   const source = fs.readFileSync(path.join(root, script), 'utf8');
   assert.match(source, /getStore\(\{ name: PUBLIC_STORE, projectId, token, consistency: 'strong' \}\)/u);
   assert.match(source, /getStore\(\{ name: ADMIN_STORE, projectId, token, consistency: 'strong' \}\)/u);
   assert.match(source, /executeProductionBootstrap/u);
+  assert.match(source, /sanitizeFailureMessage\(error\?\.message/u);
   assert.match(source, /productionCapabilitiesEnabled:\s*false/u);
   assert.match(source, /stablePromotionAuthorized:\s*false/u);
   assert.doesNotMatch(source, /console\.log\([^\n]*token|JSON\.stringify\([^\n]*token/u);

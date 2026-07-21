@@ -1,8 +1,8 @@
-# 阶段8F：EdgeOne Blob初始化预演与双确认执行入口
+# 阶段8G：EdgeOne Blob初始化预演、双确认执行与错误脱敏
 
 ## 目标
 
-阶段8E已经提供生产交接报告和可信设备离线随机秘密生成器。阶段8F只补齐此前尚未具备的真实Blob初始化入口：默认零写入预演，真实执行必须通过手动工作流、操作选择、精确确认词和两个GitHub Secrets四重门禁。
+阶段8E已经提供生产交接报告和可信设备离线随机秘密生成器，阶段8F已经建立管理员独立部署根。阶段8G补齐真实Blob初始化入口：默认零写入预演，真实执行必须通过手动工作流、操作选择、精确确认词和两个GitHub Secrets四重门禁；SDK失败文本在写入Actions日志前由本地代码主动脱敏。
 
 本阶段不自动执行工作流、不访问真实Blob、不写EdgeOne环境变量、不部署普通或管理员项目、不修改8.2.31候选、不晋升8.3.0。
 
@@ -15,7 +15,7 @@ projectId
 API Token
 ```
 
-阶段8F因此无需寻找“新建Blob”按钮，也不要求先有自定义域名。
+阶段8G因此无需寻找“新建Blob”按钮，也不要求先有自定义域名。
 
 ## 默认预演
 
@@ -28,6 +28,7 @@ npm run production:bootstrap:edgeone:plan
 输出包含10项冻结初始化资源，并固定：
 
 ```text
+stage=8G
 operation=plan
 status=ready_not_executed
 realBlobReadsPerformed=0
@@ -44,14 +45,14 @@ stablePromotionAuthorized=false
 工作流名称：
 
 ```text
-stage8f-edgeone-production-bootstrap
+stage8g-edgeone-production-bootstrap
 ```
 
 它只允许`workflow_dispatch`，不会因push、PR或定时任务自动运行。
 
 ### plan
 
-默认选项。运行阶段8E交接构建和阶段8F零写入计划，不读取GitHub Secrets。
+默认选项。运行阶段8E交接构建和阶段8G零写入计划，不读取GitHub Secrets。
 
 ### execute
 
@@ -63,6 +64,21 @@ stage8f-edgeone-production-bootstrap
 4. 仓库Secret `EDGEONE_API_TOKEN`已配置。
 
 真实执行复用现有`executeProductionBootstrap`：先强一致预检全部对象，再使用`onlyIfNew`不可变写入，最后逐项强一致复核。任一已有对象与冻结值不同都会在新增写入前失败关闭。
+
+## 失败日志脱敏
+
+初始化脚本不会直接把SDK的原始异常文本写入日志。输出前会主动替换：
+
+```text
+EDGEONE_API_TOKEN原值
+EDGEONE_API_TOKEN URL编码值
+EDGEONE_PROJECT_ID完整值
+Bearer凭据
+token或authorization参数值
+pages-*完整项目ID
+```
+
+GitHub Secrets自动掩码只作为第二道防线，代码本身不依赖平台掩码保证安全。
 
 ## 负责人操作路径
 
@@ -104,20 +120,20 @@ EDGEONE_API_TOKEN
 ```text
 GitHub仓库
 → Actions
-→ stage8f-edgeone-production-bootstrap
+→ stage8g-edgeone-production-bootstrap
 → Run workflow
 → operation: plan
 → confirmation: 留空
 ```
 
-预期下载产物`stage8f-production-bootstrap-plan`，并确认10项资源、真实读写删除均为0。
+预期下载产物`stage8g-production-bootstrap-plan`，并确认10项资源、真实读写删除均为0。
 
 ### 5. 再运行execute
 
 ```text
 GitHub仓库
 → Actions
-→ stage8f-edgeone-production-bootstrap
+→ stage8g-edgeone-production-bootstrap
 → Run workflow
 → operation: execute
 → confirmation: INITIALIZE-see-see_cz-V1
@@ -126,6 +142,7 @@ GitHub仓库
 首次预期：
 
 ```text
+stage=8G
 status=initialized
 resourceCount=10
 createdCount=10
@@ -136,6 +153,7 @@ stablePromotionAuthorized=false
 精确重放预期：
 
 ```text
+stage=8G
 status=already_initialized_exact
 createdCount=0
 existingExactCount=10
@@ -161,7 +179,8 @@ cloud-collab-admin-production-v1
 ## 安全边界
 
 - 工作流报告不输出API Token；
-- 只显示项目ID末六位；
+- 错误日志在本地代码中主动脱敏；
+- 成功报告只显示项目ID末六位；
 - 初始化不会开启任何生产能力；
 - 初始化不会修改环境变量；
 - 初始化不会部署项目；

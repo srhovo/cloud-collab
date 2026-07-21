@@ -21,4 +21,7 @@ dist/stage7h-release-rehearsal.json
 dist/production-handoff-v1.json
 dist/production-owner-actions-v1.md
 dist/production-edgeone-env-template-v1.txt
+dist/stage8g-bootstrap-plan.json
+dist/stage8g-bootstrap-execution.json
+dist/stage8g-test-bootstrap-plan.json
 test-results/*
