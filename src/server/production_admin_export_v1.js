@@ -1,11 +1,5 @@
-import { createHash, createHmac } from 'node:crypto';
+import { createHash } from 'node:crypto';
 
-import {
-  BlobRepositoryError,
-  getJSONStrong,
-  normalizeBlobKey,
-  putJSONOnlyIfNew,
-} from './blob_repository_v1.js';
 import { canonicalize } from './submission_policy_v1.js';
 import { buildUnifiedSensitivePublicSnapshot } from './sensitive_public_engine_v1.js';
 import { createStoredZip } from './zip_store_v1.js';
@@ -18,13 +12,6 @@ export const PRODUCTION_EXPORT_CONFIRMATION = 'EXPORT_PRODUCTION_MIGRATION_PACKA
 export const PRODUCTION_EXPORT_FILENAME = '码单器公共数据库迁移包.zip';
 
 const ROOT = '码单器公共数据库迁移包';
-const REQUEST_ID_PATTERN = /^exrq_v1_[A-Za-z0-9_-]{22,64}$/;
-const REQUEST_TOKEN_PATTERN = /^pextok_v1_[A-Za-z0-9_-]{43}$/;
-const REQUEST_HASH_PATTERN = /^pexrh_v1_[A-Za-z0-9_-]{43}$/;
-const EXPORT_ID_PATTERN = /^pex_v1_[A-Za-z0-9_-]{43}$/;
-const AUDIT_ID_PATTERN = /^pexau_v1_[A-Za-z0-9_-]{43}$/;
-const PACKAGE_ID_PATTERN = /^pkg_v2_[A-Za-z0-9_-]{43}$/;
-const ACTOR_TAG_PATTERN = /^admin_[A-Za-z0-9_-]{12}$/;
 const SUPPORTED_DATA_TYPES = Object.freeze([
   'exact_price',
   'playable_name',
@@ -66,15 +53,6 @@ function isPlainObject(value) {
     && Object.getPrototypeOf(value) === Object.prototype;
 }
 
-function assertExactKeys(value, expected, code, message, status = 500) {
-  if (!isPlainObject(value)) throw new ProductionAdminExportError(code, message, status);
-  const actual = Object.keys(value).sort();
-  const wanted = [...expected].sort();
-  if (actual.length !== wanted.length || actual.some((key, index) => key !== wanted[index])) {
-    throw new ProductionAdminExportError(code, message, status, { actual, expected: wanted });
-  }
-}
-
 function assertSafeTime(value) {
   if (!Number.isSafeInteger(value) || value <= 0 || value > 9_999_999_999_999) {
     throw new ProductionAdminExportError('PRODUCTION_EXPORT_TIME_INVALID', '正式迁移导出时间无效', 500);
@@ -86,7 +64,11 @@ function assertAuditSalt(value) {
   const text = String(value || '');
   const bytes = Buffer.byteLength(text, 'utf8');
   if (bytes < 32 || bytes > 256) {
-    throw new ProductionAdminExportError('PRODUCTION_EXPORT_AUDIT_SALT_INVALID', '正式迁移导出审计盐值必须为32至256字节', 503);
+    throw new ProductionAdminExportError(
+      'PRODUCTION_EXPORT_AUDIT_SALT_INVALID',
+      '正式迁移导出审计盐值必须为32至256字节',
+      503,
+    );
   }
   return text;
 }
@@ -99,10 +81,6 @@ function sha256Hex(value) {
   return createHash('sha256').update(value).digest('hex');
 }
 
-function hmacBase64Url(value, secret) {
-  return createHmac('sha256', Buffer.from(secret, 'utf8')).update(String(value), 'utf8').digest('base64url');
-}
-
 function stableJson(value) {
   return Buffer.from(`${canonicalize(value)}\n`, 'utf8');
 }
@@ -111,7 +89,10 @@ function validateConfig(config) {
   if (!config || config.mode !== 'production' || config.productionEnabled !== true
       || typeof config.storeName !== 'string' || !config.storeName
       || typeof config.groupId !== 'string' || !config.groupId
-      || typeof config.libraryId !== 'string' || !config.libraryId) {
+      || typeof config.libraryId !== 'string' || !config.libraryId
+      || !isPlainObject(config.externalScope)
+      || typeof config.externalScope.clubId !== 'string'
+      || typeof config.externalScope.libraryId !== 'string') {
     throw new ProductionAdminExportError('PRODUCTION_EXPORT_CONFIG_INVALID', '正式迁移导出配置无效', 503);
   }
   assertAuditSalt(config.auditSalt);
@@ -148,7 +129,10 @@ function validateSnapshot(snapshot, config, targetPublicVersion = null) {
       || snapshot.libraryId !== config.libraryId
       || !Number.isSafeInteger(snapshot.publicVersion) || snapshot.publicVersion < 0
       || !Number.isSafeInteger(snapshot.baseOrdinaryVersion) || snapshot.baseOrdinaryVersion < 0
-      || !Array.isArray(snapshot.records) || !Array.isArray(snapshot.tombstones)) {
+      || !Number.isSafeInteger(snapshot.snapshotVersion) || snapshot.snapshotVersion !== snapshot.publicVersion
+      || typeof snapshot.cursor !== 'string'
+      || !Array.isArray(snapshot.records)
+      || !Array.isArray(snapshot.tombstones)) {
     throw new ProductionAdminExportError('PRODUCTION_EXPORT_SNAPSHOT_INVALID', '统一公共快照结构或作用域无效', 503);
   }
   if (targetPublicVersion !== null && snapshot.publicVersion !== targetPublicVersion) {
@@ -163,10 +147,15 @@ function validateSnapshot(snapshot, config, targetPublicVersion = null) {
     .sort((left, right) => left.businessKey.localeCompare(right.businessKey)));
   const tombstones = Object.freeze(snapshot.tombstones.map(validateTombstone)
     .sort((left, right) => left.businessKey.localeCompare(right.businessKey)));
-  if (new Set(records.map(item => item.businessKey)).size !== records.length
-      || new Set(tombstones.map(item => item.businessKey)).size !== tombstones.length
-      || records.some(item => tombstones.some(tombstone => tombstone.businessKey === item.businessKey))) {
-    throw new ProductionAdminExportError('PRODUCTION_EXPORT_SNAPSHOT_DUPLICATE', '统一公共快照存在重复或冲突业务键', 503);
+  const recordKeys = new Set(records.map(item => item.businessKey));
+  const tombstoneKeys = new Set(tombstones.map(item => item.businessKey));
+  if (recordKeys.size !== records.length || tombstoneKeys.size !== tombstones.length
+      || [...recordKeys].some(key => tombstoneKeys.has(key))) {
+    throw new ProductionAdminExportError(
+      'PRODUCTION_EXPORT_SNAPSHOT_DUPLICATE',
+      '统一公共快照存在重复或冲突业务键',
+      503,
+    );
   }
   return Object.freeze({ ...snapshot, records, tombstones });
 }
@@ -343,105 +332,6 @@ export async function buildProductionMigrationExportBundle({
   });
 }
 
-function normalizeCommand(value) {
-  assertExactKeys(
-    value,
-    ['schemaVersion', 'requestId', 'confirmation'],
-    'PRODUCTION_EXPORT_INPUT_INVALID',
-    '正式迁移导出请求字段无效',
-    400,
-  );
-  if (value.schemaVersion !== PRODUCTION_EXPORT_SCHEMA_VERSION) {
-    throw new ProductionAdminExportError('PRODUCTION_EXPORT_SCHEMA_UNSUPPORTED', '正式迁移导出协议版本不受支持', 400);
-  }
-  const requestId = String(value.requestId || '').trim();
-  if (!REQUEST_ID_PATTERN.test(requestId)) {
-    throw new ProductionAdminExportError('PRODUCTION_EXPORT_REQUEST_ID_INVALID', '正式迁移导出requestId无效', 400);
-  }
-  if (value.confirmation !== PRODUCTION_EXPORT_CONFIRMATION) {
-    throw new ProductionAdminExportError('PRODUCTION_EXPORT_CONFIRMATION_REQUIRED', '正式迁移导出缺少固定确认词', 400);
-  }
-  return Object.freeze({
-    schemaVersion: PRODUCTION_EXPORT_SCHEMA_VERSION,
-    requestId,
-    confirmation: PRODUCTION_EXPORT_CONFIRMATION,
-  });
-}
-
-function actorTagFor(identity, salt) {
-  const username = String(identity?.username || '').trim().toLowerCase();
-  if (!username) throw new ProductionAdminExportError('PRODUCTION_EXPORT_ACTOR_INVALID', '管理员身份无效', 401);
-  return `admin_${hmacBase64Url(username, salt).slice(0, 12)}`;
-}
-
-function requestTokenFor(requestId, salt) {
-  return `pextok_v1_${hmacBase64Url(requestId, salt)}`;
-}
-
-function requestHashFor(command, actorTag, salt) {
-  return `pexrh_v1_${hmacBase64Url(canonicalize({ ...command, actorTag }), salt)}`;
-}
-
-function exportIdFor(requestHash) {
-  return `pex_v1_${sha256Base64Url(requestHash)}`;
-}
-
-function auditIdFor(exportId) {
-  return `pexau_v1_${sha256Base64Url(exportId)}`;
-}
-
-function requestKey(config, token) {
-  if (!REQUEST_TOKEN_PATTERN.test(token)) throw new ProductionAdminExportError('PRODUCTION_EXPORT_REQUEST_TOKEN_INVALID', '正式迁移导出请求索引无效', 500);
-  return normalizeBlobKey(`exports/${config.libraryId}/production-requests/${token}.json`);
-}
-
-function decisionKey(config, exportId) {
-  if (!EXPORT_ID_PATTERN.test(exportId)) throw new ProductionAdminExportError('PRODUCTION_EXPORT_ID_INVALID', '正式迁移导出决定ID无效', 500);
-  return normalizeBlobKey(`exports/${config.libraryId}/production-decisions/${exportId}.json`);
-}
-
-function auditKey(auditId, occurredAt) {
-  if (!AUDIT_ID_PATTERN.test(auditId)) throw new ProductionAdminExportError('PRODUCTION_EXPORT_AUDIT_ID_INVALID', '正式迁移导出审计ID无效', 500);
-  const date = new Date(occurredAt);
-  if (!Number.isFinite(date.getTime())) throw new ProductionAdminExportError('PRODUCTION_EXPORT_AUDIT_TIME_INVALID', '正式迁移导出审计时间无效', 500);
-  return normalizeBlobKey(`audit/${date.getUTCFullYear()}/${String(date.getUTCMonth() + 1).padStart(2, '0')}/${auditId}.json`);
-}
-
-function alreadyExists(error) {
-  return error instanceof BlobRepositoryError && error.code === 'BLOB_ALREADY_EXISTS';
-}
-
-async function putImmutableExact(store, key, value, code, message) {
-  try {
-    await putJSONOnlyIfNew(store, key, value);
-    return Object.freeze({ value, created: true });
-  } catch (error) {
-    if (!alreadyExists(error)) throw error;
-    const existing = await getJSONStrong(store, key);
-    if (!existing || canonicalize(existing) !== canonicalize(value)) {
-      throw new ProductionAdminExportError(code, message, 409, null, error);
-    }
-    return Object.freeze({ value: existing, created: false });
-  }
-}
-
-function assertDecision(value, config, expected) {
-  assertExactKeys(value, [
-    'schemaVersion', 'exportId', 'requestHash', 'actorTag', 'createdAt',
-    'groupId', 'libraryId', 'targetPublicVersion',
-  ], 'PRODUCTION_EXPORT_DECISION_INVALID', '正式迁移导出决定无效');
-  if (value.schemaVersion !== PRODUCTION_EXPORT_SCHEMA_VERSION
-      || value.exportId !== expected.exportId || value.requestHash !== expected.requestHash
-      || !EXPORT_ID_PATTERN.test(value.exportId) || !REQUEST_HASH_PATTERN.test(value.requestHash)
-      || !ACTOR_TAG_PATTERN.test(String(value.actorTag || ''))
-      || value.groupId !== config.groupId || value.libraryId !== config.libraryId
-      || !Number.isSafeInteger(value.targetPublicVersion) || value.targetPublicVersion < 0
-      || !Number.isSafeInteger(value.createdAt) || value.createdAt <= 0) {
-    throw new ProductionAdminExportError('PRODUCTION_EXPORT_DECISION_INVALID', '正式迁移导出决定内容无效', 503);
-  }
-  return Object.freeze({ ...value });
-}
-
 export async function buildProductionMigrationExportSummary(options = {}) {
   const bundle = await buildProductionMigrationExportBundle(options);
   return Object.freeze({
@@ -461,92 +351,6 @@ export async function buildProductionMigrationExportSummary(options = {}) {
   });
 }
 
-export async function createProductionMigrationExportDownload({
-  store,
-  config,
-  identity,
-  command,
-  now = Date.now(),
-  buildBundle = buildProductionMigrationExportBundle,
-} = {}) {
-  validateConfig(config);
-  assertSafeTime(now);
-  const input = normalizeCommand(command?.input || command);
-  const actorTag = actorTagFor(identity, config.auditSalt);
-  const requestToken = requestTokenFor(input.requestId, config.auditSalt);
-  const requestHash = requestHashFor(input, actorTag, config.auditSalt);
-  const exportId = exportIdFor(requestHash);
-  const initialBundle = await buildBundle({ store, config, now });
-  if (!PACKAGE_ID_PATTERN.test(String(initialBundle.packageId || ''))) {
-    throw new ProductionAdminExportError('PRODUCTION_EXPORT_PACKAGE_INVALID', '正式迁移导出包ID无效', 503);
-  }
-  const requestIndex = Object.freeze({
-    schemaVersion: PRODUCTION_EXPORT_SCHEMA_VERSION,
-    requestToken,
-    requestHash,
-    exportId,
-    createdAt: now,
-  });
-  await putImmutableExact(
-    store,
-    requestKey(config, requestToken),
-    requestIndex,
-    'PRODUCTION_EXPORT_REQUEST_CONFLICT',
-    '相同requestId对应了不同正式迁移导出请求',
-  );
-  const proposedDecision = Object.freeze({
-    schemaVersion: PRODUCTION_EXPORT_SCHEMA_VERSION,
-    exportId,
-    requestHash,
-    actorTag,
-    createdAt: now,
-    groupId: config.groupId,
-    libraryId: config.libraryId,
-    targetPublicVersion: initialBundle.publicVersion,
-  });
-  const writtenDecision = await putImmutableExact(
-    store,
-    decisionKey(config, exportId),
-    proposedDecision,
-    'PRODUCTION_EXPORT_DECISION_CONFLICT',
-    '正式迁移导出决定冲突',
-  );
-  const decision = assertDecision(writtenDecision.value, config, { exportId, requestHash });
-  const bundle = decision.createdAt === now && decision.targetPublicVersion === initialBundle.publicVersion
-    ? initialBundle
-    : await buildBundle({
-        store,
-        config,
-        now: decision.createdAt,
-        targetPublicVersion: decision.targetPublicVersion,
-      });
-  const auditId = auditIdFor(exportId);
-  const audit = Object.freeze({
-    schemaVersion: PRODUCTION_EXPORT_SCHEMA_VERSION,
-    auditId,
-    exportId,
-    action: 'production_migration_export',
-    actorTag: decision.actorTag,
-    occurredAt: decision.createdAt,
-    groupId: decision.groupId,
-    libraryId: decision.libraryId,
-    packageId: bundle.packageId,
-    publicVersion: bundle.publicVersion,
-    recordCount: bundle.recordCount,
-    tombstoneCount: bundle.tombstoneCount,
-    fileCount: bundle.fileCount,
-    byteLength: bundle.byteLength,
-  });
-  const writtenAudit = await putImmutableExact(
-    store,
-    auditKey(auditId, decision.createdAt),
-    audit,
-    'PRODUCTION_EXPORT_AUDIT_CONFLICT',
-    '正式迁移导出审计冲突',
-  );
-  return Object.freeze({ ...bundle, duplicate: !writtenAudit.created });
-}
-
 export function isProductionExportProjectionSafe(value) {
   const forbiddenKeys = new Set([
     'deviceId', 'deviceIds', 'deviceToken', 'tokenHash', 'submissionId', 'submissionIds',
@@ -556,7 +360,10 @@ export function isProductionExportProjectionSafe(value) {
   const visit = (item, depth = 0) => {
     if (depth > 16) return false;
     if (item === null || ['string', 'number', 'boolean'].includes(typeof item)) {
-      if (typeof item === 'string' && (item.includes('exports/') || item.includes('audit/') || item.includes('public/'))) return false;
+      if (typeof item === 'string'
+          && (item.includes('exports/') || item.includes('audit/') || item.includes('public/'))) {
+        return false;
+      }
       return true;
     }
     if (Array.isArray(item)) return item.every(entry => visit(entry, depth + 1));
