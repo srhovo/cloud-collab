@@ -1,9 +1,9 @@
 {
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "stage": "8E",
-  "revisedAtStage": "8J",
+  "revisedAtStage": "8L",
   "recordedAt": "2026-07-21",
-  "status": "domain_selected_single_project_host_isolation_implemented_waiting_owner_domain_status",
+  "status": "domain_verified_no_icp_initial_launch_waiting_edgeone_configuration",
   "recommendedBootstrapWorkflow": "stage8h-edgeone-production-bootstrap",
   "bootstrapRequiresOwnerDomain": false,
   "deploymentBootstrapPathDeprecated": true,
@@ -13,9 +13,24 @@
     "administratorHostname": "admin.xiaxue.site",
     "publicOrigin": "https://app.xiaxue.site",
     "administratorOrigin": "https://admin.xiaxue.site",
-    "ownershipConfirmed": false,
+    "ownershipConfirmed": true,
+    "realNameConfirmed": true,
+    "registrationDate": "2026-07-21",
+    "expirationDate": "2027-07-21",
+    "autoRenewEnabled": true,
+    "dnsProvider": "DNSPod",
+    "dnsControlConfirmed": true,
     "dnsConfigured": false,
     "httpsVerified": false
+  },
+  "deployment": {
+    "initialAccelerationRegion": "global_excluding_chinese_mainland",
+    "icpFilingRequiredForInitialRegion": false,
+    "icpFilingDeferred": true,
+    "mainlandAccelerationEnabled": false,
+    "eligibleMainlandCloudResourcePurchased": false,
+    "cloudServerPurchaseRequiredNow": false,
+    "futureMainlandAccelerationRequiresIcpFiling": true
   },
   "architecture": {
     "topology": "single_edgeone_project_two_custom_domains",
