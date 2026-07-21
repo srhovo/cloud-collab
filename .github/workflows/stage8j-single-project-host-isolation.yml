@@ -8,6 +8,8 @@ on:
       - 'edgeone.json'
       - 'package.json'
       - 'scripts/prepare-edgeone-single-project-v1.mjs'
+      - 'scripts/stage7h-release-rehearsal-v1.mjs'
+      - 'tests/stage8d-admin-artifact-isolation.test.mjs'
       - 'tests/stage8j-single-project-host-routing.test.mjs'
       - 'release/production-domain-selection-v1.json'
       - 'release/production-handoff-plan-v1.json'
@@ -33,8 +35,12 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Build frozen candidate source
         run: npm run build
-      - name: Run host routing tests
-        run: node --test tests/stage8j-single-project-host-routing.test.mjs
+      - name: Run host routing and inherited contract tests
+        run: |
+          node --test \
+            tests/stage8j-single-project-host-routing.test.mjs \
+            tests/stage8d-admin-artifact-isolation.test.mjs \
+            tests/stage7h-publication-rehearsal.test.mjs
       - name: Build single-project two-domain artifact
         run: npm run edgeone:production:prepare -- --output .edgeone-artifact --commit "$GITHUB_SHA" | tee stage8j-layout.json
       - name: Audit generated layout and zero-operation boundary
@@ -64,7 +70,13 @@ jobs:
       - name: Confirm no deployment commands
         shell: bash
         run: |
-          ! grep -E "edgeone[[:space:]]+deploy|wrangler|vercel|netlify|curl[[:space:]].*https?://" .github/workflows/stage8j-single-project-host-isolation.yml
+          set -euo pipefail
+          forbidden="edgeone[[:space:]]+deplo""y|wrangler[[:space:]]+deplo""y|vercel[[:space:]]+--prod|netlify[[:space:]]+deplo""y|curl[[:space:]].*https?://"
+          ! grep -E "$forbidden" \
+            middleware.js \
+            scripts/prepare-edgeone-single-project-v1.mjs \
+            package.json \
+            .github/workflows/stage8j-single-project-host-isolation.yml
       - name: Upload audit report
         if: always()
         uses: actions/upload-artifact@v4
