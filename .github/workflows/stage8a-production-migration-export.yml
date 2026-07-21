@@ -1,0 +1,80 @@
+name: stage8a-production-migration-export
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/server/production_admin_export_v1.js'
+      - 'src/server/production_admin_export_download_v1.js'
+      - 'src/server/production_admin_export_http_v1.js'
+      - 'src/server/admin_export_mode_dispatch_v1.js'
+      - 'src/server/production_runtime_config_v1.js'
+      - 'cloud-functions/api/admin/exports/**'
+      - 'config/production.env.template'
+      - 'tests/stage8a-production-migration-export.test.mjs'
+      - '.github/workflows/stage8a-production-migration-export.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production-migration-export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Run production export and inherited tests
+        shell: bash
+        run: |
+          set -o pipefail
+          node --test \
+            tests/stage8a-production-migration-export.test.mjs \
+            tests/stage5f-admin-export.test.mjs \
+            tests/stage7n-production-runtime-and-bootstrap.test.mjs \
+            tests/stage7s-production-admin-auth.test.mjs \
+            tests/stage7v-production-sensitive-review.test.mjs \
+            tests/stage7x-production-rollback.test.mjs \
+            2>&1 | tee stage8a-test.log
+
+      - name: Upload Stage8A diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage8a-test-diagnostic
+          path: stage8a-test.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Audit production migration export boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "buildUnifiedSensitivePublicSnapshot" src/server/production_admin_export_v1.js
+          grep -q "portableWithoutEdgeOne: true" src/server/production_admin_export_v1.js
+          grep -q "tombstonesIncluded: true" src/server/production_admin_export_v1.js
+          grep -q "rank_range_rule" src/server/production_admin_export_v1.js
+          grep -q "surcharge_rule" src/server/production_admin_export_v1.js
+          grep -q "gift_rule" src/server/production_admin_export_v1.js
+          grep -q "verifyProductionAdminSessionToken" src/server/production_admin_export_http_v1.js
+          grep -q "createProductionMigrationExportDownloadV1" src/server/production_admin_export_http_v1.js
+          grep -q "resolveAdminAuthMode" src/server/admin_export_mode_dispatch_v1.js
+          grep -q '^CLOUD_PRODUCTION_EXPORT_ENABLED=0$' config/production.env.template
+          ! grep -q "verifyAdminSessionToken\|readAdminAuthConfig" src/server/production_admin_export_http_v1.js
+          ! grep -q "CLOUD_PRODUCTION_EXPORT_ENABLED" src/server/admin_export_mode_dispatch_v1.js
+          ! grep -q "BlobRepositoryError\|putJSONOnlyIfNew\|production-requests" src/server/production_admin_export_v1.js
+          ! grep -R "Access-Control-Allow-Origin.*\*" src/server/production_admin_export_http_v1.js
+          ! grep -R "xiaxue76\|2406048740@qq.com" src cloud-functions tests config docs README.md
+
+      - name: Confirm all Cloud Function imports resolve
+        run: node --test tests/cloud-functions-relative-imports.test.mjs
