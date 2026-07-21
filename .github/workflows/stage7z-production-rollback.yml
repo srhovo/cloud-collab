@@ -1,0 +1,80 @@
+name: stage7z-production-rollback
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/server/admin_rollback_v1.js'
+      - 'src/server/admin_rollback_http_v1.js'
+      - 'src/server/production_admin_rollback_http_v1.js'
+      - 'src/server/admin_rollback_mode_dispatch_v1.js'
+      - 'src/server/production_admin_auth_v1.js'
+      - 'src/server/admin_auth_mode_dispatch_v1.js'
+      - 'cloud-functions/api/admin/rollbacks**'
+      - 'tests/stage7x-production-rollback.test.mjs'
+      - '.github/workflows/stage7z-production-rollback.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production-rollback:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Run production and inherited rollback tests
+        shell: bash
+        run: |
+          set -o pipefail
+          node --test \
+            tests/stage7x-production-rollback.test.mjs \
+            tests/stage5e-admin-rollback.test.mjs \
+            tests/stage5e-rollback-recovery.test.mjs \
+            tests/stage7s-production-admin-auth.test.mjs \
+            tests/stage7t-production-admin-review.test.mjs \
+            tests/stage7n-production-runtime-and-bootstrap.test.mjs \
+            2>&1 | tee stage7z-test.log
+
+      - name: Upload Stage7Z diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage7z-test-diagnostic
+          path: stage7z-test.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Audit production rollback boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "normalizeInternalEvent(event, config" src/server/admin_rollback_v1.js
+          grep -q "config?.productionEnabled" src/server/admin_rollback_v1.js
+          grep -q "publishAdminReviewApproval" src/server/admin_rollback_v1.js
+          grep -q "runtime.publicStoreName" src/server/production_admin_rollback_http_v1.js
+          grep -q "runtime.scope.protocol.groupId" src/server/production_admin_rollback_http_v1.js
+          grep -q "runtime.scope.protocol.libraryId" src/server/production_admin_rollback_http_v1.js
+          grep -q "CLOUD_ADMIN_ROLLBACK_REF_SALT" src/server/production_admin_rollback_http_v1.js
+          grep -q "verifyProductionAdminSessionToken" src/server/production_admin_rollback_http_v1.js
+          grep -q "resolveAdminAuthMode" src/server/admin_rollback_mode_dispatch_v1.js
+          ! grep -q "verifyAdminSessionToken\|readAdminAuthConfig" src/server/production_admin_rollback_http_v1.js
+          ! grep -q "CLOUD_ADMIN_PRODUCTION_ENABLED\|CLOUD_PRODUCTION_ADMIN_REVIEW_ENABLED" src/server/admin_rollback_mode_dispatch_v1.js
+          ! grep -q "Access-Control-Allow-Origin" src/server/production_admin_rollback_http_v1.js
+          grep -q "stablePromotionAuthorized: false" src/server/production_admin_rollback_http_v1.js
+          ! grep -R "xiaxue76\|2406048740@qq.com" src cloud-functions tests config docs README.md
+          ! grep -R "CLOUD_ADMIN_PASSWORD=.*[^=]" config/production.env.template
+
+      - name: Confirm all Cloud Function imports resolve
+        run: node --test tests/cloud-functions-relative-imports.test.mjs
