@@ -1,0 +1,91 @@
+name: stage8e-admin-deployment-root
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'deploy/admin/edgeone.json'
+      - 'scripts/prepare-admin-deployment-root-v1.mjs'
+      - 'scripts/audit-admin-deployment-runtime-v1.mjs'
+      - 'scripts/audit-stage8e-admin-root-no-deploy-v1.mjs'
+      - 'tests/stage8e-admin-deployment-root.test.mjs'
+      - 'tests/stage8e-admin-edgeone-config.test.mjs'
+      - 'tests/stage8e-admin-root-no-deploy.test.mjs'
+      - 'tests/stage8e_browser_admin_deployment.py'
+      - '.github/workflows/stage8e-admin-deployment-root.yml'
+      - '.gitignore'
+      - 'package.json'
+      - 'README.md'
+      - 'docs/阶段8E_管理员独立部署根.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  admin-deployment-root:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Generate administrator deployment root
+        run: npm run admin:deployment:prepare -- --commit "$GITHUB_SHA" | tee stage8e-build.json
+      - name: Import every administrator Cloud Function
+        run: npm run admin:deployment:audit | tee stage8e-runtime.json
+      - name: Run deployment-root and inherited isolation tests
+        shell: bash
+        run: |
+          set -o pipefail
+          node --test \
+            tests/stage8e-admin-deployment-root.test.mjs \
+            tests/stage8e-admin-edgeone-config.test.mjs \
+            tests/stage8e-admin-root-no-deploy.test.mjs \
+            tests/stage8d-admin-artifact-isolation.test.mjs \
+            tests/stage8d-no-deploy-audit.test.mjs \
+            tests/stage8c-production-admin-console.test.mjs \
+            2>&1 | tee stage8e-test.log
+      - name: Install browser runtime
+        run: |
+          python3 -m pip install --disable-pip-version-check playwright
+          python3 -m playwright install --with-deps chromium
+          CHROMIUM_PATH="$(find "$HOME/.cache/ms-playwright" -type f -name chrome | head -n 1)"
+          test -n "$CHROMIUM_PATH"
+          sudo ln -sf "$CHROMIUM_PATH" /usr/bin/chromium
+      - name: Run generated deployment browser regression
+        run: python3 tests/stage8e_browser_admin_deployment.py 2>&1 | tee stage8e-browser.log
+      - name: Audit no deployment and no real network target
+        run: node scripts/audit-stage8e-admin-root-no-deploy-v1.mjs | tee stage8e-no-deploy.json
+      - name: Audit generated scope and repository cleanliness
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(find deploy/admin/.edgeone-admin-artifact -maxdepth 1 -type f | wc -l)" -eq 4
+          test "$(find deploy/admin/cloud-functions/api -type f -name '*.js' | wc -l)" -gt 10
+          test -z "$(find deploy/admin/cloud-functions/api -mindepth 1 -maxdepth 1 -type d ! -name admin -print -quit)"
+          grep -q '"deploymentStatus": "code_complete_not_deployed"' deploy/admin/.edgeone-admin-artifact/admin-release.json
+          grep -q '"anonymousPublicApiIncluded": false' deploy/admin/.edgeone-admin-artifact/admin-release.json
+          grep -q '"includesSecretValues": false' deploy/admin/.edgeone-admin-artifact/admin-release.json
+          grep -q '"stablePromotionAuthorized": false' deploy/admin/.edgeone-admin-artifact/admin-release.json
+          test -z "$(git status --short)"
+      - name: Upload Stage8E evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage8e-admin-root-evidence
+          path: |
+            deploy/admin/.edgeone-admin-artifact/admin-release.json
+            deploy/admin/edgeone.json
+            stage8e-build.json
+            stage8e-runtime.json
+            stage8e-test.log
+            stage8e-browser.log
+            stage8e-no-deploy.json
+          if-no-files-found: error
+          retention-days: 7
