@@ -19,7 +19,7 @@ import {
 } from './admin_rollback_v1.js';
 
 const SERVICE_ID = 'cloud-collab-admin-rollback-production';
-const API_VERSION = '2026-07-21-stage7x';
+const API_VERSION = '2026-07-21-stage7aa';
 
 export class ProductionAdminRollbackError extends Error {
   constructor(code, message, status = 503, details = null, cause = null) {
@@ -48,7 +48,7 @@ export function readProductionAdminRollbackConfig(env = {}) {
   if (runtime.mode !== 'production'
       || runtime.flags.readSync !== true
       || runtime.flags.admin !== true
-      || runtime.flags.adminReview !== true) {
+      || runtime.flags.rollback !== true) {
     throw new ProductionAdminRollbackError(
       'PRODUCTION_ADMIN_ROLLBACK_DISABLED',
       '正式管理员回滚能力未开启',
