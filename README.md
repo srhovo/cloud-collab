@@ -1,6 +1,6 @@
 # 码单器公共协作数据库
 
-当前工程阶段为**阶段7R：正式普通陪玩名字与老板资料接线**。最终普通用户交付仍是单HTML。
+当前工程阶段为**阶段7T：正式管理员身份与会话安全底座**。最终普通用户交付仍是单HTML。
 
 ## 当前发布状态
 
@@ -20,12 +20,14 @@ iPhone Safari冒烟：通过
 正式设备注册和普通候选入队：完成，默认关闭
 正式普通精确价格自动审核：完成，默认关闭
 正式普通陪玩名字与老板资料：完成，默认关闭
+正式敏感候选入队：完成，默认关闭
+正式管理员身份与会话：完成，默认关闭
 生产能力实际启用：否
 稳定版8.2.25未晋升
 正式公共写入保持关闭
 ```
 
-阶段7A至7K完成维护、发布证据、候选打包、EdgeOne候选部署和真实网络验收。阶段7L建立生产参数与零写入准备；阶段7M补齐作用域映射和GitHub Pages静态备用；阶段7N补齐生产运行时门禁和一次性初始化器；阶段7O接入正式只读API；阶段7P接入正式设备注册与精确价格候选入队；阶段7Q接入普通精确价格自动审核；阶段7R把普通陪玩名字与老板资料接到同一正式提交和公共事件链。
+阶段7A至7K完成维护、发布证据、候选打包、EdgeOne候选部署和真实网络验收。阶段7L建立生产参数与零写入准备；阶段7M补齐作用域映射和GitHub Pages静态备用；阶段7N补齐生产运行时门禁和一次性初始化器；阶段7O接入正式只读API；阶段7P接入正式设备注册与精确价格候选入队；阶段7Q接入普通精确价格自动审核；阶段7R把普通陪玩名字与老板资料接到同一正式提交和公共事件链；阶段7S接入正式敏感候选入队；阶段7T接入正式管理员登录、会话和退出安全底座。
 
 ## 阶段7J兼容规则
 
@@ -156,7 +158,64 @@ stablePromotionAuthorized=false
 
 老板资料的老板名变化、直属/派单变化、折数升高、一次降折超过0.05或候选冲突必须进入人工审核。已有老板资料的小幅安全降折仍要求两个不同设备确认，不能仅由一台可信设备自动更新。
 
-阶段7R仍未接入正式管理员控制面和阶段6敏感提交。
+## 阶段7S正式敏感候选
+
+```text
+POST /api/sensitive-submissions/create
+```
+
+支持区间、加价、礼物规则、老板敏感变化以及显式删除。只有生产总开关、只读同步、管理员身份、管理员人工审核和敏感提交门禁同时开启时才能运行。
+
+该入口只验证、鉴权、限流和不可变入队：
+
+```text
+manualReviewRequired=true
+publicMutationAllowed=false
+publicMutationApplied=false
+autoApprovalEnabled=false
+stablePromotionAuthorized=false
+```
+
+敏感入口不导入批准、拒绝、编辑后批准或公共发布处理器。
+
+## 阶段7T正式管理员身份
+
+继续使用阶段5A冻结路径：
+
+```text
+POST /api/admin/auth/login
+GET  /api/admin/auth/session
+POST /api/admin/auth/logout
+```
+
+管理员身份路由按`CLOUD_PRODUCTION_ENABLED`分发。生产总开关为1时只进入正式处理器，正式管理员开关关闭不会回退预览。
+
+正式身份要求：
+
+```text
+CLOUD_ADMIN_PRODUCTION_ENABLED=1
+CLOUD_ADMIN_USERNAME=xiaxue
+CLOUD_ADMIN_PRODUCTION_BLOB_STORE_NAME=cloud-collab-admin-production-v1
+CLOUD_ADMIN_PUBLIC_ORIGIN=<纯HTTPS来源>
+```
+
+正式会话issuer固定为`cloud-collab-admin-production`，与阶段5A预览会话隔离。Cookie为15分钟、`HttpOnly`、`Secure`、`SameSite=Strict`且只作用于`/api/admin`。
+
+登录限流固定写入独立管理员Store，Key前缀为`admin-production-rate/login/`，只包含用户名和客户端地址的加盐HMAC摘要。
+
+阶段7T身份响应不授予审核或公共修改能力：
+
+```text
+reviewQueueRead=false
+reviewMutation=false
+deviceMutation=false
+rollback=false
+export=false
+publicMutationAllowed=false
+stablePromotionAuthorized=false
+```
+
+正式审核队列、审核写入、设备治理、回滚和导出仍未接入生产身份层。
 
 ## 生产模板与命令
 
@@ -229,8 +288,9 @@ DNS修改：0
 正式普通候选入队：代码完成，实际启用0
 正式普通精确价格自动审核：代码完成，实际启用0
 正式普通陪玩名字和老板资料：代码完成，实际启用0
-正式管理员控制面：0
-正式敏感提交与人工审核：0
+正式敏感候选入队：代码完成，实际启用0
+正式管理员身份与会话：代码完成，实际启用0
+正式管理员审核队列与审核写入：0
 稳定晋升：0
 GitHub Pages：仅冻结静态候选，不含后端能力
 正式公共写入保持关闭
@@ -238,6 +298,8 @@ GitHub Pages：仅冻结静态候选，不含后端能力
 
 详细方案见：
 
+- `docs/阶段7T_正式管理员身份与会话安全底座.md`
+- `docs/阶段7S_正式敏感候选入队.md`
 - `docs/阶段7R_正式普通陪玩名字与老板资料接线.md`
 - `docs/阶段7Q_正式普通自动审核接线.md`
 - `docs/阶段7P_正式设备注册与精确价格候选入队.md`
