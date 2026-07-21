@@ -45,7 +45,7 @@ jobs:
             tests/stage7w-production-device-governance.test.mjs \
             tests/stage7x-production-rollback.test.mjs \
             tests/stage8a-production-complete-export.test.mjs \
-            2>&1 | tee stage8b-node-test.log
+            2>&1 | tee "$RUNNER_TEMP/stage8b-node-test.log"
 
       - name: Rebuild and audit ordinary public artifact first
         run: npm run public:prepare -- --channel edgeone-primary --output .edgeone-artifact --commit "$GITHUB_SHA"
@@ -83,7 +83,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          python3 tests/stage8b_browser_production_admin_console.py 2>&1 | tee stage8b-browser.log
+          python3 tests/stage8b_browser_production_admin_console.py 2>&1 | tee "$RUNNER_TEMP/stage8b-browser.log"
 
       - name: Upload Stage8B diagnostics
         if: always()
@@ -91,8 +91,8 @@ jobs:
         with:
           name: stage8b-admin-console-diagnostics
           path: |
-            stage8b-node-test.log
-            stage8b-browser.log
+            ${{ runner.temp }}/stage8b-node-test.log
+            ${{ runner.temp }}/stage8b-browser.log
           if-no-files-found: warn
           retention-days: 7
 
