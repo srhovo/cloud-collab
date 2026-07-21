@@ -1,0 +1,113 @@
+name: stage8b-production-admin-console
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'dist/admin-production-console.html'
+      - 'scripts/prepare-admin-console-v1.mjs'
+      - 'tests/stage8b-production-admin-console.test.mjs'
+      - 'tests/stage8b_browser_production_admin_console.py'
+      - 'package.json'
+      - '.github/workflows/stage8b-production-admin-console.yml'
+      - 'docs/阶段8B_**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production-admin-console:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Run administrator console and inherited service tests
+        shell: bash
+        run: |
+          set -o pipefail
+          node --test \
+            tests/stage8b-production-admin-console.test.mjs \
+            tests/stage7s-production-admin-auth.test.mjs \
+            tests/stage7t-production-admin-review.test.mjs \
+            tests/stage7v-production-sensitive-review.test.mjs \
+            tests/stage7w-production-device-governance.test.mjs \
+            tests/stage7x-production-rollback.test.mjs \
+            tests/stage8a-production-complete-export.test.mjs \
+            2>&1 | tee stage8b-node-test.log
+
+      - name: Build isolated administrator artifact
+        run: npm run admin:prepare -- --output .edgeone-admin-artifact --commit "$GITHUB_SHA"
+
+      - name: Rebuild ordinary public artifact and verify mutual exclusion
+        shell: bash
+        run: |
+          npm run public:prepare -- --channel edgeone-primary --output .edgeone-artifact --commit "$GITHUB_SHA"
+          test "$(find .edgeone-admin-artifact -maxdepth 1 -type f -printf '%f\n' | sort | paste -sd, -)" = "admin-release.json,index.html"
+          test "$(find .edgeone-artifact -maxdepth 1 -type f -printf '%f\n' | sort | paste -sd, -)" = "build-manifest.json,index.html,pages-release.json"
+          test ! -e .edgeone-admin-artifact/build-manifest.json
+          test ! -e .edgeone-admin-artifact/pages-release.json
+          test ! -e .edgeone-artifact/admin-release.json
+          cmp dist/admin-production-console.html .edgeone-admin-artifact/index.html
+          ! cmp -s dist/admin-production-console.html .edgeone-artifact/index.html
+          ! grep -R "码单器正式管理员控制台" .edgeone-artifact
+          ! grep -R "码单器8.2.31（公共协作发布候选版）" .edgeone-admin-artifact
+
+      - name: Audit administrator console boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "frame-ancestors 'none'" dist/admin-production-console.html
+          grep -q "EXPORT_FULL_PUBLIC_DATABASE" dist/admin-production-console.html
+          grep -q "ROLLBACK_TO_PREVIOUS_APPROVED_VALUE" dist/admin-production-console.html
+          grep -q "productionAdmin!==true" dist/admin-production-console.html
+          grep -q "syntheticFixtureOnly!==false" dist/admin-production-console.html
+          grep -q "stablePromotionAuthorized!==false" dist/admin-production-console.html
+          ! grep -q "eo_token\|eo_time\|admin-preview.html" dist/admin-production-console.html
+          ! grep -q "localStorage\|sessionStorage\|indexedDB" dist/admin-production-console.html
+          ! grep -q "<script src=\|<link rel=\"stylesheet\"" dist/admin-production-console.html
+          ! grep -R "admin-production-console.html\|admin-release.json" scripts/prepare-public-candidate-v1.mjs .edgeone-artifact
+
+      - name: Install browser test runtime
+        run: |
+          python3 -m pip install --disable-pip-version-check playwright
+          python3 -m playwright install --with-deps chromium
+          CHROMIUM_PATH="$(find "$HOME/.cache/ms-playwright" -type f -name chrome | head -n 1)"
+          test -n "$CHROMIUM_PATH"
+          echo "CHROMIUM_PATH=$CHROMIUM_PATH" >> "$GITHUB_ENV"
+
+      - name: Run formal administrator console browser regression
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 tests/stage8b_browser_production_admin_console.py 2>&1 | tee stage8b-browser.log
+
+      - name: Upload Stage8B diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage8b-admin-console-diagnostics
+          path: |
+            stage8b-node-test.log
+            stage8b-browser.log
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload isolated administrator artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage8b-production-admin-console
+          path: .edgeone-admin-artifact/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7
