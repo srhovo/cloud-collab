@@ -8,8 +8,6 @@ export const ADMIN_CONSOLE_FILES = Object.freeze(['index.html', 'admin-release.j
 export const ADMIN_CONSOLE_SOURCE = 'dist/admin-production-console.html';
 export const ADMIN_CONSOLE_OUTPUT = '.edgeone-admin-artifact';
 export const ADMIN_CONSOLE_TITLE = '码单器正式管理员控制台';
-export const ADMIN_CONSOLE_SESSION_PROBE_TEMPLATE = 'checkSession({quiet:true});';
-export const ADMIN_CONSOLE_SESSION_PROBE_RENDERED = 'checkSession({quiet:false});';
 
 export class AdminConsoleArtifactError extends Error {
   constructor(code, message, details = null) {
@@ -49,27 +47,12 @@ function safeOutput(root, outputDirectory) {
   return target;
 }
 
-export function renderAdminConsole(sourceText) {
-  const text = String(sourceText || '');
-  const templateCount = text.split(ADMIN_CONSOLE_SESSION_PROBE_TEMPLATE).length - 1;
-  const renderedCount = text.split(ADMIN_CONSOLE_SESSION_PROBE_RENDERED).length - 1;
-  if (templateCount !== 1 || renderedCount !== 0) {
-    fail('ADMIN_CONSOLE_RENDER_MARKER_INVALID', '管理员控制台会话探测模板标记无效', {
-      templateCount,
-      renderedCount,
-    });
-  }
-  return text.replace(ADMIN_CONSOLE_SESSION_PROBE_TEMPLATE, ADMIN_CONSOLE_SESSION_PROBE_RENDERED);
-}
-
 function auditSource(text) {
   if (!text.includes(`<title>${ADMIN_CONSOLE_TITLE}</title>`)
       || !text.includes("frame-ancestors 'none'")
       || !text.includes("credentials:'same-origin'")
       || !text.includes("confirmation:'EXPORT_FULL_PUBLIC_DATABASE'")
-      || !text.includes("confirmation:'ROLLBACK_TO_PREVIOUS_APPROVED_VALUE'")
-      || !text.includes(ADMIN_CONSOLE_SESSION_PROBE_RENDERED)
-      || text.includes(ADMIN_CONSOLE_SESSION_PROBE_TEMPLATE)) {
+      || !text.includes("confirmation:'ROLLBACK_TO_PREVIOUS_APPROVED_VALUE'")) {
     fail('ADMIN_CONSOLE_SOURCE_INVALID', '管理员控制台身份或关键安全锚点缺失');
   }
   const requiredPaths = [
@@ -98,10 +81,9 @@ export function prepareAdminConsole({ root, outputDirectory, commitSha } = {}) {
   const target = safeOutput(repositoryRoot, outputDirectory);
   const sourceCommit = checkedCommit(commitSha || process.env.GITHUB_SHA || repositoryCommit(repositoryRoot));
   const sourcePath = path.join(repositoryRoot, ADMIN_CONSOLE_SOURCE);
-  const templateText = fs.readFileSync(sourcePath, 'utf8');
-  const renderedText = renderAdminConsole(templateText);
-  const bytes = Buffer.from(renderedText, 'utf8');
-  auditSource(renderedText);
+  const bytes = fs.readFileSync(sourcePath);
+  const text = bytes.toString('utf8');
+  auditSource(text);
 
   const release = Object.freeze({
     schemaVersion: 1,
@@ -116,7 +98,6 @@ export function prepareAdminConsole({ root, outputDirectory, commitSha } = {}) {
     intendedOrigin: 'CLOUD_ADMIN_PUBLIC_ORIGIN',
     requiresSeparateAdministratorOrigin: true,
     requiresProductionAdminSession: true,
-    initialSessionProbeVisible: true,
     includesOrdinaryUserCandidate: false,
     includesSecretValues: false,
     productionCapabilitiesDefaultOff: true,
@@ -129,7 +110,7 @@ export function prepareAdminConsole({ root, outputDirectory, commitSha } = {}) {
 
   fs.rmSync(target, { recursive: true, force: true });
   fs.mkdirSync(target, { recursive: true });
-  fs.writeFileSync(path.join(target, 'index.html'), bytes);
+  fs.copyFileSync(sourcePath, path.join(target, 'index.html'));
   fs.writeFileSync(path.join(target, 'admin-release.json'), `${JSON.stringify(release, null, 2)}\n`, 'utf8');
 
   const files = fs.readdirSync(target).sort();
@@ -145,13 +126,7 @@ export function prepareAdminConsole({ root, outputDirectory, commitSha } = {}) {
   if (files.includes('build-manifest.json') || files.includes('pages-release.json')) {
     fail('ADMIN_CONSOLE_PUBLIC_ARTIFACT_LEAK', '管理员产物不得混入普通用户候选清单');
   }
-  return Object.freeze({
-    outputDirectory: target,
-    files: Object.freeze(files),
-    release,
-    renderedSha256: release.sha256,
-    renderedBytes: release.bytes,
-  });
+  return Object.freeze({ outputDirectory: target, files: Object.freeze(files), release });
 }
 
 function argumentValue(name) {
