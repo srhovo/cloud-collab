@@ -69,8 +69,8 @@ export function readProductionAdminReviewConfig(env = {}) {
   }
   return Object.freeze({
     storeName: runtime.storeName,
-    groupId: runtime.protocolScope.groupId,
-    libraryId: runtime.protocolScope.libraryId,
+    groupId: runtime.groupId,
+    libraryId: runtime.libraryId,
     maxObjects: ADMIN_REVIEW_MAX_OBJECTS,
     ordinaryTypesEnabled: true,
     mutationPreviewEnabled: true,
