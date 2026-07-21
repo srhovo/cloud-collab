@@ -1,0 +1,65 @@
+name: stage8g-bootstrap-hardening
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/run-edgeone-production-bootstrap-v1.mjs'
+      - 'tests/stage8f-edgeone-production-bootstrap.test.mjs'
+      - '.github/workflows/stage8f-edgeone-production-bootstrap.yml'
+      - '.github/workflows/stage8g-bootstrap-hardening.yml'
+      - 'docs/阶段8G_Blob初始化执行安全加固.md'
+      - 'README.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hardening:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.11.0'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Run Stage8G and inherited tests
+        shell: bash
+        run: |
+          set -o pipefail
+          node --test \
+            tests/stage8f-edgeone-production-bootstrap.test.mjs \
+            tests/stage8e-production-handoff.test.mjs \
+            tests/stage7n-production-runtime-and-bootstrap.test.mjs \
+            2>&1 | tee stage8g-test.log
+      - name: Produce zero-write plan
+        env:
+          BOOTSTRAP_REPORT_PATH: dist/stage8g-bootstrap-plan.json
+        run: npm run production:bootstrap:edgeone:plan
+      - name: Audit hardening boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q '"stage": "8G"' dist/stage8g-bootstrap-plan.json
+          grep -q '"resourceCount": 10' dist/stage8g-bootstrap-plan.json
+          grep -q '"realBlobReadsPerformed": 0' dist/stage8g-bootstrap-plan.json
+          grep -q '"realBlobWritesPerformed": 0' dist/stage8g-bootstrap-plan.json
+          grep -q '"realBlobDeletesPerformed": 0' dist/stage8g-bootstrap-plan.json
+          grep -q '"stablePromotionAuthorized": false' dist/stage8g-bootstrap-plan.json
+          grep -q "github.ref == 'refs/heads/main'" .github/workflows/stage8f-edgeone-production-bootstrap.yml
+          grep -q 'environment: production-bootstrap' .github/workflows/stage8f-edgeone-production-bootstrap.yml
+          grep -q 'EDGEONE_BOOTSTRAP_EXECUTION_UNLOCK' .github/workflows/stage8f-edgeone-production-bootstrap.yml
+          grep -q 'WRITE-10-IMMUTABLE-OBJECTS' .github/workflows/stage8f-edgeone-production-bootstrap.yml
+          ! grep -q '^  push:\|^  pull_request:\|^  schedule:' .github/workflows/stage8f-edgeone-production-bootstrap.yml
+      - name: Upload sanitized evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage8g-bootstrap-hardening
+          path: |
+            dist/stage8g-bootstrap-plan.json
+            stage8g-test.log
+          if-no-files-found: error
+          retention-days: 7
