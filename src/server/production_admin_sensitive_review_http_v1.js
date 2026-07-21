@@ -47,8 +47,7 @@ export function readProductionAdminSensitiveReviewConfig(env = {}) {
   }
   if (runtime.mode !== 'production'
       || runtime.flags.admin !== true
-      || runtime.flags.adminReview !== true
-      || runtime.flags.sensitiveSubmission !== true) {
+      || runtime.flags.adminReview !== true) {
     throw new ProductionAdminSensitiveReviewError(
       'PRODUCTION_ADMIN_SENSITIVE_REVIEW_DISABLED',
       '正式敏感审核能力未开启',
@@ -65,6 +64,7 @@ export function readProductionAdminSensitiveReviewConfig(env = {}) {
     publicOrigin: runtime.adminOrigin,
     externalScope: runtime.scope.external,
     protocolScope: runtime.scope.protocol,
+    sensitiveSubmissionIntakeEnabled: runtime.flags.sensitiveSubmission,
     syntheticFixtureOnly: false,
     stablePromotionAuthorized: false,
   });
@@ -233,7 +233,11 @@ export async function handleProductionAdminSensitiveReviewQueueRequest(context, 
     const list = dependencies.listQueue || listAdminSensitiveReviewQueue;
     const raw = await list({ store: storeFor(state.config, dependencies), config: state.config });
     const { capabilities: ignored, ...data } = raw;
-    return success({ viewer: viewer(state.identity), ...data });
+    return success({
+      viewer: viewer(state.identity),
+      sensitiveSubmissionIntakeEnabled: state.config.sensitiveSubmissionIntakeEnabled,
+      ...data,
+    });
   } catch (error) { return failure(error); }
 }
 
@@ -251,7 +255,11 @@ export async function handleProductionAdminSensitiveReviewDetailRequest(context,
       now: dependencies.now?.() ?? Date.now(),
     });
     const { capabilities: ignored, ...data } = raw;
-    return success({ viewer: viewer(state.identity), ...data });
+    return success({
+      viewer: viewer(state.identity),
+      sensitiveSubmissionIntakeEnabled: state.config.sensitiveSubmissionIntakeEnabled,
+      ...data,
+    });
   } catch (error) { return failure(error); }
 }
 
@@ -271,7 +279,11 @@ async function handleMutation(context, action, dependencies) {
       input,
       now: dependencies.now?.() ?? Date.now(),
     });
-    return success({ viewer: viewer(state.identity), result }, result.duplicate ? 200 : 201);
+    return success({
+      viewer: viewer(state.identity),
+      sensitiveSubmissionIntakeEnabled: state.config.sensitiveSubmissionIntakeEnabled,
+      result,
+    }, result.duplicate ? 200 : 201);
   } catch (error) { return failure(error); }
 }
 
