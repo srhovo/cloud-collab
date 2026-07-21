@@ -1,0 +1,105 @@
+name: stage8f-edgeone-production-bootstrap
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: '首次必须选择plan；核对计划后才选择execute'
+        required: true
+        default: plan
+        type: choice
+        options:
+          - plan
+          - execute
+      confirmation:
+        description: 'execute时必须输入INITIALIZE-see-see_cz-V1；plan请留空'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.11.0'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Build inherited Stage8E handoff
+        run: npm run production:handoff
+      - name: Produce zero-write bootstrap plan
+        env:
+          BOOTSTRAP_REPORT_PATH: dist/stage8f-bootstrap-plan.json
+        run: npm run production:bootstrap:edgeone:plan
+      - name: Assert plan performed no remote operations
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q '"operation": "plan"' dist/stage8f-bootstrap-plan.json
+          grep -q '"status": "ready_not_executed"' dist/stage8f-bootstrap-plan.json
+          grep -q '"resourceCount": 10' dist/stage8f-bootstrap-plan.json
+          grep -q '"realBlobReadsPerformed": 0' dist/stage8f-bootstrap-plan.json
+          grep -q '"realBlobWritesPerformed": 0' dist/stage8f-bootstrap-plan.json
+          grep -q '"realBlobDeletesPerformed": 0' dist/stage8f-bootstrap-plan.json
+          grep -q '"stablePromotionAuthorized": false' dist/stage8f-bootstrap-plan.json
+      - name: Upload sanitized plan and handoff
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage8f-production-bootstrap-plan
+          path: |
+            dist/production-handoff-v1.json
+            dist/production-owner-actions-v1.md
+            dist/production-edgeone-env-template-v1.txt
+            dist/stage8f-bootstrap-plan.json
+          if-no-files-found: error
+          retention-days: 7
+
+  execute:
+    if: ${{ inputs.operation == 'execute' }}
+    needs: plan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.11.0'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Validate explicit write confirmation
+        shell: bash
+        env:
+          REQUESTED_CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          test "$REQUESTED_CONFIRMATION" = 'INITIALIZE-see-see_cz-V1'
+      - name: Execute immutable production bootstrap
+        env:
+          EDGEONE_PROJECT_ID: ${{ secrets.EDGEONE_PROJECT_ID }}
+          EDGEONE_API_TOKEN: ${{ secrets.EDGEONE_API_TOKEN }}
+          CLOUD_PRODUCTION_BOOTSTRAP_CONFIRMATION: ${{ inputs.confirmation }}
+          BOOTSTRAP_REPORT_PATH: dist/stage8f-bootstrap-execution.json
+        run: node scripts/run-edgeone-production-bootstrap-v1.mjs --execute
+      - name: Audit sanitized execution report
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q '"operation": "execute"' dist/stage8f-bootstrap-execution.json
+          grep -Eq '"status": "(initialized|already_initialized_exact)"' dist/stage8f-bootstrap-execution.json
+          grep -q '"realSecretValuesExposed": false' dist/stage8f-bootstrap-execution.json
+          grep -q '"productionCapabilitiesEnabled": false' dist/stage8f-bootstrap-execution.json
+          grep -q '"stablePromotionAuthorized": false' dist/stage8f-bootstrap-execution.json
+          ! grep -q 'EDGEONE_API_TOKEN\|token' dist/stage8f-bootstrap-execution.json
+      - name: Upload sanitized execution evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage8f-production-bootstrap-execution
+          path: dist/stage8f-bootstrap-execution.json
+          if-no-files-found: warn
+          retention-days: 7
