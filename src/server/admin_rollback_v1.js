@@ -194,9 +194,12 @@ function normalizeEvidence(value, label) {
   return Object.freeze(deviceIds.map((deviceId, index) => Object.freeze({ deviceId, submissionId: submissionIds[index] })));
 }
 
-function normalizeInternalEvent(event, label = '公共') {
+function normalizeInternalEvent(event, config, label = '公共') {
+  if (!config || typeof config.groupId !== 'string' || typeof config.libraryId !== 'string') {
+    throw new AdminRollbackError('ADMIN_ROLLBACK_SCOPE_INVALID', `${label}事件缺少回滚作用域`, 503);
+  }
   if (!isPlainObject(event) || !Number.isSafeInteger(event.version) || event.version < 1
-      || event.groupId !== ADMIN_ROLLBACK_ALLOWED_GROUP_ID || event.libraryId !== ADMIN_ROLLBACK_ALLOWED_LIBRARY_ID
+      || event.groupId !== config.groupId || event.libraryId !== config.libraryId
       || !BUSINESS_KEY_PATTERN.test(String(event.businessKey || '')) || !CONTENT_HASH_PATTERN.test(String(event.contentHash || ''))
       || event.dataType !== 'exact_price' || event.operation !== 'upsert' || !Number.isFinite(Date.parse(event.approvedAt))) {
     throw new AdminRollbackError('ADMIN_ROLLBACK_EVENT_INVALID', `${label}事件不满足回滚要求`, 503);
@@ -230,8 +233,8 @@ function rollbackRefFromParts(config, source, restore) {
 }
 
 export function rollbackRefForEventPair({ config, current, previous = null } = {}) {
-  const source = normalizeInternalEvent(current, '当前');
-  const restore = previous === null ? null : normalizeInternalEvent(previous, '上一');
+  const source = normalizeInternalEvent(current, config, '当前');
+  const restore = previous === null ? null : normalizeInternalEvent(previous, config, '上一');
   if (restore && restore.businessKey !== source.businessKey) throw new AdminRollbackError('ADMIN_ROLLBACK_EVENT_PAIR_INVALID', '回滚事件业务键不一致', 503);
   return rollbackRefFromParts(config, source, restore);
 }
@@ -241,7 +244,7 @@ async function collectHistories({ store, config } = {}) {
   if (events.length > MAX_ADMIN_ROLLBACK_EVENT_OBJECTS) throw new AdminRollbackError('ADMIN_ROLLBACK_EVENT_LIMIT_EXCEEDED', '公共事件数量超过回滚安全上限', 409);
   const histories = new Map();
   for (const rawEvent of events) {
-    const event = normalizeInternalEvent(rawEvent);
+    const event = normalizeInternalEvent(rawEvent, config);
     if (event.groupId !== config.groupId || event.libraryId !== config.libraryId) throw new AdminRollbackError('ADMIN_ROLLBACK_EVENT_SCOPE_MISMATCH', '公共事件作用域与回滚配置不一致', 503);
     if (!histories.has(event.businessKey)) histories.set(event.businessKey, []);
     histories.get(event.businessKey).push(Object.freeze({ raw: rawEvent, normalized: event }));
