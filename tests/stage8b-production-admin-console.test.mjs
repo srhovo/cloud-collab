@@ -26,11 +26,12 @@ const REQUIRED_ENDPOINTS = [
   '/api/admin/ordinary-reviews/edit-and-approve', '/api/admin/sensitive-reviews',
   '/api/admin/sensitive-reviews/detail', '/api/admin/sensitive-reviews/approve',
   '/api/admin/sensitive-reviews/reject', '/api/admin/sensitive-reviews/edit-and-approve',
-  '/api/admin/devices', '/api/admin/devices/detail', '/api/admin/devices/trust',
-  '/api/admin/devices/revoke-trust', '/api/admin/devices/block', '/api/admin/devices/unblock',
+  '/api/admin/devices', '/api/admin/devices/detail',
   '/api/admin/rollbacks', '/api/admin/rollbacks/execute',
   '/api/admin/exports/summary', '/api/admin/exports/download',
 ];
+
+const REQUIRED_DEVICE_ACTIONS = ['trust', 'revoke-trust', 'block', 'unblock'];
 
 const REQUIRED_CONFIRMATIONS = [
   "confirmation:'APPROVE'", "confirmation:'REJECT'", "confirmation:'EDIT_AND_APPROVE'",
@@ -61,6 +62,10 @@ test('正式管理员控制台保持单文件CSP与无持久化凭据边界', ()
 
 test('正式管理员控制台只调用既有正式管理员API与冻结确认词', () => {
   for (const endpoint of REQUIRED_ENDPOINTS) assert.ok(source.includes(endpoint), endpoint);
+  assert.match(source, /`\/api\/admin\/devices\/\$\{action\}`/u);
+  for (const action of REQUIRED_DEVICE_ACTIONS) {
+    assert.ok(source.includes(`mutateDevice('${action}'`), action);
+  }
   for (const confirmation of REQUIRED_CONFIRMATIONS) assert.ok(source.includes(confirmation), confirmation);
   const inline = source.match(/<script>\s*([\s\S]*?)\s*<\/script>/u)?.[1];
   assert.ok(inline);
