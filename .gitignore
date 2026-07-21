@@ -8,6 +8,7 @@ coverage/
 __pycache__/
 .pages-artifact/
 .edgeone-artifact/
+.edgeone-admin-artifact/
 release-output/
 dist/release-readiness-audit.json
 dist/stage7h-release-rehearsal.json
