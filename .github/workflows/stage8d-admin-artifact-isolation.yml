@@ -8,6 +8,7 @@ on:
       - 'config/edgeone-admin.project.json'
       - 'scripts/prepare-admin-console-v1.mjs'
       - 'scripts/verify-admin-public-artifact-isolation-v1.mjs'
+      - 'scripts/audit-stage8d-no-deploy-v1.mjs'
       - 'tests/stage8d-admin-artifact-isolation.test.mjs'
       - '.github/workflows/stage8d-admin-artifact-isolation.yml'
       - '.gitignore'
@@ -71,7 +72,7 @@ jobs:
           grep -q "frame-ancestors 'none'" config/edgeone-admin.project.json
           ! grep -R "eo_token\|eo_time" .edgeone-admin-artifact config/edgeone-admin.project.json
           ! grep -R "CLOUD_ADMIN_PASSWORD=.*[^=]" config/production.env.template
-          ! grep -R "curl .*deploy\|wrangler deploy\|edgeone.*deploy" .github/workflows/stage8d-admin-artifact-isolation.yml scripts/prepare-admin-console-v1.mjs scripts/verify-admin-public-artifact-isolation-v1.mjs
+          node scripts/audit-stage8d-no-deploy-v1.mjs | tee stage8d-no-deploy.json
 
       - name: Upload Stage8D evidence
         if: always()
@@ -85,5 +86,6 @@ jobs:
             config/edgeone-admin.project.json
             stage8d-test.log
             stage8d-isolation.json
+            stage8d-no-deploy.json
           if-no-files-found: error
           retention-days: 7
