@@ -1,9 +1,9 @@
 {
-  "schemaVersion": 4,
-  "stage": "8M",
+  "schemaVersion": 5,
+  "stage": "8Q",
   "recordedAt": "2026-07-21",
   "evidenceSource": "owner_provided_tencent_cloud_domain_console_screenshot",
-  "edgeOneEvidenceSource": "owner_provided_edgeone_domain_management_screenshot",
+  "edgeOneEvidenceSource": "owner_provided_edgeone_domain_management_screenshot_and_real_browser_checks",
   "registrableDomain": "xiaxue.site",
   "publicHostname": "app.xiaxue.site",
   "administratorHostname": "admin.xiaxue.site",
@@ -13,6 +13,7 @@
   "edgeOneProjectCount": 1,
   "administratorSeparateProjectRequired": false,
   "singleProjectHostIsolationImplemented": true,
+  "singleProjectHostIsolationRealBrowserVerified": true,
   "accountApiTokenRequiredAtRuntime": false,
   "domainStatusConfirmed": true,
   "realNameStatusConfirmed": true,
@@ -28,24 +29,30 @@
   "customDomainsAddedToSameProject": true,
   "customDomainProvisioning": {
     "app.xiaxue.site": {
-      "status": "deploying",
-      "cnameVisible": false,
-      "httpsConfigured": false
+      "status": "active",
+      "cnameVisible": true,
+      "cnameTarget": "app.xiaxue.site.pages.dnsoe6.com.",
+      "httpsConfigured": true,
+      "realBrowserAccessVerified": true
     },
     "admin.xiaxue.site": {
-      "status": "deploying",
-      "cnameVisible": false,
-      "httpsConfigured": false
+      "status": "active",
+      "cnameVisible": true,
+      "cnameTarget": "admin.xiaxue.site.pages.dnsoe4.com.",
+      "httpsConfigured": true,
+      "realBrowserAccessVerified": true
     }
   },
-  "accelerationRegionVerified": false,
-  "dnsConfigured": false,
-  "httpsVerified": false,
+  "accelerationRegionVerified": true,
+  "dnsConfigured": true,
+  "httpsVerified": true,
   "initialAccelerationRegion": "global_excluding_chinese_mainland",
   "icpFilingRequiredForInitialRegion": false,
   "icpFilingDeferred": true,
   "mainlandAccelerationEnabled": false,
   "mainlandAccelerationFutureRequirement": "icp_filing_and_eligible_mainland_cloud_resource",
+  "privateValuesGenerated": false,
+  "environmentVariablesWritten": false,
   "realBlobBootstrapAllowed": false,
   "productionActivationAllowed": false,
   "stablePromotionAuthorized": false

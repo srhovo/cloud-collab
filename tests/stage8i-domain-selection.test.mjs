@@ -7,10 +7,10 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const readJson = relative => JSON.parse(fs.readFileSync(path.join(root, relative), 'utf8'));
 
-test('xiaxue.site注册实名续费和DNS控制权已由负责人证据确认', () => {
+test('xiaxue.site注册实名续费DNS与HTTPS均由负责人证据确认', () => {
   const plan = readJson('release/production-domain-selection-v1.json');
-  assert.equal(plan.schemaVersion, 4);
-  assert.equal(plan.stage, '8M');
+  assert.equal(plan.schemaVersion, 5);
+  assert.equal(plan.stage, '8Q');
   assert.equal(plan.registrableDomain, 'xiaxue.site');
   assert.equal(plan.publicHostname, 'app.xiaxue.site');
   assert.equal(plan.administratorHostname, 'admin.xiaxue.site');
@@ -25,20 +25,26 @@ test('xiaxue.site注册实名续费和DNS控制权已由负责人证据确认', 
   assert.equal(plan.dnsProvider, 'DNSPod');
   assert.deepEqual(plan.authoritativeNameServers, ['blake.dnspod.net', 'herman.dnspod.net']);
   assert.equal(plan.dnsControlConfirmed, true);
-  assert.equal(plan.dnsConfigured, false);
-  assert.equal(plan.httpsVerified, false);
+  assert.equal(plan.dnsConfigured, true);
+  assert.equal(plan.httpsVerified, true);
 });
 
-test('两个自定义域名已添加到同一项目但仍等待CNAME与HTTPS', () => {
+test('两个自定义域名已在同一项目完成CNAME HTTPS与真实浏览器访问', () => {
   const plan = readJson('release/production-domain-selection-v1.json');
-  assert.equal(plan.edgeOneEvidenceSource, 'owner_provided_edgeone_domain_management_screenshot');
+  assert.equal(plan.edgeOneEvidenceSource, 'owner_provided_edgeone_domain_management_screenshot_and_real_browser_checks');
   assert.equal(plan.customDomainsAddedToSameProject, true);
-  for (const hostname of ['app.xiaxue.site', 'admin.xiaxue.site']) {
-    assert.equal(plan.customDomainProvisioning[hostname].status, 'deploying');
-    assert.equal(plan.customDomainProvisioning[hostname].cnameVisible, false);
-    assert.equal(plan.customDomainProvisioning[hostname].httpsConfigured, false);
+  const expectedCnames = {
+    'app.xiaxue.site': 'app.xiaxue.site.pages.dnsoe6.com.',
+    'admin.xiaxue.site': 'admin.xiaxue.site.pages.dnsoe4.com.',
+  };
+  for (const [hostname, cnameTarget] of Object.entries(expectedCnames)) {
+    assert.equal(plan.customDomainProvisioning[hostname].status, 'active');
+    assert.equal(plan.customDomainProvisioning[hostname].cnameVisible, true);
+    assert.equal(plan.customDomainProvisioning[hostname].cnameTarget, cnameTarget);
+    assert.equal(plan.customDomainProvisioning[hostname].httpsConfigured, true);
+    assert.equal(plan.customDomainProvisioning[hostname].realBrowserAccessVerified, true);
   }
-  assert.equal(plan.accelerationRegionVerified, false);
+  assert.equal(plan.accelerationRegionVerified, true);
 });
 
 test('首发使用全球不含中国大陆且当前不购买备案云资源', () => {
@@ -50,13 +56,16 @@ test('首发使用全球不含中国大陆且当前不购买备案云资源', ()
   assert.equal(plan.mainlandAccelerationFutureRequirement, 'icp_filing_and_eligible_mainland_cloud_resource');
 });
 
-test('单项目双域名拓扑保持解决跨项目Blob边界且不需要运行时平台令牌', () => {
+test('单项目双域名拓扑通过真实Host隔离且不需要运行时平台令牌', () => {
   const plan = readJson('release/production-domain-selection-v1.json');
   assert.equal(plan.topology, 'single_edgeone_project_two_custom_domains');
   assert.equal(plan.edgeOneProjectCount, 1);
   assert.equal(plan.administratorSeparateProjectRequired, false);
   assert.equal(plan.singleProjectHostIsolationImplemented, true);
+  assert.equal(plan.singleProjectHostIsolationRealBrowserVerified, true);
   assert.equal(plan.accountApiTokenRequiredAtRuntime, false);
+  assert.equal(plan.privateValuesGenerated, false);
+  assert.equal(plan.environmentVariablesWritten, false);
   assert.equal(plan.realBlobBootstrapAllowed, false);
   assert.equal(plan.productionActivationAllowed, false);
   assert.equal(plan.stablePromotionAuthorized, false);

@@ -1,9 +1,9 @@
 {
-  "schemaVersion": 6,
+  "schemaVersion": 7,
   "stage": "8E",
-  "revisedAtStage": "8M",
+  "revisedAtStage": "8Q",
   "recordedAt": "2026-07-21",
-  "status": "custom_domains_added_waiting_provisioning_cname_and_region_verification",
+  "status": "custom_domains_https_and_host_isolation_verified_waiting_private_values",
   "recommendedBootstrapWorkflow": "stage8h-edgeone-production-bootstrap",
   "bootstrapRequiresOwnerDomain": false,
   "deploymentBootstrapPathDeprecated": true,
@@ -23,22 +23,27 @@
     "customDomainsAddedToSameProject": true,
     "customDomainProvisioning": {
       "app.xiaxue.site": {
-        "status": "deploying",
-        "cnameVisible": false,
-        "httpsConfigured": false
+        "status": "active",
+        "cnameVisible": true,
+        "cnameTarget": "app.xiaxue.site.pages.dnsoe6.com.",
+        "httpsConfigured": true,
+        "realBrowserAccessVerified": true
       },
       "admin.xiaxue.site": {
-        "status": "deploying",
-        "cnameVisible": false,
-        "httpsConfigured": false
+        "status": "active",
+        "cnameVisible": true,
+        "cnameTarget": "admin.xiaxue.site.pages.dnsoe4.com.",
+        "httpsConfigured": true,
+        "realBrowserAccessVerified": true
       }
     },
-    "dnsConfigured": false,
-    "httpsVerified": false
+    "dnsConfigured": true,
+    "httpsVerified": true,
+    "hostIsolationRealBrowserVerified": true
   },
   "deployment": {
     "initialAccelerationRegion": "global_excluding_chinese_mainland",
-    "accelerationRegionVerified": false,
+    "accelerationRegionVerified": true,
     "icpFilingRequiredForInitialRegion": false,
     "icpFilingDeferred": true,
     "mainlandAccelerationEnabled": false,
@@ -50,6 +55,7 @@
     "topology": "single_edgeone_project_two_custom_domains",
     "edgeOneProjectCount": 1,
     "singleProjectHostIsolationImplemented": true,
+    "singleProjectHostIsolationRealBrowserVerified": true,
     "currentProjectScopedBlobResolved": true,
     "accountApiTokenInLongRunningRuntimeAllowed": false,
     "administratorSeparateProjectRequired": false,
@@ -58,6 +64,8 @@
     "realBootstrapAuthorized": false,
     "resolution": "single_project_two_domain_host_isolation"
   },
+  "privateValuesGenerated": false,
+  "environmentVariablesWritten": false,
   "stablePromotionAuthorized": false,
   "stablePromotionPerformed": false,
   "productionActivationPerformed": false
