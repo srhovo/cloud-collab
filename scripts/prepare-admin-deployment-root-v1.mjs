@@ -15,6 +15,12 @@ export const ADMIN_STATIC_FILES = Object.freeze([
 export const ADMIN_SESSION_TEMPLATE = 'checkSession({ quiet: true });';
 export const ADMIN_SESSION_RENDERED = 'checkSession({ quiet: false });';
 
+const ADMIN_TITLE = '码单器正式管理员控制台';
+const FROZEN_PUBLIC_CANDIDATE = Object.freeze({
+  version: '8.2.31',
+  sha256: '9a9719e70dce94d875befb287d247fca0755183da7c813779310abb57ba3882b',
+});
+
 export class AdminDeploymentArtifactError extends Error {
   constructor(code, message, details = null, cause = null) {
     super(message || code || '管理员部署产物生成失败');
@@ -29,9 +35,7 @@ function fail(code, message, details = null, cause = null) {
   throw new AdminDeploymentArtifactError(code, message, details, cause);
 }
 
-function sha256(bytes) {
-  return crypto.createHash('sha256').update(bytes).digest('hex');
-}
+const sha256 = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 
 function repositoryCommit(repositoryRoot) {
   try {
@@ -47,7 +51,7 @@ function repositoryCommit(repositoryRoot) {
 
 function checkedCommit(value) {
   const commit = String(value || '').trim().toLowerCase();
-  if (!/^[a-f0-9]{40}$/.test(commit)) {
+  if (!/^[a-f0-9]{40}$/u.test(commit)) {
     fail('ADMIN_DEPLOYMENT_COMMIT_INVALID', '管理员部署来源提交必须为40位Git SHA');
   }
   return commit;
@@ -108,8 +112,8 @@ function listFilesRecursive(directory) {
 
 function resolveImport(importer, specifier) {
   const candidate = path.resolve(path.dirname(importer), specifier);
-  const possibilities = [candidate, `${candidate}.js`, path.join(candidate, 'index.js')];
-  return possibilities.find(item => fs.existsSync(item) && fs.statSync(item).isFile()) || null;
+  return [candidate, `${candidate}.js`, path.join(candidate, 'index.js')]
+    .find(item => fs.existsSync(item) && fs.statSync(item).isFile()) || null;
 }
 
 function auditGeneratedFunctions(projectRoot) {
@@ -138,7 +142,7 @@ function auditGeneratedFunctions(projectRoot) {
     ...listFilesRecursive(functionsRoot),
     ...listFilesRecursive(serverRoot),
   ].filter(file => file.endsWith('.js'));
-  const importPattern = /(?:from\s*|import\s*)['"]([^'"]+)['"]/g;
+  const importPattern = /(?:from\s*|import\s*)['"]([^'"]+)['"]/gu;
   for (const file of javascriptFiles) {
     const source = fs.readFileSync(file, 'utf8');
     for (const match of source.matchAll(importPattern)) {
@@ -163,20 +167,15 @@ function auditGeneratedFunctions(projectRoot) {
   }
   return Object.freeze({
     cloudFunctionFileCount: listFilesRecursive(functionsRoot).length,
+    administratorApiFileCount: apiFiles.length,
     serverFileCount: listFilesRecursive(serverRoot).length,
     javascriptFileCount: javascriptFiles.length,
   });
 }
 
 function fileDescriptor(outputRoot, filename, contentType) {
-  const target = path.join(outputRoot, filename);
-  const bytes = fs.readFileSync(target);
-  return Object.freeze({
-    filename,
-    contentType,
-    bytes: bytes.length,
-    sha256: sha256(bytes),
-  });
+  const bytes = fs.readFileSync(path.join(outputRoot, filename));
+  return Object.freeze({ filename, contentType, bytes: bytes.length, sha256: sha256(bytes) });
 }
 
 function auditStaticOutput(outputRoot) {
@@ -193,15 +192,21 @@ function auditStaticOutput(outputRoot) {
   }
   const html = fs.readFileSync(path.join(outputRoot, 'index.html'), 'utf8');
   const script = fs.readFileSync(path.join(outputRoot, 'production-console.js'), 'utf8');
-  if (!html.includes('./production-console.css') || !html.includes('./production-console.js')) {
-    fail('ADMIN_DEPLOYMENT_ASSET_LINK_INVALID', '管理员入口缺少同源CSS或JS引用');
+  if (!html.includes(`<title>${ADMIN_TITLE}</title>`)
+      || !html.includes('./production-console.css')
+      || !html.includes('./production-console.js')) {
+    fail('ADMIN_DEPLOYMENT_ASSET_LINK_INVALID', '管理员入口身份或同源资源引用无效');
   }
   if (!script.includes(ADMIN_SESSION_RENDERED) || script.includes(ADMIN_SESSION_TEMPLATE)) {
     fail('ADMIN_DEPLOYMENT_SESSION_PROBE_INVALID', '管理员部署未启用可见初始会话检查');
   }
-  const forbidden = ['build-manifest.json', 'pages-release.json', '码单器8.2.31（公共协作发布候选版）'];
   const combined = files.map(filename => fs.readFileSync(path.join(outputRoot, filename), 'utf8')).join('\n');
-  for (const marker of forbidden) {
+  for (const marker of [
+    'build-manifest.json',
+    'pages-release.json',
+    '码单器8.2.31（公共协作发布候选版）',
+    "const APP_VERSION = '8.2.31';",
+  ]) {
     if (combined.includes(marker)) {
       fail('ADMIN_DEPLOYMENT_PUBLIC_ARTIFACT_LEAK', '管理员产物混入普通用户候选内容', { marker });
     }
@@ -209,11 +214,7 @@ function auditStaticOutput(outputRoot) {
   return Object.freeze(files);
 }
 
-export function prepareAdminDeploymentRoot({
-  repositoryRoot,
-  projectRoot,
-  commitSha,
-} = {}) {
+export function prepareAdminDeploymentRoot({ repositoryRoot, projectRoot, commitSha } = {}) {
   const repo = path.resolve(repositoryRoot || path.join(path.dirname(fileURLToPath(import.meta.url)), '..'));
   const project = path.resolve(projectRoot || path.join(repo, ADMIN_DEPLOYMENT_ROOT));
   if (!fs.existsSync(project) || !fs.statSync(project).isDirectory()) {
@@ -252,29 +253,34 @@ export function prepareAdminDeploymentRoot({
   const contentFiles = Object.freeze([
     fileDescriptor(outputRoot, 'index.html', 'text/html; charset=utf-8'),
     fileDescriptor(outputRoot, 'production-console.css', 'text/css; charset=utf-8'),
-    fileDescriptor(outputRoot, 'production-console.js', 'text/javascript; charset=utf-8'),
+    fileDescriptor(outputRoot, 'production-console.js', 'application/javascript; charset=utf-8'),
   ]);
   const release = Object.freeze({
     schemaVersion: 1,
     kind: 'production_admin_console_deployment',
     deploymentStatus: 'code_complete_not_deployed',
     sourceCommit,
+    title: ADMIN_TITLE,
     projectRoot: ADMIN_DEPLOYMENT_ROOT,
+    projectConfig: 'deploy/admin/edgeone.json',
     outputDirectory: ADMIN_STATIC_OUTPUT,
     outputFiles: ADMIN_STATIC_FILES,
     contentFiles,
     runtimeAudit,
     apiScope: '/api/admin/*',
     anonymousPublicApiIncluded: false,
+    intendedOriginEnv: 'CLOUD_ADMIN_PUBLIC_ORIGIN',
     requiresSeparateAdministratorOrigin: true,
     requiresProductionAdminSession: true,
+    platformResponseHeadersRequired: true,
     responseHeadersConfiguredByEdgeOneJson: true,
     initialSessionProbeVisible: true,
     includesOrdinaryUserCandidate: false,
     includesSecretValues: false,
     productionCapabilitiesDefaultOff: true,
+    frozenPublicCandidate: FROZEN_PUBLIC_CANDIDATE,
     stableVersion: '8.2.25',
-    candidateVersion: '8.2.31',
+    candidateVersion: FROZEN_PUBLIC_CANDIDATE.version,
     stablePromotionAuthorized: false,
     stablePromotionPerformed: false,
     productionWriteEnablementIncluded: false,
@@ -284,13 +290,7 @@ export function prepareAdminDeploymentRoot({
     Buffer.from(`${JSON.stringify(release, null, 2)}\n`, 'utf8'),
   );
   const files = auditStaticOutput(outputRoot);
-  return Object.freeze({
-    repositoryRoot: repo,
-    projectRoot: project,
-    outputRoot,
-    files,
-    release,
-  });
+  return Object.freeze({ repositoryRoot: repo, projectRoot: project, outputRoot, files, release });
 }
 
 function argumentValue(name) {
