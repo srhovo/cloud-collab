@@ -70,8 +70,12 @@ jobs:
           grep -q "crypto.getRandomValues" tools/production-secret-generator.js
           grep -q "pagehide" tools/production-secret-generator.js
           ! grep -R "fetch\|XMLHttpRequest\|WebSocket\|EventSource\|sendBeacon\|navigator.clipboard\|localStorage\|sessionStorage\|indexedDB\|document.cookie" tools/production-secret-generator*
-          grep -q '"deploymentPerformed": false' dist/production-handoff-v1.json
+          grep -q '"deploymentPerformed": true' dist/production-handoff-v1.json
+          grep -q '"administratorConsoleDeployed": true' dist/production-handoff-v1.json
+          grep -q '"environmentVariablesWritten": false' dist/production-handoff-v1.json
+          grep -q '"realPrivateValuesGenerated": false' dist/production-handoff-v1.json
           grep -q '"realBlobOperationsPerformed": 0' dist/production-handoff-v1.json
+          grep -q '"productionActivationPerformed": false' dist/production-handoff-v1.json
           grep -q '"stablePromotionAuthorized": false' dist/production-handoff-v1.json
           ! grep -R "eo_token=" dist/production-handoff-v1.json dist/production-owner-actions-v1.md dist/production-edgeone-env-template-v1.txt
           ! grep -R "CLOUD_PRODUCTION_ENABLED=1" dist/production-edgeone-env-template-v1.txt tools/production-secret-generator.html
