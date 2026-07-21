@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "stage": "8I",
+  "recordedAt": "2026-07-21",
+  "registrableDomain": "xiaxue.site",
+  "publicHostname": "app.xiaxue.site",
+  "administratorHostname": "admin.xiaxue.site",
+  "publicOrigin": "https://app.xiaxue.site",
+  "administratorOrigin": "https://admin.xiaxue.site",
+  "domainStatusConfirmed": false,
+  "realNameStatusConfirmed": false,
+  "dnsConfigured": false,
+  "httpsVerified": false,
+  "administratorProjectCreationAllowed": false,
+  "realBlobBootstrapAllowed": false,
+  "productionActivationAllowed": false,
+  "stablePromotionAuthorized": false
+}
