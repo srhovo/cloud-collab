@@ -72,11 +72,22 @@ function request(pathName, { method = 'GET', body, origin = ORIGIN, runtimeEnv =
   });
 }
 
+function emptyQueue(config) {
+  return {
+    schemaVersion: 1,
+    scope: { groupId: config.groupId, libraryId: config.libraryId },
+    count: 0,
+    items: [],
+    capabilities: {},
+  };
+}
+
 test('production configuration uses the public production store and protocol scope', () => {
   const config = readProductionAdminSensitiveReviewConfig(env());
   assert.equal(config.storeName, 'cloud-collab-production-v1');
   assert.equal(config.groupId, 'group_see');
   assert.equal(config.libraryId, 'lib_see_cz');
+  assert.equal(config.sensitiveSubmissionIntakeEnabled, true);
   assert.equal(config.syntheticFixtureOnly, false);
   assert.equal(config.stablePromotionAuthorized, false);
 });
@@ -89,23 +100,36 @@ test('queue accepts a production session and returns production capabilities', a
   }, {
     now: () => NOW + 1,
     createStore: name => { storeName = name; return {}; },
-    listQueue: async ({ config }) => ({
-      schemaVersion: 1,
-      scope: { groupId: config.groupId, libraryId: config.libraryId },
-      count: 0,
-      items: [],
-      capabilities: {},
-    }),
+    listQueue: async ({ config }) => emptyQueue(config),
   });
   assert.equal(response.status, 200);
   assert.equal(storeName, 'cloud-collab-production-v1');
   const body = await response.json();
   assert.equal(body.data.viewer.username, 'xiaxue');
+  assert.equal(body.data.sensitiveSubmissionIntakeEnabled, true);
   assert.equal(body.data.capabilities.productionAdmin, true);
   assert.equal(body.data.capabilities.syntheticFixtureOnly, false);
   assert.equal(body.data.capabilities.manualReviewRequired, true);
   assert.equal(body.data.capabilities.automaticApproval, false);
   assert.equal(body.data.realSecretValuesExposed, false);
+});
+
+test('closing sensitive intake still permits draining the existing review queue', async () => {
+  const runtimeEnv = env({ CLOUD_PRODUCTION_SENSITIVE_SUBMISSION_ENABLED: '0' });
+  let storeName = null;
+  const response = await handleProductionAdminSensitiveReviewQueueRequest({
+    env: runtimeEnv,
+    request: request('/api/admin/sensitive-reviews', { runtimeEnv }),
+  }, {
+    now: () => NOW + 1,
+    createStore: name => { storeName = name; return {}; },
+    listQueue: async ({ config }) => emptyQueue(config),
+  });
+  assert.equal(response.status, 200);
+  assert.equal(storeName, 'cloud-collab-production-v1');
+  const body = await response.json();
+  assert.equal(body.data.sensitiveSubmissionIntakeEnabled, false);
+  assert.equal(body.data.capabilities.manualReviewRequired, true);
 });
 
 test('approval forwards the explicit command with production identity and store', async () => {
@@ -147,8 +171,11 @@ test('cross-origin writes are blocked before body parsing and store creation', a
   assert.equal(stores, 0);
 });
 
-test('production mode never falls back to preview when a child gate is closed', async () => {
-  const closed = env({ CLOUD_PRODUCTION_SENSITIVE_SUBMISSION_ENABLED: '0' });
+test('production mode never falls back to preview when the review gate is closed', async () => {
+  const closed = env({
+    CLOUD_PRODUCTION_SENSITIVE_SUBMISSION_ENABLED: '0',
+    CLOUD_PRODUCTION_ADMIN_REVIEW_ENABLED: '0',
+  });
   let stores = 0;
   const response = await handleAdminSensitiveReviewQueueByMode({
     env: {
@@ -194,7 +221,7 @@ test('all five cloud functions depend only on the mode dispatcher', () => {
   }
 });
 
-test('static boundaries use production sessions, master-gate dispatch, and no automatic approval', () => {
+test('static boundaries use production sessions, master-gate dispatch, and independent intake kill switch', () => {
   const http = fs.readFileSync(path.join(root, 'src/server/production_admin_sensitive_review_http_v1.js'), 'utf8');
   const dispatch = fs.readFileSync(path.join(root, 'src/server/admin_sensitive_review_mode_dispatch_v1.js'), 'utf8');
   assert.match(http, /verifyProductionAdminSessionToken/u);
@@ -202,6 +229,7 @@ test('static boundaries use production sessions, master-gate dispatch, and no au
   assert.match(http, /automaticApproval:\s*false/u);
   assert.match(http, /stablePromotionAuthorized:\s*false/u);
   assert.doesNotMatch(http, /readAdminAuthConfig|verifyAdminSessionToken/u);
+  assert.doesNotMatch(http, /runtime\.flags\.sensitiveSubmission\s*!==\s*true/u);
   assert.match(dispatch, /resolveAdminAuthMode/u);
   assert.doesNotMatch(dispatch, /CLOUD_ADMIN_PRODUCTION_ENABLED|CLOUD_PRODUCTION_SENSITIVE_SUBMISSION_ENABLED/u);
 });
