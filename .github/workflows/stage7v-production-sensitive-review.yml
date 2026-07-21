@@ -67,7 +67,9 @@ jobs:
           grep -q "mutateAdminSensitiveReview" src/server/production_admin_sensitive_review_http_v1.js
           grep -q "resolveAdminAuthMode" src/server/admin_sensitive_review_mode_dispatch_v1.js
           ! grep -q "verifyAdminSessionToken\|readAdminAuthConfig" src/server/production_admin_sensitive_review_http_v1.js
+          ! grep -q "runtime.flags.sensitiveSubmission !== true" src/server/production_admin_sensitive_review_http_v1.js
           ! grep -q "CLOUD_ADMIN_PRODUCTION_ENABLED\|CLOUD_PRODUCTION_SENSITIVE_SUBMISSION_ENABLED" src/server/admin_sensitive_review_mode_dispatch_v1.js
+          grep -q "sensitiveSubmissionIntakeEnabled" src/server/production_admin_sensitive_review_http_v1.js
           grep -q "automaticApproval: false" src/server/production_admin_sensitive_review_http_v1.js
           grep -q "stablePromotionAuthorized: false" src/server/production_admin_sensitive_review_http_v1.js
           ! grep -R "Access-Control-Allow-Origin.*\*" src/server/production_admin_sensitive_review_http_v1.js
