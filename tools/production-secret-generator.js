@@ -10,7 +10,7 @@ const rows = document.getElementById('valueRows');
 const publicOrigin = document.getElementById('publicOrigin');
 const adminOrigin = document.getElementById('adminOrigin');
 const envBlock = document.getElementById('envBlock');
-const copyAll = document.getElementById('copyAll');
+const selectAll = document.getElementById('selectAll');
 const status = document.getElementById('status');
 
 function randomValue() {
@@ -52,9 +52,13 @@ function renderRows() {
 
     const button = document.createElement('button');
     button.type = 'button';
-    button.textContent = '复制此项';
+    button.textContent = '选中此项';
     button.disabled = !input.value;
-    button.dataset.copyName = name;
+    button.addEventListener('click', () => {
+      input.focus();
+      input.select();
+      status.textContent = `${name} 已选中，请使用系统复制菜单。`;
+    });
 
     row.append(label, input, button);
     rows.append(row);
@@ -73,13 +77,11 @@ function buildEnvironmentBlock() {
       ...config.privateNames.map(name => `${name}=${state.get(name) || ''}`),
     ];
     envBlock.value = `${lines.join('\n')}\n`;
-    copyAll.disabled = !valuesReady;
-    status.textContent = valuesReady
-      ? '已生成。所有生产开关仍为 0。'
-      : '尚未生成。';
+    selectAll.disabled = !valuesReady;
+    status.textContent = valuesReady ? '已生成。所有生产开关仍为 0。' : '尚未生成。';
   } catch (error) {
     envBlock.value = '';
-    copyAll.disabled = true;
+    selectAll.disabled = true;
     status.textContent = error instanceof Error ? error.message : '来源地址无效';
   }
 }
@@ -89,15 +91,28 @@ function clearPage() {
   publicOrigin.value = '';
   adminOrigin.value = '';
   envBlock.value = '';
-  copyAll.disabled = true;
+  selectAll.disabled = true;
   renderRows();
   status.textContent = '页面内存已清空。';
 }
 
-window.PRODUCTION_GENERATOR_INTERNAL = Object.freeze({
-  randomValue,
-  validOrigin,
-  renderRows,
-  buildEnvironmentBlock,
-  clearPage,
+document.getElementById('generate').addEventListener('click', () => {
+  state.clear();
+  for (const name of config.privateNames) state.set(name, randomValue());
+  renderRows();
+  buildEnvironmentBlock();
 });
+
+document.getElementById('clear').addEventListener('click', clearPage);
+publicOrigin.addEventListener('input', buildEnvironmentBlock);
+adminOrigin.addEventListener('input', buildEnvironmentBlock);
+selectAll.addEventListener('click', () => {
+  envBlock.focus();
+  envBlock.select();
+  status.textContent = '批量导入文本已选中，请使用系统复制菜单。';
+});
+
+window.addEventListener('pagehide', clearPage);
+renderRows();
+buildEnvironmentBlock();
+window.PRODUCTION_GENERATOR_READY = true;
