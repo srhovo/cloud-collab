@@ -47,11 +47,11 @@ jobs:
             tests/stage8a-production-complete-export.test.mjs \
             2>&1 | tee stage8b-node-test.log
 
-      - name: Build isolated administrator artifact
-        run: npm run admin:prepare -- --output .edgeone-admin-artifact --commit "$GITHUB_SHA"
-
-      - name: Rebuild ordinary public artifact
+      - name: Rebuild and audit ordinary public artifact first
         run: npm run public:prepare -- --channel edgeone-primary --output .edgeone-artifact --commit "$GITHUB_SHA"
+
+      - name: Build isolated administrator artifact after public audit
+        run: npm run admin:prepare -- --output .edgeone-admin-artifact --commit "$GITHUB_SHA"
 
       - name: Verify administrator and ordinary artifact isolation
         run: node scripts/verify-admin-public-artifact-isolation-v1.mjs
