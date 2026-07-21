@@ -1,0 +1,72 @@
+name: stage8f-production-bootstrap
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/run-edgeone-production-bootstrap-v1.mjs'
+      - 'tests/stage8f-edgeone-production-bootstrap.test.mjs'
+      - '.github/workflows/stage8f-production-bootstrap.yml'
+      - '.github/workflows/stage8f-edgeone-production-bootstrap.yml'
+      - 'src/server/production_bootstrap_v1.js'
+      - 'src/server/production_runtime_config_v1.js'
+      - 'package.json'
+      - 'docs/阶段8F_EdgeOne_Blob初始化入口.md'
+      - 'README.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production-bootstrap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.11.0'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Run Stage8F and inherited production tests
+        shell: bash
+        run: |
+          set -o pipefail
+          node --test \
+            tests/stage8f-edgeone-production-bootstrap.test.mjs \
+            tests/stage8e-production-handoff.test.mjs \
+            tests/stage8d-admin-artifact-isolation.test.mjs \
+            tests/stage7n-production-runtime-and-bootstrap.test.mjs \
+            2>&1 | tee stage8f-test.log
+      - name: Build inherited handoff and zero-write plan
+        shell: bash
+        run: |
+          npm run production:handoff
+          BOOTSTRAP_REPORT_PATH=dist/stage8f-bootstrap-plan.json npm run production:bootstrap:edgeone:plan
+      - name: Audit zero-write and no-secret boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q '"stage": "8F"' dist/stage8f-bootstrap-plan.json
+          grep -q '"operation": "plan"' dist/stage8f-bootstrap-plan.json
+          grep -q '"resourceCount": 10' dist/stage8f-bootstrap-plan.json
+          grep -q '"realBlobReadsPerformed": 0' dist/stage8f-bootstrap-plan.json
+          grep -q '"realBlobWritesPerformed": 0' dist/stage8f-bootstrap-plan.json
+          grep -q '"realBlobDeletesPerformed": 0' dist/stage8f-bootstrap-plan.json
+          grep -q '"stablePromotionAuthorized": false' dist/stage8f-bootstrap-plan.json
+          ! grep -R 'eo_token=' dist/stage8f-bootstrap-plan.json .github/workflows/stage8f-edgeone-production-bootstrap.yml
+          ! grep -R 'xiaxue76\|2406048740@qq.com' scripts/run-edgeone-production-bootstrap-v1.mjs tests/stage8f-edgeone-production-bootstrap.test.mjs docs/阶段8F_EdgeOne_Blob初始化入口.md
+          ! grep -R -E 'EDGEONE_API_TOKEN=.+|CLOUD_ADMIN_PASSWORD=.+' dist/stage8f-bootstrap-plan.json docs/阶段8F_EdgeOne_Blob初始化入口.md
+          ! grep -q '^  push:\|^  pull_request:' .github/workflows/stage8f-edgeone-production-bootstrap.yml
+      - name: Upload sanitized Stage8F evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage8f-production-bootstrap
+          path: |
+            dist/stage8f-bootstrap-plan.json
+            dist/production-handoff-v1.json
+            dist/production-owner-actions-v1.md
+            stage8f-test.log
+          if-no-files-found: error
+          retention-days: 7
