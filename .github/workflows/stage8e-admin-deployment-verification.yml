@@ -1,0 +1,74 @@
+name: stage8e-admin-deployment-verification
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/verify-admin-deployment-v1.mjs'
+      - 'scripts/audit-stage8e-verifier-no-deploy-v1.mjs'
+      - 'tests/stage8e-admin-deployment-verification.test.mjs'
+      - 'tests/stage8e-no-deploy-audit.test.mjs'
+      - '.github/workflows/stage8e-admin-deployment-verification.yml'
+      - 'package.json'
+      - 'README.md'
+      - 'docs/阶段8E_管理员线上部署验证器.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  admin-deployment-verification:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Run Stage8E and inherited administrator artifact tests
+        shell: bash
+        run: |
+          set -o pipefail
+          node --test \
+            tests/stage8e-admin-deployment-verification.test.mjs \
+            tests/stage8e-no-deploy-audit.test.mjs \
+            tests/stage8d-admin-artifact-isolation.test.mjs \
+            tests/stage8d-no-deploy-audit.test.mjs \
+            tests/stage8c-production-admin-console.test.mjs \
+            2>&1 | tee stage8e-test.log
+
+      - name: Build administrator artifact without deployment
+        run: npm run admin:prepare -- --output .edgeone-admin-artifact --commit "$GITHUB_SHA"
+
+      - name: Audit verifier and workflow never deploy or contact a real origin
+        run: node scripts/audit-stage8e-verifier-no-deploy-v1.mjs | tee stage8e-no-deploy.json
+
+      - name: Audit generated manifest remains pre-deployment only
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q '"deploymentStatus": "code_complete_not_deployed"' .edgeone-admin-artifact/admin-release.json
+          grep -q '"platformResponseHeadersRequired": true' .edgeone-admin-artifact/admin-release.json
+          grep -q '"productionCapabilitiesDefaultOff": true' .edgeone-admin-artifact/admin-release.json
+          grep -q '"stablePromotionAuthorized": false' .edgeone-admin-artifact/admin-release.json
+          ! grep -R "eo_token\|eo_time" .edgeone-admin-artifact scripts/verify-admin-deployment-v1.mjs
+
+      - name: Upload Stage8E evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage8e-admin-verifier-evidence
+          path: |
+            .edgeone-admin-artifact/admin-release.json
+            stage8e-test.log
+            stage8e-no-deploy.json
+          if-no-files-found: error
+          retention-days: 7
