@@ -70,7 +70,7 @@ export function auditStage7HRepository({ root } = {}) {
       || edgeOneConfig.buildCommand !== 'npm run edgeone:build'
       || edgeOneConfig.outputDirectory !== './.edgeone-artifact'
       || edgeOneConfig.nodeVersion !== '22.11.0') {
-    fail('STAGE7H_EDGEONE_BUILD_SCOPE_INVALID', 'EdgeOne构建未固定为锁定安装和最小公开产物');
+    fail('STAGE7H_EDGEONE_BUILD_SCOPE_INVALID', 'EdgeOne构建未固定为锁定安装和受审计正式产物');
   }
   const genericHeaders = headerMap(edgeOneConfig, '/*');
   const cacheControl = String(genericHeaders.get('cache-control') || '').toLowerCase();
@@ -88,9 +88,10 @@ export function auditStage7HRepository({ root } = {}) {
       || scripts['public:verify'] !== 'node scripts/verify-public-deployment-v1.mjs'
       || scripts['stage7h:audit'] !== 'node scripts/stage7h-release-rehearsal-v1.mjs --audit-only'
       || scripts['release:rehearse'] !== 'npm run ci && node scripts/stage7h-release-rehearsal-v1.mjs'
-      || scripts['edgeone:build'] !== 'npm run ci && npm run public:prepare -- --channel edgeone-primary --output .edgeone-artifact'
+      || scripts['edgeone:production:prepare'] !== 'node scripts/prepare-edgeone-single-project-v1.mjs'
+      || scripts['edgeone:build'] !== 'npm run ci && npm run edgeone:production:prepare -- --output .edgeone-artifact'
       || !String(scripts.validate || '').includes('npm run stage7h:audit')) {
-    fail('STAGE7H_PACKAGE_SCRIPTS_INVALID', 'package.json候选发布命令契约无效');
+    fail('STAGE7H_PACKAGE_SCRIPTS_INVALID', 'package.json候选发布与正式EdgeOne构建命令契约无效');
   }
 
   if (finalManifest.candidate?.version !== CANDIDATE_VERSION
@@ -117,6 +118,7 @@ export function auditStage7HRepository({ root } = {}) {
       pagesManualDispatchOnly: true,
       rehearsalWorkflowDoesNotDeploy: true,
       edgeOneMinimalArtifactOnly: true,
+      edgeOneProductionHostIsolationConfigured: true,
       edgeOneSecurityHeadersConfigured: true,
       publicJsonUtf8CharsetConfigured: true,
       postDeploymentHashVerificationRequired: true,
