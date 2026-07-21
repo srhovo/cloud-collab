@@ -35,10 +35,12 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci --ignore-scripts
+      - name: Prepare ignored evidence directory
+        run: mkdir -p test-results/stage8e
       - name: Generate administrator deployment root
-        run: npm run admin:deployment:prepare -- --commit "$GITHUB_SHA" | tee stage8e-build.json
+        run: npm run admin:deployment:prepare -- --commit "$GITHUB_SHA" | tee test-results/stage8e/build.json
       - name: Import every administrator Cloud Function
-        run: npm run admin:deployment:audit | tee stage8e-runtime.json
+        run: npm run admin:deployment:audit | tee test-results/stage8e/runtime.json
       - name: Run deployment-root and inherited isolation tests
         shell: bash
         run: |
@@ -50,7 +52,7 @@ jobs:
             tests/stage8d-admin-artifact-isolation.test.mjs \
             tests/stage8d-no-deploy-audit.test.mjs \
             tests/stage8c-production-admin-console.test.mjs \
-            2>&1 | tee stage8e-test.log
+            2>&1 | tee test-results/stage8e/test.log
       - name: Install browser runtime
         run: |
           python3 -m pip install --disable-pip-version-check playwright
@@ -59,9 +61,9 @@ jobs:
           test -n "$CHROMIUM_PATH"
           sudo ln -sf "$CHROMIUM_PATH" /usr/bin/chromium
       - name: Run generated deployment browser regression
-        run: python3 tests/stage8e_browser_admin_deployment.py 2>&1 | tee stage8e-browser.log
+        run: python3 tests/stage8e_browser_admin_deployment.py 2>&1 | tee test-results/stage8e/browser.log
       - name: Audit no deployment and no real network target
-        run: node scripts/audit-stage8e-admin-root-no-deploy-v1.mjs | tee stage8e-no-deploy.json
+        run: node scripts/audit-stage8e-admin-root-no-deploy-v1.mjs | tee test-results/stage8e/no-deploy.json
       - name: Audit generated scope and repository cleanliness
         shell: bash
         run: |
@@ -82,10 +84,10 @@ jobs:
           path: |
             deploy/admin/.edgeone-admin-artifact/admin-release.json
             deploy/admin/edgeone.json
-            stage8e-build.json
-            stage8e-runtime.json
-            stage8e-test.log
-            stage8e-browser.log
-            stage8e-no-deploy.json
+            test-results/stage8e/build.json
+            test-results/stage8e/runtime.json
+            test-results/stage8e/test.log
+            test-results/stage8e/browser.log
+            test-results/stage8e/no-deploy.json
           if-no-files-found: error
           retention-days: 7
